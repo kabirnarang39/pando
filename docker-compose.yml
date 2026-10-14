@@ -1,5 +1,5 @@
 # Full production-shaped topology on one machine:
-#   Postgres (metadata) + MinIO (S3 object storage)
+#   Postgres (metadata) + SeaweedFS (S3-compatible object storage)
 #   -> sapwood server -> regional cache -> node daemon
 #
 #   docker compose up -d
@@ -17,33 +17,26 @@ services:
       interval: 2s
       retries: 30
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: server /data --console-address :9001
-    environment:
-      MINIO_ROOT_USER: sapwood
-      MINIO_ROOT_PASSWORD: sapwood-secret
-    volumes: [miniodata:/data]
-    ports: ["9001:9001"]
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 2s
-      retries: 30
+  s3:
+    # S3-compatible object storage (SeaweedFS). Swap for AWS S3, GCS or Azure in production.
+    image: chrislusf/seaweedfs:4.48
+    command: server -s3 -dir=/data
+    volumes: [s3data:/data]
+    ports: ["8333:8333"]
 
-  minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
-    depends_on:
-      minio: { condition: service_healthy }
+  s3-init:
+    image: curlimages/curl:8.16.0
+    depends_on: [s3]
     entrypoint: >
-      sh -c "mc alias set local http://minio:9000 sapwood sapwood-secret &&
-             mc mb --ignore-existing local/sapwood"
+      sh -c "until curl -s -o /dev/null http://s3:8333/; do sleep 1; done;
+             curl -sf -X PUT http://s3:8333/sapwood"
 
   server:
     build: .
     image: ghcr.io/kabirnarang39/sapwood:latest
     depends_on:
       postgres: { condition: service_healthy }
-      minio-init: { condition: service_completed_successfully }
+      s3-init: { condition: service_completed_successfully }
     command:
       - server
       - --listen=0.0.0.0:7420
@@ -54,7 +47,7 @@ services:
       AWS_ACCESS_KEY_ID: sapwood
       AWS_SECRET_ACCESS_KEY: sapwood-secret
       AWS_REGION: us-east-1
-      AWS_ENDPOINT: http://minio:9000
+      AWS_ENDPOINT: http://s3:8333
       AWS_ALLOW_HTTP: "true"
       SAPWOOD_LOG_JSON: "true"
     ports: ["7420:7420", "9420:9420"]
@@ -73,4 +66,4 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
+  s3data:

@@ -20,14 +20,14 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] Ops: metrics, JSON logs, health, reflection, graceful shutdown
 
 ## Quality gates
-- [ ] `cargo fmt --check`, `cargo clippy -D warnings` clean
+- [x] `cargo fmt --check`, `cargo clippy -D warnings` clean
 - [ ] `cargo test --workspace` green locally (macOS) and in CI (Linux, macOS, Windows)
-- [ ] Postgres + CockroachDB + MinIO (S3) contract tests green in CI
+- [ ] Postgres + CockroachDB + SeaweedFS (S3) contract tests green in CI
 - [ ] e2e suite stable across 10 consecutive runs
-- [ ] `cargo audit` clean
+- [x] `cargo audit` clean
 - [ ] Docker image builds; `docker compose up` topology serves a clone end to end
 - [ ] Benchmarks run and published (`bench/results/RESULTS.md`)
-- [ ] Dogfood: Sapwood's own history imported, a change landed through `sap`, exported back to git with identical tree
+- [x] Dogfood: Sapwood's own history imported, a change landed through `sap`, exported back to git with identical tree (commit `docs: dogfood marker landed through sap` in this repo's history)
 
 ## Repository
 - [x] README, ARCHITECTURE, DECISIONS (ADRs), ROADMAP, comparisons

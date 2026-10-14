@@ -72,7 +72,7 @@ jobs:
         run: cargo test -p sapwood-adapters --test contract --locked postgres -- --nocapture
 
   s3:
-    # Object storage adapter against a real S3 API (MinIO).
+    # Object storage adapter against a real S3 API (SeaweedFS).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,18 +80,18 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: Swatinem/rust-cache@v2
-      - name: Start MinIO
+      - name: Start SeaweedFS (S3 API)
         run: |
-          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=sapwood -e MINIO_ROOT_PASSWORD=sapwood-secret minio/minio server /data
-          for i in $(seq 1 60); do curl -sf http://localhost:9000/minio/health/live && break; sleep 1; done
-          docker run --rm --network host --entrypoint sh minio/mc -c "mc alias set l http://localhost:9000 sapwood sapwood-secret && mc mb l/sapwood"
+          docker run -d --name s3 -p 8333:8333 chrislusf/seaweedfs:4.48 server -s3
+          for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:8333/ && break; sleep 1; done
+          curl -sf -X PUT http://localhost:8333/sapwood
       - name: S3 contract
         env:
           SAPWOOD_TEST_S3_URL: s3://sapwood/ci
           AWS_ACCESS_KEY_ID: sapwood
           AWS_SECRET_ACCESS_KEY: sapwood-secret
           AWS_REGION: us-east-1
-          AWS_ENDPOINT: http://localhost:9000
+          AWS_ENDPOINT: http://localhost:8333
           AWS_ALLOW_HTTP: "true"
         run: cargo test -p sapwood-adapters --test contract --locked s3 -- --nocapture
 

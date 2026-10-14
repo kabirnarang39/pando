@@ -66,3 +66,22 @@ pub fn daemon_store(
     let disk_tier = Arc::new(Tiered::new(disk, up));
     Ok(Arc::new(Tiered::new(Arc::new(BoundedCache::new(memory_bytes)), disk_tier)))
 }
+
+/// Hide credentials in a URL before logging it: `postgres://u:pw@h/db` -> `postgres://***@h/db`.
+pub fn redact(url: &str) -> String {
+    match (url.find("://"), url.rfind('@')) {
+        (Some(scheme), Some(at)) if at > scheme => format!("{}://***{}", &url[..scheme], &url[at..]),
+        _ => url.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn redacts_credentials() {
+        assert_eq!(super::redact("postgres://u:secret@db:5432/x"), "postgres://***@db:5432/x");
+        assert_eq!(super::redact("postgres://u:p@ss@db/x"), "postgres://***@db/x");
+        assert_eq!(super::redact("sqlite://./a.db"), "sqlite://./a.db");
+        assert_eq!(super::redact("s3://bucket/prefix"), "s3://bucket/prefix");
+    }
+}

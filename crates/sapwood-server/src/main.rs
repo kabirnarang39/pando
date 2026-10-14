@@ -40,10 +40,10 @@ enum Role {
         #[arg(long, default_value = "0.0.0.0:7420")]
         listen: SocketAddr,
         /// memory | sqlite://PATH | postgres://...
-        #[arg(long, env = "SAPWOOD_METADATA", default_value = "sqlite://./sapwood-data/meta.db")]
+        #[arg(long, env = "SAPWOOD_METADATA", hide_env_values = true, default_value = "sqlite://./sapwood-data/meta.db")]
         metadata: String,
         /// metadata | file:///PATH | s3://BUCKET/PREFIX | gs://BUCKET | az://CONTAINER | memory:///
-        #[arg(long, env = "SAPWOOD_OBJECTS", default_value = "metadata")]
+        #[arg(long, env = "SAPWOOD_OBJECTS", hide_env_values = true, default_value = "metadata")]
         objects: String,
         /// JSON access rules (per-directory write and per-ref permissions). Unset = allow all.
         #[arg(long, env = "SAPWOOD_ACL")]
@@ -53,7 +53,7 @@ enum Role {
     Cache {
         #[arg(long, default_value = "0.0.0.0:7421")]
         listen: SocketAddr,
-        #[arg(long, env = "SAPWOOD_UPSTREAM")]
+        #[arg(long, env = "SAPWOOD_UPSTREAM", hide_env_values = true)]
         upstream: String,
         #[arg(long, default_value_t = 4096)]
         capacity_mb: u64,
@@ -62,7 +62,7 @@ enum Role {
     Daemon {
         #[arg(long, default_value = "127.0.0.1:7422")]
         listen: SocketAddr,
-        #[arg(long, env = "SAPWOOD_UPSTREAM")]
+        #[arg(long, env = "SAPWOOD_UPSTREAM", hide_env_values = true)]
         upstream: String,
         #[arg(long, default_value = "./sapwood-daemon")]
         dir: String,
@@ -114,17 +114,17 @@ async fn main() -> anyhow::Result<()> {
                 Some(path) => Arc::new(RulesPolicy::load(path)?),
                 None => Arc::new(AllowAllPolicy),
             };
-            tracing::info!(%listen, %metadata, %objects, acl = ?acl, "sapwood server");
+            tracing::info!(%listen, metadata = %config::redact(&metadata), objects = %config::redact(&objects), acl = ?acl, "sapwood server");
             (listen, authority_routes(repo, flags, policy))
         }
         Role::Cache { listen, upstream, capacity_mb } => {
             let store = config::cache_store(&upstream, upstream_token.as_deref(), capacity_mb << 20)?;
-            tracing::info!(%listen, %upstream, capacity_mb, "sapwood cache");
+            tracing::info!(%listen, upstream = %config::redact(&upstream), capacity_mb, "sapwood cache");
             (listen, tier_routes(store, flags))
         }
         Role::Daemon { listen, upstream, dir, memory_mb } => {
             let store = config::daemon_store(&upstream, upstream_token.as_deref(), &dir, memory_mb << 20)?;
-            tracing::info!(%listen, %upstream, %dir, "sapwood daemon");
+            tracing::info!(%listen, upstream = %config::redact(&upstream), %dir, "sapwood daemon");
             (listen, tier_routes(store, flags))
         }
     };

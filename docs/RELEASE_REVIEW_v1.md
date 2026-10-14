@@ -14,6 +14,9 @@ separately so nobody discovers them in production.
 | 4 | Profiling the import server | 1.3 GB RSS | 64 MiB SQLite page cache on each of ~11 connections | 16 MiB per connection (mmap pages are shared) | n/a (resource tuning) |
 | 5 | Code review for Windows | `file://` URLs built by string formatting break on `C:\` paths | Manual URL construction | `Url::from_directory_path` / `to_file_path` | contract + e2e tests on the Windows CI runner |
 | 6 | Code review | `find` fetched trees one by one despite its doc comment | Implementation drift | Batched `get_many` per tree level | `clone_commit_land_sync_roundtrip` |
+| 7 | Running the docker-compose topology | Server logged the Postgres URL **including its password**; `--help` could print env values | Raw URLs passed to the logger; clap shows env values by default | `config::redact` on every logged URL; `hide_env_values` on URL args | `redacts_credentials` |
+| 8 | First CI run | S3 job could not start | MinIO no longer publishes community images | SeaweedFS (Apache-2.0) for CI and compose; adapter unchanged | CI `s3` job |
+| 9 | Benchmarks | `log -- path` and `blame` slower than git | Every history step re-read and decoded the changeset from storage | Memory caches for immutable changesets and derived data (`CachedLog`, `CachedDerived`) | `cached_metadata_decorators`; log 6x faster than git after fix |
 
 ## Verified properties
 
