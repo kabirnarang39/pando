@@ -33,6 +33,13 @@ pub trait ObjectStore: Send + Sync {
         stream::iter(items).map(|(id, p)| self.put(id, p)).buffer_unordered(BATCH_CONCURRENCY).try_collect::<()>().await
     }
 
+    /// Overwrite the stored representation of an existing object with an equivalent one
+    /// (same id, same content, e.g. a delta encoding). Returns `false` when the backend
+    /// cannot replace in place; callers must then leave the object as is.
+    async fn replace(&self, _id: Id, _payload: Bytes) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Ids from `ids` this store cannot serve.
     async fn missing(&self, ids: &[Id]) -> Result<Vec<Id>> {
         let present: Vec<bool> = stream::iter(ids.iter().copied())

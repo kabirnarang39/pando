@@ -219,6 +219,10 @@ impl Repo {
     }
 }
 
+/// Prefix of refs reserved for the system (leases, checkpoints). User-facing names cannot
+/// contain `_`, so they can never collide with or move these.
+pub const SYSTEM_REF_PREFIX: &str = "_sapwood/";
+
 /// Ref names: `[A-Za-z0-9._/-]`, no empty components, no `..`, at most 255 bytes.
 pub fn validate_ref_name(name: &str) -> Result<()> {
     let ok = !name.is_empty()

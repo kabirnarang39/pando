@@ -2,7 +2,7 @@
 //!
 //! | Port            | Adapters                                                        |
 //! |-----------------|-----------------------------------------------------------------|
-//! | `ObjectStore`   | memory, SQLite, Postgres, object storage (S3/GCS/Azure/local), bounded cache, tiered read-through, gRPC upstream |
+//! | `ObjectStore`   | memory, SQLite, Postgres, object storage (S3/GCS/Azure/local), bounded cache, tiered read-through, gRPC upstream, delta-reading decorator |
 //! | `ChangesetLog`  | memory, SQLite, Postgres                                        |
 //! | `RefStore`      | memory, SQLite, Postgres                                        |
 //! | `DerivedStore`  | memory, SQLite, Postgres                                        |
@@ -12,6 +12,7 @@
 pub mod acl;
 pub mod cache;
 pub mod cloud;
+pub mod delta;
 pub mod flags;
 pub mod grpc;
 pub mod memory;

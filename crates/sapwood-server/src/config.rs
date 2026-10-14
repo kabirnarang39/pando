@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use sapwood_adapters::cache::{BoundedCache, CachedDerived, CachedLog, Tiered};
 use sapwood_adapters::cloud::CloudObjects;
+use sapwood_adapters::delta::DeltaObjects;
 use sapwood_adapters::grpc::GrpcObjects;
 use sapwood_adapters::memory::MemoryStore;
 use sapwood_adapters::postgres::PostgresStore;
@@ -19,7 +20,21 @@ use sapwood_adapters::sqlite::SqliteStore;
 use sapwood_core::Repo;
 use sapwood_core::ports::ObjectStore;
 
+/// A composed repository plus direct handles needed by maintenance jobs.
+pub struct Storage {
+    pub repo: Repo,
+    /// The durable object store without read decorators or caches (for compaction).
+    pub raw_objects: Arc<dyn ObjectStore>,
+    /// Present when metadata lives in SQLite, so maintenance can VACUUM.
+    pub sqlite: Option<Arc<SqliteStore>>,
+}
+
 pub async fn open_repo(metadata: &str, objects: &str) -> anyhow::Result<Repo> {
+    Ok(open_storage(metadata, objects).await?.repo)
+}
+
+pub async fn open_storage(metadata: &str, objects: &str) -> anyhow::Result<Storage> {
+    let mut sqlite = None;
     let mut repo = if metadata == "memory" {
         let m = Arc::new(MemoryStore::new());
         Repo { objects: m.clone(), log: m.clone(), refs: m.clone(), derived: m }
@@ -28,6 +43,7 @@ pub async fn open_repo(metadata: &str, objects: &str) -> anyhow::Result<Repo> {
             std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         let s = Arc::new(SqliteStore::open(path)?);
+        sqlite = Some(s.clone());
         Repo { objects: s.clone(), log: s.clone(), refs: s.clone(), derived: s }
     } else if metadata.starts_with("postgres://") || metadata.starts_with("postgresql://") {
         let s = Arc::new(PostgresStore::connect(metadata, 32).await?);
@@ -38,12 +54,16 @@ pub async fn open_repo(metadata: &str, objects: &str) -> anyhow::Result<Repo> {
     if objects != "metadata" {
         repo.objects = Arc::new(CloudObjects::from_url(objects)?);
     }
+    let raw_objects = repo.objects.clone();
+    // Reads always resolve delta-encoded objects (written by `sapwood compact`) back to
+    // ordinary verified payloads, so nothing above this layer ever sees a delta.
+    repo.objects = Arc::new(DeltaObjects::new(raw_objects.clone()));
     // Everything below is immutable, so memory caches in front of any backend are always
     // coherent: hot objects (trees, recent blobs), changesets, derived data.
     repo.objects = Arc::new(Tiered::new(Arc::new(BoundedCache::new(256 << 20)), repo.objects));
     repo.log = Arc::new(CachedLog::new(repo.log, 128 << 20));
     repo.derived = Arc::new(CachedDerived::new(repo.derived, 64 << 20));
-    Ok(repo)
+    Ok(Storage { repo, raw_objects, sqlite })
 }
 
 /// Regional cache: memory only, read-through to `upstream`.

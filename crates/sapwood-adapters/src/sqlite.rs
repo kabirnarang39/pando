@@ -43,6 +43,11 @@ fn id_of(b: Vec<u8>) -> rusqlite::Result<Id> {
 }
 
 impl SqliteStore {
+    /// Return free pages to the filesystem (after compaction shrank stored objects).
+    pub async fn vacuum(&self) -> Result<()> {
+        self.write(|c| c.execute_batch("VACUUM")).await
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let writer = Connection::open(path).map_err(storage_err)?;
@@ -122,6 +127,15 @@ impl ObjectStore for SqliteStore {
 
     async fn has(&self, id: &Id) -> Result<bool> {
         Ok(self.missing(std::slice::from_ref(id)).await?.is_empty())
+    }
+
+    async fn replace(&self, id: Id, payload: Bytes) -> Result<bool> {
+        self.write(move |c| {
+            c.prepare_cached("UPDATE objects SET payload = ?1 WHERE id = ?2")?
+                .execute(params![&payload[..], &id.0[..]])
+                .map(|n| n == 1)
+        })
+        .await
     }
 
     async fn get_many(&self, ids: &[Id]) -> Result<Vec<Option<Bytes>>> {

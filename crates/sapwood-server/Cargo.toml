@@ -22,6 +22,7 @@ futures.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 mimalloc.workspace = true
+quick_cache.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 tokio-stream.workspace = true
 tonic.workspace = true

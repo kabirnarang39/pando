@@ -2759,6 +2759,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mimalloc",
+ "quick_cache",
  "sapwood-adapters",
  "sapwood-core",
  "sapwood-proto",
