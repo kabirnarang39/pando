@@ -245,7 +245,9 @@ pub async fn export(remote: &dyn Remote, flags: &dyn FeatureFlags, rev: &str, gi
     let mut child = Command::new("git")
         .arg("-C")
         .arg(git_dir)
-        .args(["fast-import", "--quiet", "--force"])
+        // On case-insensitive filesystems git defaults to core.ignorecase=true, which makes
+        // fast-import fold case-only renames onto the old name. History must be exact.
+        .args(["-c", "core.ignorecase=false", "fast-import", "--quiet", "--force"])
         .stdin(Stdio::piped())
         .spawn()
         .context("spawning git fast-import")?;

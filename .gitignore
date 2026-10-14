@@ -6,3 +6,4 @@
 *.db-wal
 .DS_Store
 /bench/results/*.tmp
+/bench/work

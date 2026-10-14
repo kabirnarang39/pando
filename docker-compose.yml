@@ -1,0 +1,76 @@
+# Full production-shaped topology on one machine:
+#   Postgres (metadata) + MinIO (S3 object storage)
+#   -> sapwood server -> regional cache -> node daemon
+#
+#   docker compose up -d
+#   sap clone http://localhost:7420 work --objects http://localhost:7422
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: sapwood
+      POSTGRES_DB: sapwood
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: sapwood
+      MINIO_ROOT_PASSWORD: sapwood-secret
+    volumes: [miniodata:/data]
+    ports: ["9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      retries: 30
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 sapwood sapwood-secret &&
+             mc mb --ignore-existing local/sapwood"
+
+  server:
+    build: .
+    image: ghcr.io/kabirnarang39/sapwood:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    command:
+      - server
+      - --listen=0.0.0.0:7420
+      - --metadata=postgres://postgres:sapwood@postgres/sapwood
+      - --objects=s3://sapwood/objects
+      - --metrics=0.0.0.0:9420
+    environment:
+      AWS_ACCESS_KEY_ID: sapwood
+      AWS_SECRET_ACCESS_KEY: sapwood-secret
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT: http://minio:9000
+      AWS_ALLOW_HTTP: "true"
+      SAPWOOD_LOG_JSON: "true"
+    ports: ["7420:7420", "9420:9420"]
+
+  cache:
+    image: ghcr.io/kabirnarang39/sapwood:latest
+    depends_on: [server]
+    command: [cache, --listen=0.0.0.0:7421, --upstream=http://server:7420, --capacity-mb=1024]
+    ports: ["7421:7421"]
+
+  daemon:
+    image: ghcr.io/kabirnarang39/sapwood:latest
+    depends_on: [cache]
+    command: [daemon, --listen=0.0.0.0:7422, --upstream=http://cache:7421, --dir=/data/daemon]
+    ports: ["7422:7422"]
+
+volumes:
+  pgdata:
+  miniodata:

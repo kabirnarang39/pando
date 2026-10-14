@@ -134,7 +134,15 @@ impl<R: BufRead> Parser<R> {
         if buf.last() == Some(&b'\n') {
             buf.pop();
         }
-        Ok(Some(String::from_utf8(buf).context("non-UTF-8 line in fast-export stream (use --reencode=yes)")?))
+        match String::from_utf8(buf) {
+            Ok(s) => Ok(Some(s)),
+            // Paths must round-trip exactly; refuse rather than silently rename a file.
+            Err(e) if e.as_bytes().starts_with(b"M ") || e.as_bytes().starts_with(b"D ") => {
+                bail!("non-UTF-8 path in git history: {}", String::from_utf8_lossy(e.as_bytes()))
+            }
+            // Identity lines from old commits may be Latin-1 even with --reencode.
+            Err(e) => Ok(Some(String::from_utf8_lossy(e.as_bytes()).into_owned())),
+        }
     }
 
     fn data(&mut self, header: &str) -> Result<Vec<u8>> {
@@ -297,6 +305,15 @@ author t <t@t> 6 +0000\ncommitter t <t@t> 6 +0000\ndata 0\nfrom :7\nM 160000 012
         let Some(Event::Commit(c)) = p.next_event().unwrap() else { panic!() };
         assert_eq!(c.ops, vec![Op::Modify { mode: 0o160000, data: DataRef::Sha("0123abcd".into()), path: "sub".into() }]);
         assert_eq!(p.next_event().unwrap(), None);
+    }
+
+    #[test]
+    fn latin1_identity_is_tolerated_but_paths_are_strict() {
+        let mut ok = b"commit refs/heads/main\nmark :1\nauthor Ren\xe9 <r@x> 1 +0000\ncommitter c <c@x> 1 +0000\ndata 1\nx\n\n".to_vec();
+        let Some(Event::Commit(c)) = Parser::new(&ok[..]).next_event().unwrap() else { panic!() };
+        assert_eq!(c.author, "Ren\u{fffd} <r@x>");
+        ok.splice(ok.len() - 1..ok.len() - 1, b"M 100644 :1 caf\xe9\n".iter().copied());
+        assert!(Parser::new(&ok[..]).next_event().unwrap_err().to_string().contains("non-UTF-8 path"));
     }
 
     #[test]

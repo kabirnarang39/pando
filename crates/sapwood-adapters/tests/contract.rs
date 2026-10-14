@@ -200,3 +200,12 @@ async fn postgres_store() {
         .unwrap();
     full_contract(Arc::new(s)).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn object_storage_s3() {
+    let Ok(url) = std::env::var("SAPWOOD_TEST_S3_URL") else {
+        eprintln!("skipping: SAPWOOD_TEST_S3_URL not set");
+        return;
+    };
+    object_contract(&CloudObjects::from_url(&url).unwrap()).await;
+}

@@ -393,12 +393,18 @@ async fn git_import_export_roundtrip_preserves_trees_exactly() {
     git_cmd(s, &["add", "."]);
     git_cmd(s, &["commit", "-qm", "three"]);
     git_cmd(s, &["merge", "-q", "--no-edit", "side"]);
+    // Case-only rename (regression: folded on case-insensitive filesystems).
+    write(s, "Case.txt", "case\n");
+    git_cmd(s, &["add", "."]);
+    git_cmd(s, &["commit", "-qm", "case"]);
+    git_cmd(s, &["mv", "Case.txt", "case.txt"]);
+    git_cmd(s, &["commit", "-qm", "rename case"]);
     let want_tree = git_cmd(s, &["rev-parse", "HEAD^{tree}"]);
 
     let c = start().await;
     let r = remote(&c);
     let out = git::import(r.as_ref(), &flags(), s, "HEAD", "main", false).await.unwrap();
-    assert_eq!(out.commits, 5);
+    assert_eq!(out.commits, 7);
     // Idempotent: importing again changes nothing.
     let again = git::import(r.as_ref(), &flags(), s, "HEAD", "main", false).await.unwrap();
     assert_eq!(again.tip, out.tip);

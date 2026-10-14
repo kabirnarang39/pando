@@ -34,7 +34,7 @@ fn tune(c: &Connection) -> rusqlite::Result<()> {
     // power loss can drop the last transactions, never corrupt the database.
     c.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;
-         PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;",
+         PRAGMA cache_size=-16384; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;",
     )
 }
 

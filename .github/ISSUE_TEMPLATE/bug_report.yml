@@ -1,0 +1,15 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: "Version", description: "Output of `sap --version` and `sapwood --version`" }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: "What happened", description: "Commands run, expected vs actual output" }
+    validations: { required: true }
+  - type: textarea
+    id: env
+    attributes: { label: "Environment", description: "OS, storage backends (sqlite/postgres/s3...), topology (server/cache/daemon)" }
