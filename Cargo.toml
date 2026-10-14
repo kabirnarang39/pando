@@ -53,7 +53,7 @@ similar = "3"
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 tower = "0.5"
-rand = "0.9"
+rand = "0.10"
 
 [profile.release]
 lto = "thin"
