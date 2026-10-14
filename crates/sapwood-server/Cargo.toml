@@ -1,0 +1,36 @@
+[package]
+name = "sapwood-server"
+description = "Sapwood server, regional cache and node daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sapwood"
+path = "src/main.rs"
+
+[dependencies]
+sapwood-core.workspace = true
+sapwood-adapters.workspace = true
+sapwood-proto.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+clap.workspace = true
+futures.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+mimalloc.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tonic-reflection.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+similar.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

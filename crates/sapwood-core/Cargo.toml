@@ -1,0 +1,22 @@
+[package]
+name = "sapwood-core"
+description = "Sapwood domain kernel: content-addressed objects, changesets, derived data and infrastructure ports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+blake3.workspace = true
+bytes.workspace = true
+futures.workspace = true
+hex.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+proptest.workspace = true

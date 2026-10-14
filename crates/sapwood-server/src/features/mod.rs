@@ -1,0 +1,11 @@
+//! Vertical feature slices. Each slice owns its use case, its gRPC adapter and its
+//! feature-flag check; slices share only the domain kernel (`sapwood_core::Repo`).
+
+pub mod browse;
+pub mod changesets;
+pub mod diff;
+pub mod history;
+pub mod land;
+pub mod merge_base;
+pub mod objects;
+pub mod refs;

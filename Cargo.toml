@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/kabirnarang39/sapwood"
+rust-version = "1.85"
+
+[workspace.dependencies]
+sapwood-core = { path = "crates/sapwood-core" }
+sapwood-adapters = { path = "crates/sapwood-adapters" }
+sapwood-proto = { path = "crates/sapwood-proto" }
+sapwood-server = { path = "crates/sapwood-server" }
+anyhow = "1"
+async-trait = "0.1"
+blake3 = "1"
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3"
+hex = "0.4"
+prost = "0.14"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "sync", "time", "io-util", "process"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.14", features = ["tls-ring", "tls-native-roots"] }
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+zstd = "0.14"
+
+proptest = "1"
+criterion = { version = "0.8", features = ["async_tokio"] }
+object_store = "0.14"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
+quick_cache = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
+tonic-health = "0.14"
+tonic-reflection = "0.14"
+mimalloc = "0.1"
+ignore = "0.4"
+filetime = "0.2"
+url = "2"
+similar = "3"
+tower = "0.5"
+rand = "0.9"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
