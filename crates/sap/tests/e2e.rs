@@ -575,3 +575,33 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
     let missing = recv().await;
     assert_eq!(missing["result"]["isError"], true, "{missing}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn file_and_directory_swaps_commit_cleanly() {
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "a", "file a\n");
+    write(&p, "b/inner.txt", "inner b\n");
+    commit_land(&mut ws, r.as_ref(), "seed").await;
+
+    // File -> directory and directory -> file in one commit.
+    std::fs::remove_file(p.join("a")).unwrap();
+    write(&p, "a/now-a-dir.txt", "dir a\n");
+    std::fs::remove_dir_all(p.join("b")).unwrap();
+    write(&p, "b", "file b\n");
+    commit_land(&mut ws, r.as_ref(), "swap").await;
+    assert!(ws.status(&[]).unwrap().is_empty(), "clean after commit: {:?}", ws.status(&[]).unwrap());
+    assert_eq!(browse::cat(r.as_ref(), "main", "a/now-a-dir.txt").await.unwrap(), b"dir a\n");
+    assert_eq!(browse::cat(r.as_ref(), "main", "b").await.unwrap(), b"file b\n");
+
+    // Another workspace syncs across the swap.
+    let d2 = tempfile::tempdir().unwrap();
+    let p2 = d2.path().join("w");
+    let ws2 = clone_into(&c, &p2, &[]).await;
+    assert_eq!(read(&p2, "a/now-a-dir.txt"), "dir a\n");
+    assert_eq!(read(&p2, "b"), "file b\n");
+    assert_eq!(ws2.index.len(), 2);
+}

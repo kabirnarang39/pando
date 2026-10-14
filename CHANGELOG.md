@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-10-15
+
+### Fixed
+- `sap commit` failed with "`x` is both a file and a directory" when a file was replaced by a
+  directory of the same name (or the reverse) in one commit. The redundant delete is now
+  folded into the upsert that replaces it. Found by the compaction test suite; covered by
+  `file_and_directory_swaps_commit_cleanly`.
+
 ## [1.0.0] - 2026-10-15
 
 First stable release. The `sapwood.v1` wire protocol, storage formats and `sap` CLI are
@@ -27,4 +35,5 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.0.1]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.1
 [1.0.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.0

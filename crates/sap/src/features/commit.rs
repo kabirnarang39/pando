@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use bytes::Bytes;
-use sapwood_core::Id;
 use sapwood_core::object::{Changeset, FileChange};
+use sapwood_core::{Id, paths_overlap};
 
 use crate::remote::Remote;
 use crate::workspace::{ChangeKind, Workspace};
@@ -50,6 +50,11 @@ pub async fn run(
             file_changes.push(FileChange::upsert(c.path.clone(), mode, *id));
         }
     }
+    // A file replaced by a directory of the same name (or the reverse) shows up as a delete
+    // plus an upsert above or below it. The upsert alone already implies the replacement,
+    // and sending both would be ambiguous, so drop the redundant delete.
+    let upsert_paths: Vec<String> = file_changes.iter().filter(|c| !c.is_delete()).map(|c| c.path.clone()).collect();
+    file_changes.retain(|c| !c.is_delete() || !upsert_paths.iter().any(|u| paths_overlap(u, &c.path)));
     let cs = Changeset {
         parents: ws.base.map(|b| vec![b.0.to_vec()]).unwrap_or_default(),
         changes: file_changes.clone(),
@@ -58,12 +63,12 @@ pub async fn run(
         timestamp_ms: crate::now_ms(),
     };
     let created = remote.create_changeset(cs).await?;
+    for c in changes.iter().filter(|c| c.kind == ChangeKind::Deleted) {
+        ws.index.remove(&c.path);
+    }
     for c in &file_changes {
-        match c.blob_id()? {
-            Some(id) => ws.mark_clean(&c.path, sapwood_core::object::Mode::parse(c.mode)?, id)?,
-            None => {
-                ws.index.remove(&c.path);
-            }
+        if let Some(id) = c.blob_id()? {
+            ws.mark_clean(&c.path, sapwood_core::object::Mode::parse(c.mode)?, id)?;
         }
     }
     ws.base = Some(created.id);
