@@ -37,12 +37,12 @@ if ! sap refs >/dev/null 2>&1; then
   mkdir -p server
   sapwood server --listen "127.0.0.1:$PORT" --metadata "sqlite://$WORK/server/meta.db" >server/log.txt 2>&1 &
   echo $! > server/pid
-  sleep 1
+  for _ in $(seq 1 50); do sap refs >/dev/null 2>&1 && break; sleep 0.2; done
 fi
-if ! sap refs 2>/dev/null | grep -q main; then
-  echo "== importing $(git -C git.git rev-list --count HEAD) commits into Sapwood"
-  /usr/bin/time -p sap import-git git.git 2> "$OUT/import-time.txt"
-fi
+# Idempotent: unchanged history re-imports without uploading anything. --force resets
+# `main` to the git tip, discarding commits made by previous benchmark runs.
+echo "== importing $(git -C git.git rev-list --count HEAD) commits into Sapwood"
+/usr/bin/time -p sap import-git git.git --force 2> "$OUT/import-time.txt"
 
 {
   echo "# git vs Sapwood: $(basename "$REPO_URL" .git)"
@@ -116,7 +116,8 @@ hf "commit + publish 1 file" \
   echo "|---|---:|---:|"
   echo "| Client metadata | $(du -sh g/.git | cut -f1) (\`.git\`, full history) | $(du -sh s/.sap | cut -f1) (\`.sap\`, index only) |"
   echo "| Server storage | $(du -sh git.git | cut -f1) (delta-compressed pack) | $(du -sh server | cut -f1) (per-object zstd, no deltas) |"
-  [ -f "$OUT/import-time.txt" ] && echo && echo "One-time import of the full history: $(awk '/real/{print $2}' "$OUT/import-time.txt") s"
+  echo
+  echo "Full-history import: $(awk '/real/{print $2}' "$OUT/first-import-time.txt" 2>/dev/null || echo n/a) s (first run); re-import of unchanged history: $(awk '/real/{print $2}' "$OUT/import-time.txt") s (no uploads)"
 } >> "$OUT/RESULTS.md"
 
 python3 "$ROOT/bench/concurrent_land.py" --git-url "$GIT_URL" --sap-url "$SAP_URL" --work "$WORK" >> "$OUT/RESULTS.md"
