@@ -3,7 +3,8 @@
 //! * [`BoundedCache`]: memory-bounded object cache (quick_cache: sharded, CLOCK-Pro style
 //!   eviction that resists scans, weighted by payload bytes).
 //! * [`Tiered`]: read-through/write-through composition of a local store with an
-//!   upstream store. Server, regional cache and node daemon are all just different
+//!   upstream store.
+//! * [`CachedLog`] / [`CachedDerived`]: memory caches for immutable metadata. Server, regional cache and node daemon are all just different
 //!   `(local, upstream)` pairs behind the same `Objects` RPC.
 
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use quick_cache::Weighter;
 use quick_cache::sync::Cache;
-use sapwood_core::ports::ObjectStore;
+use sapwood_core::ports::{ChangesetLog, DerivedStore, ObjectStore};
 use sapwood_core::{Id, Result};
 
 #[derive(Clone)]
@@ -129,5 +130,79 @@ impl ObjectStore for Tiered {
             return Ok(local_missing);
         }
         self.upstream.missing(&local_missing).await
+    }
+}
+
+#[derive(Clone)]
+struct BytesWeight;
+impl<K> Weighter<K, Bytes> for BytesWeight {
+    fn weight(&self, _: &K, v: &Bytes) -> u64 {
+        v.len() as u64 + 64
+    }
+}
+
+/// Memory cache in front of a [`ChangesetLog`]. Changesets are immutable once appended,
+/// so cached entries never go stale. History walks (log, blame, ancestry) hit memory.
+pub struct CachedLog {
+    inner: Arc<dyn ChangesetLog>,
+    cache: Cache<Id, Bytes, BytesWeight>,
+}
+
+impl CachedLog {
+    pub fn new(inner: Arc<dyn ChangesetLog>, capacity_bytes: u64) -> Self {
+        let est = (capacity_bytes / 512).max(1024) as usize;
+        Self { inner, cache: Cache::with_weighter(est, capacity_bytes, BytesWeight) }
+    }
+}
+
+#[async_trait]
+impl ChangesetLog for CachedLog {
+    async fn append(&self, id: Id, encoded: Bytes) -> Result<()> {
+        self.inner.append(id, encoded).await
+    }
+    async fn get(&self, id: &Id) -> Result<Option<Bytes>> {
+        if let Some(b) = self.cache.get(id) {
+            return Ok(Some(b));
+        }
+        let got = self.inner.get(id).await?;
+        if let Some(b) = &got {
+            self.cache.insert(*id, b.clone());
+        }
+        Ok(got)
+    }
+}
+
+/// Memory cache in front of a [`DerivedStore`]. Derived values are pure functions of
+/// immutable changesets; a re-put of the same key carries the same value, and the cache is
+/// updated on every put.
+pub struct CachedDerived {
+    inner: Arc<dyn DerivedStore>,
+    cache: Cache<(String, Id), Bytes, BytesWeight>,
+}
+
+impl CachedDerived {
+    pub fn new(inner: Arc<dyn DerivedStore>, capacity_bytes: u64) -> Self {
+        let est = (capacity_bytes / 128).max(1024) as usize;
+        Self { inner, cache: Cache::with_weighter(est, capacity_bytes, BytesWeight) }
+    }
+}
+
+#[async_trait]
+impl DerivedStore for CachedDerived {
+    async fn get(&self, kind: &str, id: &Id) -> Result<Option<Bytes>> {
+        let key = (kind.to_owned(), *id);
+        if let Some(b) = self.cache.get(&key) {
+            return Ok(Some(b));
+        }
+        let got = self.inner.get(kind, id).await?;
+        if let Some(b) = &got {
+            self.cache.insert(key, b.clone());
+        }
+        Ok(got)
+    }
+    async fn put(&self, kind: &str, id: Id, value: Bytes) -> Result<()> {
+        self.inner.put(kind, id, value.clone()).await?;
+        self.cache.insert((kind.to_owned(), id), value);
+        Ok(())
     }
 }

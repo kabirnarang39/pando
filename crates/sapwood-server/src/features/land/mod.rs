@@ -80,11 +80,12 @@ impl Land {
             return Err(Error::Conflict("changeset base is not in the ref's history; sync and retry".into()));
         }
         let (base_root, head_root) = futures::try_join!(self.repo.root_tree(base), self.repo.root_tree(head))?;
-        let theirs: BTreeMap<String, FileChange> = tree::diff_trees(self.repo.objects.as_ref(), Some(base_root), Some(head_root))
-            .await?
-            .into_iter()
-            .map(|c| (c.path.clone(), c))
-            .collect();
+        let theirs: BTreeMap<String, FileChange> =
+            tree::diff_trees(self.repo.objects.as_ref(), Some(base_root), Some(head_root))
+                .await?
+                .into_iter()
+                .map(|c| (c.path.clone(), c))
+                .collect();
         let conflicts = conflicting_paths(&cs.changes, &theirs);
         if !conflicts.is_empty() {
             let shown: Vec<_> = conflicts.iter().take(20).map(String::as_str).collect();
@@ -92,9 +93,7 @@ impl Land {
         }
         let mut parents = vec![head.0.to_vec()];
         parents.extend(cs.parents.iter().skip(1).cloned());
-        self.repo
-            .create_changeset(Changeset { parents, ..cs.clone() })
-            .await
+        self.repo.create_changeset(Changeset { parents, ..cs.clone() }).await
     }
 }
 
@@ -126,7 +125,11 @@ impl land_server::Land for Land {
         let who = principal(&req);
         let r = req.into_inner();
         let landed = Land::land(self, &who, &r.r#ref, id_from(&r.changeset)?).await.map_err(to_status)?;
-        Ok(Response::new(LandResponse { landed: landed.id.0.to_vec(), rebased: landed.rebased, attempts: landed.attempts }))
+        Ok(Response::new(LandResponse {
+            landed: landed.id.0.to_vec(),
+            rebased: landed.rebased,
+            attempts: landed.attempts,
+        }))
     }
 }
 
@@ -142,8 +145,10 @@ mod tests {
 
     #[test]
     fn conflict_detection() {
-        let theirs: BTreeMap<_, _> =
-            [up("a/x", 1), up("dir/f", 2), up("file", 3), FileChange::delete("gone")].into_iter().map(|c| (c.path.clone(), c)).collect();
+        let theirs: BTreeMap<_, _> = [up("a/x", 1), up("dir/f", 2), up("file", 3), FileChange::delete("gone")]
+            .into_iter()
+            .map(|c| (c.path.clone(), c))
+            .collect();
         let ours = vec![
             up("a/x", 1),      // identical change: fine
             up("a/y", 1),      // sibling: fine

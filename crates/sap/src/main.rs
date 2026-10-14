@@ -13,7 +13,12 @@ use sapwood_adapters::flags::SpecFlags;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[derive(Parser)]
-#[command(name = "sap", version, about = "Sapwood: source control for monorepos at agent scale", propagate_version = true)]
+#[command(
+    name = "sap",
+    version,
+    about = "Sapwood: source control for monorepos at agent scale",
+    propagate_version = true
+)]
 struct Cli {
     /// Bearer token for the server ($SAP_TOKEN).
     #[arg(long, global = true, env = "SAP_TOKEN", hide_env_values = true)]
@@ -222,7 +227,12 @@ async fn run() -> Result<()> {
             let mut ws = workspace()?;
             let remote = ws_remote(&ws, token)?;
             match commit::run(remote.as_ref(), &mut ws, &message, &sap::default_author(), &paths).await? {
-                Some(c) => println!("committed {} ({} files); run `sap land` to land on {}", c.id.short(), c.files, ws.config.ref_name),
+                Some(c) => println!(
+                    "committed {} ({} files); run `sap land` to land on {}",
+                    c.id.short(),
+                    c.files,
+                    ws.config.ref_name
+                ),
                 None => println!("nothing to commit"),
             }
         }
@@ -298,13 +308,21 @@ async fn run() -> Result<()> {
             };
             let rev = rev.or(ws.and_then(|w| w.base.map(|b| b.to_hex()))).context("no revision")?;
             let c = remote.changeset(&rev).await?;
-            writeln!(stdout, "changeset {}\nAuthor: {}\nDate:   {}\n", c.id, c.changeset.author, fmt_time(c.changeset.timestamp_ms))?;
+            writeln!(
+                stdout,
+                "changeset {}\nAuthor: {}\nDate:   {}\n",
+                c.id,
+                c.changeset.author,
+                fmt_time(c.changeset.timestamp_ms)
+            )?;
             for l in c.changeset.message.trim_end().lines() {
                 writeln!(stdout, "    {l}")?;
             }
             writeln!(stdout)?;
             if let Some(p) = c.changeset.first_parent()? {
-                stdout.write_all(diff::revisions(remote.as_ref(), &p.to_hex(), &c.id.to_hex(), false).await?.as_bytes())?;
+                stdout.write_all(
+                    diff::revisions(remote.as_ref(), &p.to_hex(), &c.id.to_hex(), false).await?.as_bytes(),
+                )?;
             }
         }
         Cmd::Cat { rev, path } => {
@@ -358,7 +376,11 @@ async fn run() -> Result<()> {
                 out.uploaded,
                 started.elapsed().as_secs_f64(),
                 out.tip.map_or("none".into(), |t| t.short()),
-                if out.skipped_submodules > 0 { format!(" ({} submodule entries skipped)", out.skipped_submodules) } else { String::new() }
+                if out.skipped_submodules > 0 {
+                    format!(" ({} submodule entries skipped)", out.skipped_submodules)
+                } else {
+                    String::new()
+                }
             );
         }
         Cmd::Mcp { server } => {

@@ -1,0 +1,38 @@
+# v1.0 release review
+
+A written self-review before sign-off: every defect found while dogfooding and testing,
+its root cause, the fix, and the test that now guards it. Known limitations are listed
+separately so nobody discovers them in production.
+
+## Defects found and fixed before release
+
+| # | Found by | Symptom | Root cause | Fix | Guarded by |
+|---|---|---|---|---|---|
+| 1 | Importing git/git (82,443 commits) | Import aborted at commit ~1,000: "non-UTF-8 line" | 2005-era commits carry Latin-1 author names that `--reencode` does not touch | Identity lines decode lossily; **paths stay strict** (a non-UTF-8 path fails loudly instead of renaming a file) | `latin1_identity_is_tolerated_but_paths_are_strict` |
+| 2 | Exporting git/git back to git and comparing tree hashes | 2 files had the wrong case (`zh_CN.po` vs `zh_cn.po`) | On case-insensitive filesystems `git init` sets `core.ignorecase=true`; `git fast-import` then folds case-only renames onto the old name | Run fast-import with `-c core.ignorecase=false` | case-rename step in `git_import_export_roundtrip_preserves_trees_exactly` (verified to fail without the fix) |
+| 3 | Unit test while writing the fast-export parser | Commit message lost its trailing newline in the expectation | Test expectation wrong (`data 9` includes the newline); parser correct | Fixed the test | `parses_real_fast_export_shape` |
+| 4 | Profiling the import server | 1.3 GB RSS | 64 MiB SQLite page cache on each of ~11 connections | 16 MiB per connection (mmap pages are shared) | n/a (resource tuning) |
+| 5 | Code review for Windows | `file://` URLs built by string formatting break on `C:\` paths | Manual URL construction | `Url::from_directory_path` / `to_file_path` | contract + e2e tests on the Windows CI runner |
+| 6 | Code review | `find` fetched trees one by one despite its doc comment | Implementation drift | Batched `get_many` per tree level | `clone_commit_land_sync_roundtrip` |
+
+## Verified properties
+
+* Full git/git history (82,443 commits) imports, and its tip exports back to git with a
+  **bit-identical tree hash** (submodule pointers excluded: unsupported, reported on import).
+* Re-import is idempotent (0 blobs re-uploaded) and incremental (fast-forwards the ref).
+* 8 concurrent lands on one ref produce a linear history with no lost changes (CAS + rebase).
+* CAS linearizability under 16 concurrent writers on every metadata adapter.
+* Property tests: `apply_changes(a, diff(a, b)) == b` for random trees including file↔dir
+  replacement; decoders never panic on arbitrary bytes; accepted paths never escape the root.
+* No write follows a symlink, even when a later change turns a symlink into a directory.
+
+## Known limitations in v1.0 (documented, not bugs)
+
+* **Server storage** is several times git's (no delta compression): ~4.5 GB for git/git
+  vs a 333 MB pack. Clients are unaffected. Roadmap: delta/dictionary storage.
+* **Read permissions** are repository-wide; write and ref permissions are per path/ref.
+* **Submodules** are not supported.
+* **History** commands show first-parent (landed) history.
+* `log -- path` and `blame` walk first-parent history server-side (bounded); very old,
+  rarely-touched paths are slower than git with commit-graph Bloom filters.
+* Objects are capped at 256 MiB.

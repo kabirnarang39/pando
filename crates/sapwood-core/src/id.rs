@@ -20,9 +20,7 @@ impl Id {
     }
 
     pub fn from_slice(b: &[u8]) -> Result<Id> {
-        <[u8; 32]>::try_from(b)
-            .map(Id)
-            .map_err(|_| Error::invalid(format!("id must be 32 bytes, got {}", b.len())))
+        <[u8; 32]>::try_from(b).map(Id).map_err(|_| Error::invalid(format!("id must be 32 bytes, got {}", b.len())))
     }
 
     pub fn to_hex(&self) -> String {

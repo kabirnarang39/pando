@@ -118,7 +118,8 @@ fn read_entry(abs: &Path) -> Result<(Mode, Vec<u8>, fs::Metadata)> {
 
 /// Is `path` covered by the sparse prefixes?
 pub fn in_sparse(sparse: &[String], path: &str) -> bool {
-    sparse.is_empty() || sparse.iter().any(|s| path == s || (path.starts_with(s.as_str()) && path.as_bytes()[s.len()] == b'/'))
+    sparse.is_empty()
+        || sparse.iter().any(|s| path == s || (path.starts_with(s.as_str()) && path.as_bytes()[s.len()] == b'/'))
 }
 
 /// Should checkout descend into directory `dir`?
@@ -143,7 +144,8 @@ impl Workspace {
 
     pub fn open(root: &Path) -> Result<Workspace> {
         let meta = Self::meta_dir(root);
-        let config: Config = serde_json::from_slice(&fs::read(meta.join("config.json"))?).context("parsing config.json")?;
+        let config: Config =
+            serde_json::from_slice(&fs::read(meta.join("config.json"))?).context("parsing config.json")?;
         let index = IndexFile::decode(&*fs::read(meta.join("index"))?).context("parsing index")?;
         let base = if index.base.is_empty() { None } else { Some(Id::from_slice(&index.base)?) };
         Ok(Workspace {
@@ -162,7 +164,14 @@ impl Workspace {
             bail!("{} already exists", meta.display());
         }
         fs::create_dir_all(&meta)?;
-        let ws = Workspace { root: fs::canonicalize(root)?, config, base: None, base_landed: true, index: BTreeMap::new(), written_ns: 0 };
+        let ws = Workspace {
+            root: fs::canonicalize(root)?,
+            config,
+            base: None,
+            base_landed: true,
+            index: BTreeMap::new(),
+            written_ns: 0,
+        };
         ws.save()?;
         Ok(ws)
     }
@@ -192,7 +201,13 @@ impl Workspace {
 
     fn index_entry(&self, path: &str, mode: Mode, id: Id) -> Result<IndexEntry> {
         let meta = fs::symlink_metadata(self.abs(path))?;
-        Ok(IndexEntry { path: path.to_owned(), blob: id.0.to_vec(), mode: mode as i32, size: meta.len(), mtime_ns: mtime_ns(&meta) })
+        Ok(IndexEntry {
+            path: path.to_owned(),
+            blob: id.0.to_vec(),
+            mode: mode as i32,
+            size: meta.len(),
+            mtime_ns: mtime_ns(&meta),
+        })
     }
 
     /// Record `path` as clean at (mode, id) using its current on-disk stat.
@@ -208,7 +223,13 @@ impl Workspace {
     pub fn status(&self, pathspecs: &[String]) -> Result<Vec<LocalChange>> {
         let wanted = |p: &str| in_sparse(&self.config.sparse, p) && (pathspecs.is_empty() || in_sparse(pathspecs, p));
         let mut walker = ignore::WalkBuilder::new(&self.root);
-        walker.hidden(false).git_ignore(true).git_exclude(true).parents(false).require_git(false).add_custom_ignore_filename(".sapignore");
+        walker
+            .hidden(false)
+            .git_ignore(true)
+            .git_exclude(true)
+            .parents(false)
+            .require_git(false)
+            .add_custom_ignore_filename(".sapignore");
         walker.filter_entry(|e| !matches!(e.file_name().to_str(), Some(META_DIR) | Some(".git")));
 
         let mut seen = Vec::new();
@@ -304,7 +325,10 @@ impl Workspace {
                             .map(|p| {
                                 let (_, content, _) = read_entry(&self.abs(p))?;
                                 if content.len() as u64 > sapwood_core::object::MAX_OBJECT_BYTES {
-                                    bail!("{p}: larger than the {} MiB object limit", sapwood_core::object::MAX_OBJECT_BYTES >> 20);
+                                    bail!(
+                                        "{p}: larger than the {} MiB object limit",
+                                        sapwood_core::object::MAX_OBJECT_BYTES >> 20
+                                    );
                                 }
                                 Ok(encode_object(Kind::Blob, &content))
                             })
@@ -384,7 +408,11 @@ impl Workspace {
 }
 
 /// All files under `root_tree` within `sparse`, fetching one tree level per round trip.
-pub async fn list_files(objects: &dyn ObjectStore, root_tree: Id, sparse: &[String]) -> Result<Vec<(String, (Mode, Id))>> {
+pub async fn list_files(
+    objects: &dyn ObjectStore,
+    root_tree: Id,
+    sparse: &[String],
+) -> Result<Vec<(String, (Mode, Id))>> {
     let mut level = vec![(String::new(), root_tree)];
     let mut files = Vec::new();
     while !level.is_empty() {

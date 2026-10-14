@@ -19,7 +19,10 @@ struct Cluster {
     _shutdown: Vec<tokio::sync::oneshot::Sender<()>>,
 }
 
-async fn spawn(routes: tonic::service::Routes, auth: Arc<dyn Authenticator>) -> (String, tokio::sync::oneshot::Sender<()>) {
+async fn spawn(
+    routes: tonic::service::Routes,
+    auth: Arc<dyn Authenticator>,
+) -> (String, tokio::sync::oneshot::Sender<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -33,7 +36,12 @@ async fn start_with(flags: SpecFlags, auth: Arc<dyn Authenticator>, metadata: &s
     start_full(flags, auth, metadata, Arc::new(AllowAllPolicy)).await
 }
 
-async fn start_full(flags: SpecFlags, auth: Arc<dyn Authenticator>, metadata: &str, policy: Arc<dyn AccessPolicy>) -> Cluster {
+async fn start_full(
+    flags: SpecFlags,
+    auth: Arc<dyn Authenticator>,
+    metadata: &str,
+    policy: Arc<dyn AccessPolicy>,
+) -> Cluster {
     let repo = config::open_repo(metadata, "metadata").await.unwrap();
     let (server, tx) = spawn(authority_routes(repo, Arc::new(flags), policy), auth).await;
     Cluster { server, _shutdown: vec![tx] }
@@ -103,10 +111,10 @@ async fn clone_commit_land_sync_roundtrip() {
     write(&b, "README.md", "hello v2\n");
     std::fs::remove_file(b.join("src/deep/x/y.txt")).unwrap();
     let st = wb.status(&[]).unwrap();
-    assert_eq!(st.iter().map(|c| (c.path.as_str(), c.kind)).collect::<Vec<_>>(), vec![
-        ("README.md", ChangeKind::Modified),
-        ("src/deep/x/y.txt", ChangeKind::Deleted)
-    ]);
+    assert_eq!(
+        st.iter().map(|c| (c.path.as_str(), c.kind)).collect::<Vec<_>>(),
+        vec![("README.md", ChangeKind::Modified), ("src/deep/x/y.txt", ChangeKind::Deleted)]
+    );
     commit_land(&mut wb, r.as_ref(), "edit").await;
     let s = sync::run(r.as_ref(), &mut wa, None).await.unwrap();
     assert_eq!(s.changed, 2);
@@ -163,7 +171,10 @@ async fn concurrent_lands_rebase_server_side() {
     let log = browse::log(r.as_ref(), "main", "", 100).await.unwrap();
     assert_eq!(log.len(), 9, "linear history, no lost lands");
     for i in 0..8 {
-        assert_eq!(browse::cat(r.as_ref(), "main", &format!("worker/{i}.txt")).await.unwrap(), format!("{i}\n").as_bytes());
+        assert_eq!(
+            browse::cat(r.as_ref(), "main", &format!("worker/{i}.txt")).await.unwrap(),
+            format!("{i}\n").as_bytes()
+        );
     }
     assert!(rebased <= 8);
 }
@@ -258,7 +269,9 @@ async fn tiers_serve_identical_objects_through_cache_and_daemon() {
 
     // server <- cache <- daemon <- client
     let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
-    let (cache_url, _c) = spawn(tier_routes(config::cache_store(&c.server, None, 64 << 20).unwrap(), flags.clone()), Arc::new(AllowAll)).await;
+    let (cache_url, _c) =
+        spawn(tier_routes(config::cache_store(&c.server, None, 64 << 20).unwrap(), flags.clone()), Arc::new(AllowAll))
+            .await;
     let ddir = tempfile::tempdir().unwrap();
     let daemon_store = config::daemon_store(&cache_url, None, ddir.path().to_str().unwrap(), 16 << 20).unwrap();
     let (daemon_url, _d) = spawn(tier_routes(daemon_store, flags), Arc::new(AllowAll)).await;
@@ -266,7 +279,12 @@ async fn tiers_serve_identical_objects_through_cache_and_daemon() {
     for round in 0..2 {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("w");
-        let cfg = Config { server: c.server.clone(), objects: Some(daemon_url.clone()), ref_name: "main".into(), sparse: vec![] };
+        let cfg = Config {
+            server: c.server.clone(),
+            objects: Some(daemon_url.clone()),
+            ref_name: "main".into(),
+            sparse: vec![],
+        };
         let via: Arc<dyn Remote> = Arc::new(GrpcRemote::connect(&c.server, Some(&daemon_url), None).unwrap());
         let ws = clone::run(via.as_ref(), &SpecFlags::all_on(), &p, cfg).await.unwrap();
         assert_eq!(ws.index.len(), 50, "round {round}");
@@ -289,12 +307,9 @@ fn walk_count(dir: &Path) -> usize {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn auth_tokens_and_feature_flags_enforced() {
-    let c = start_with(
-        SpecFlags::parse("land=off").unwrap(),
-        Arc::new(StaticTokens::new(["s3cret".to_owned()])),
-        "memory",
-    )
-    .await;
+    let c =
+        start_with(SpecFlags::parse("land=off").unwrap(), Arc::new(StaticTokens::new(["s3cret".to_owned()])), "memory")
+            .await;
     let anon: Arc<dyn Remote> = Arc::new(GrpcRemote::connect(&c.server, None, None).unwrap());
     let err = anon.list_refs().await.unwrap_err().to_string();
     assert!(err.contains("missing bearer token") || err.contains("Unauthenticated"), "{err}");
@@ -374,6 +389,8 @@ async fn git_import_export_roundtrip_preserves_trees_exactly() {
     git_cmd(s, &["add", "."]);
     git_cmd(s, &["commit", "-qm", "one"]);
     write(s, "dir/x", "x\n");
+    // Quotes are illegal in Windows filenames; exercise git's path quoting elsewhere.
+    #[cfg(unix)]
     write(s, "sp ace \"q\".txt", "quoted\n");
     #[cfg(unix)]
     {
@@ -410,6 +427,7 @@ async fn git_import_export_roundtrip_preserves_trees_exactly() {
     assert_eq!(again.tip, out.tip);
     assert_eq!(again.uploaded, 0, "no blobs re-uploaded");
     assert_eq!(browse::cat(r.as_ref(), "main", "a/nested").await.unwrap(), b"file became dir\n");
+    #[cfg(unix)]
     assert_eq!(browse::cat(r.as_ref(), "main", "sp ace \"q\".txt").await.unwrap(), b"quoted\n");
 
     // Incremental: a new git commit fast-forwards the ref.
@@ -508,7 +526,8 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
     let mut send = async |v: serde_json::Value| {
         cw.write_all(format!("{v}\n").as_bytes()).await.unwrap();
     };
-    let mut recv = async || -> serde_json::Value { serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap() };
+    let mut recv =
+        async || -> serde_json::Value { serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap() };
 
     send(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
         "protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}))
@@ -519,8 +538,20 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
 
     send(serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
     let list = recv().await;
-    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    for want in ["sap_cat", "sap_ls", "sap_find", "sap_log", "sap_blame", "sap_diff", "sap_status", "sap_commit", "sap_land", "sap_sync"] {
+    let names: Vec<&str> =
+        list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for want in [
+        "sap_cat",
+        "sap_ls",
+        "sap_find",
+        "sap_log",
+        "sap_blame",
+        "sap_diff",
+        "sap_status",
+        "sap_commit",
+        "sap_land",
+        "sap_sync",
+    ] {
         assert!(names.contains(&want), "missing {want} in {names:?}");
     }
 
@@ -533,7 +564,8 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
     send(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"sap_commit","arguments":{"message":"agent edit"}}})).await;
     let commit = recv().await;
     assert!(commit["result"]["content"][0]["text"].as_str().unwrap().starts_with("committed"), "{commit}");
-    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"sap_land","arguments":{}}})).await;
+    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"sap_land","arguments":{}}}))
+        .await;
     let landed = recv().await;
     assert!(landed["result"]["content"][0]["text"].as_str().unwrap().starts_with("landed"), "{landed}");
     assert_eq!(browse::cat(r.as_ref(), "main", "docs/hello.md").await.unwrap(), b"edited by agent\n");

@@ -64,7 +64,8 @@ impl refs_server::Refs for Refs {
         let who = principal(&req);
         let r = req.into_inner();
         let expected = if r.expect_exists { Some(id_from(&r.expected)?) } else { None };
-        let swapped = Refs::compare_and_swap(self, &who, &r.name, expected, id_from(&r.new)?).await.map_err(to_status)?;
+        let swapped =
+            Refs::compare_and_swap(self, &who, &r.name, expected, id_from(&r.new)?).await.map_err(to_status)?;
         Ok(Response::new(CasResponse { swapped }))
     }
 

@@ -7,11 +7,7 @@ use crate::{Error, Result};
 pub const META_DIR: &str = ".sap";
 
 pub fn validate_name(name: &str) -> Result<()> {
-    let bad = name.is_empty()
-        || name == "."
-        || name == ".."
-        || name == META_DIR
-        || name.contains(['/', '\\', '\0']);
+    let bad = name.is_empty() || name == "." || name == ".." || name == META_DIR || name.contains(['/', '\\', '\0']);
     if bad { Err(Error::invalid(format!("invalid path component `{name}`"))) } else { Ok(()) }
 }
 

@@ -14,8 +14,8 @@ pub mod ports;
 mod repo;
 pub mod tree;
 
+pub use derived::GraphInfo;
 pub use derived::{Derivation, Generation, RootTree};
 pub use error::{Error, Result};
 pub use id::Id;
-pub use derived::GraphInfo;
 pub use repo::{Repo, paths_overlap, validate_ref_name};

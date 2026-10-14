@@ -44,7 +44,9 @@ fn path_matches(grant: &str, path: &str) -> bool {
 fn ref_matches(grant: &str, name: &str) -> bool {
     match grant.strip_suffix("/*") {
         _ if grant == "*" => true,
-        Some(prefix) => name.len() > prefix.len() + 1 && name.starts_with(prefix) && name.as_bytes()[prefix.len()] == b'/',
+        Some(prefix) => {
+            name.len() > prefix.len() + 1 && name.starts_with(prefix) && name.as_bytes()[prefix.len()] == b'/'
+        }
         None => grant == name,
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::derived::{Derivation, GraphInfo, Generation, RootTree};
+use crate::derived::{Derivation, Generation, GraphInfo, RootTree};
 use crate::object::{Changeset, Mode};
 use crate::path::components;
 use crate::ports::{ChangesetLog, DerivedStore, ObjectStore, RefStore};

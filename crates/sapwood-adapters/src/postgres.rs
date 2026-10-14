@@ -54,7 +54,8 @@ impl ObjectStore for PostgresStore {
 
     /// One round trip for the whole batch via UNNEST.
     async fn put_many(&self, items: Vec<(Id, Bytes)>) -> Result<()> {
-        let (ids, payloads): (Vec<Vec<u8>>, Vec<Vec<u8>>) = items.into_iter().map(|(i, p)| (i.0.to_vec(), p.to_vec())).unzip();
+        let (ids, payloads): (Vec<Vec<u8>>, Vec<Vec<u8>>) =
+            items.into_iter().map(|(i, p)| (i.0.to_vec(), p.to_vec())).unzip();
         sqlx::query(
             "INSERT INTO sapwood_objects (id, payload) SELECT * FROM UNNEST($1::bytea[], $2::bytea[]) ON CONFLICT DO NOTHING",
         )
@@ -91,7 +92,8 @@ impl ObjectStore for PostgresStore {
             .fetch_all(&self.pool)
             .await
             .map_err(storage_err)?;
-        let present: std::collections::HashSet<Id> = rows.into_iter().map(|r| to_id(r.get(0))).collect::<Result<_>>()?;
+        let present: std::collections::HashSet<Id> =
+            rows.into_iter().map(|r| to_id(r.get(0))).collect::<Result<_>>()?;
         Ok(ids.iter().filter(|i| !present.contains(i)).copied().collect())
     }
 }
@@ -131,17 +133,21 @@ impl RefStore for PostgresStore {
 
     async fn compare_and_swap(&self, name: &str, expected: Option<Id>, new: Id) -> Result<bool> {
         let result = match expected {
-            None => sqlx::query("INSERT INTO sapwood_refs (name, id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-                .bind(name)
-                .bind(&new.0[..])
-                .execute(&self.pool)
-                .await,
-            Some(old) => sqlx::query("UPDATE sapwood_refs SET id = $1 WHERE name = $2 AND id = $3")
-                .bind(&new.0[..])
-                .bind(name)
-                .bind(&old.0[..])
-                .execute(&self.pool)
-                .await,
+            None => {
+                sqlx::query("INSERT INTO sapwood_refs (name, id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+                    .bind(name)
+                    .bind(&new.0[..])
+                    .execute(&self.pool)
+                    .await
+            }
+            Some(old) => {
+                sqlx::query("UPDATE sapwood_refs SET id = $1 WHERE name = $2 AND id = $3")
+                    .bind(&new.0[..])
+                    .bind(name)
+                    .bind(&old.0[..])
+                    .execute(&self.pool)
+                    .await
+            }
         };
         Ok(result.map_err(storage_err)?.rows_affected() == 1)
     }

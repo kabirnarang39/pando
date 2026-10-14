@@ -48,10 +48,7 @@ pub async fn read_tree(store: &dyn ObjectStore, id: &Id) -> Result<Tree> {
 type Entries = BTreeMap<String, (Mode, Id)>;
 
 fn to_entries(tree: Tree) -> Result<Entries> {
-    tree.entries
-        .into_iter()
-        .map(|e| Ok((e.name, (Mode::parse(e.mode)?, Id::from_slice(&e.id)?))))
-        .collect()
+    tree.entries.into_iter().map(|e| Ok((e.name, (Mode::parse(e.mode)?, Id::from_slice(&e.id)?)))).collect()
 }
 
 pub fn encode_tree(entries: &Entries) -> (Id, bytes::Bytes) {

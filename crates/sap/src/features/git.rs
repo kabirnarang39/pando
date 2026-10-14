@@ -67,7 +67,14 @@ pub async fn import(
     let mut child = Command::new("git")
         .arg("-C")
         .arg(git_dir)
-        .args(["fast-export", "--reencode=yes", "--signed-tags=strip", "--tag-of-filtered-object=drop", "--show-original-ids", git_ref])
+        .args([
+            "fast-export",
+            "--reencode=yes",
+            "--signed-tags=strip",
+            "--tag-of-filtered-object=drop",
+            "--show-original-ids",
+            git_ref,
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -182,7 +189,10 @@ async fn import_commit(
                 };
                 let DataRef::Mark(m) = data else { bail!("{path}: blob by sha is unsupported") };
                 components(path).with_context(|| format!("git path `{path}` is not representable"))?;
-                files.insert(path.clone(), Some((mode, *blobs.get(m).with_context(|| format!("unknown blob mark :{m}"))?)));
+                files.insert(
+                    path.clone(),
+                    Some((mode, *blobs.get(m).with_context(|| format!("unknown blob mark :{m}"))?)),
+                );
             }
             Op::Delete(p) => {
                 files.insert(p.clone(), None);
@@ -235,7 +245,13 @@ async fn first_parent_chain(remote: &dyn Remote, rev: &str) -> Result<Vec<crate:
 /// Export the first-parent history of `rev` into git repository `git_dir` (created if
 /// missing) as branch `git_ref`. Merge changesets become ordinary commits with the
 /// same content. Returns the number of commits written.
-pub async fn export(remote: &dyn Remote, flags: &dyn FeatureFlags, rev: &str, git_dir: &Path, git_ref: &str) -> Result<usize> {
+pub async fn export(
+    remote: &dyn Remote,
+    flags: &dyn FeatureFlags,
+    rev: &str,
+    git_dir: &Path,
+    git_ref: &str,
+) -> Result<usize> {
     require(flags, Flag::GitExport)?;
     std::fs::create_dir_all(git_dir)?;
     if !git_dir.join(".git").exists() && !git_dir.join("HEAD").exists() {

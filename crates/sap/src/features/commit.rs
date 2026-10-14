@@ -18,7 +18,13 @@ pub struct Committed {
 /// Upload changed blobs (only those the server lacks) and create a changeset on the
 /// server with the workspace base as parent. `pathspecs` limits the commit to matching
 /// paths (git's staging, without a staging area).
-pub async fn run(remote: &dyn Remote, ws: &mut Workspace, message: &str, author: &str, pathspecs: &[String]) -> Result<Option<Committed>> {
+pub async fn run(
+    remote: &dyn Remote,
+    ws: &mut Workspace,
+    message: &str,
+    author: &str,
+    pathspecs: &[String],
+) -> Result<Option<Committed>> {
     if message.trim().is_empty() {
         bail!("empty commit message (use -m)");
     }
@@ -26,7 +32,8 @@ pub async fn run(remote: &dyn Remote, ws: &mut Workspace, message: &str, author:
     if changes.is_empty() {
         return Ok(None);
     }
-    let upserts: Vec<String> = changes.iter().filter(|c| c.kind != ChangeKind::Deleted).map(|c| c.path.clone()).collect();
+    let upserts: Vec<String> =
+        changes.iter().filter(|c| c.kind != ChangeKind::Deleted).map(|c| c.path.clone()).collect();
     // Re-read and encode now: the encoded id is authoritative even if a file changed
     // since the status scan.
     let encoded = ws.encode_files(&upserts)?;

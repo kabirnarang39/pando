@@ -63,7 +63,9 @@ impl Objects {
 const MAX_IDS_PER_REQUEST: usize = 64 * OBJECT_BATCH;
 
 pub fn service(objects: Objects) -> ObjectsServer<Objects> {
-    ObjectsServer::new(objects).max_decoding_message_size(MAX_MESSAGE_BYTES).max_encoding_message_size(MAX_MESSAGE_BYTES)
+    ObjectsServer::new(objects)
+        .max_decoding_message_size(MAX_MESSAGE_BYTES)
+        .max_encoding_message_size(MAX_MESSAGE_BYTES)
 }
 
 fn ids(list: &IdList) -> Result<Vec<sapwood_core::Id>, Status> {

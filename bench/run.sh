@@ -28,7 +28,9 @@ export GIT_AUTHOR_NAME=bench GIT_AUTHOR_EMAIL=bench@example.com GIT_COMMITTER_NA
 [ -d git.git ] || git clone -q --bare "$REPO_URL" git.git
 git -C git.git config uploadpack.allowFilter true
 git -C git.git config uploadpack.allowAnySHA1InWant true
-GIT_URL="file://$WORK/git.git"
+# hyperfine splits commands on whitespace; reach the corpus through a space-free symlink.
+LINK="$(mktemp -d)/w" && ln -s "$WORK" "$LINK"
+GIT_URL="file://$LINK/git.git"
 
 # --- Sapwood server (SQLite, release build) with the full history imported ---------------
 if ! sap refs >/dev/null 2>&1; then
@@ -52,14 +54,17 @@ fi
   echo
 } > "$OUT/RESULTS.md"
 
-hf() { # name, git command, sap command, [prepare]
+hf() { # label, git command, sap command, [prepare]
   local name="$1" g="$2" s="$3" prep="${4:-true}"
+  local id; id="$(echo "$name" | tr -c 'A-Za-z0-9\n' '-' | tr -s '-')"
   hyperfine -N --style basic --warmup 1 --runs "$RUNS" --prepare "$prep" \
-    --export-json "$OUT/$name.json" -n git "$g" -n sapwood "$s" >/dev/null
-  python3 - "$OUT/$name.json" "$name" >> "$OUT/RESULTS.md" <<'PY'
+    --export-json "$OUT/$id.json" -n git "$g" -n sapwood "$s" >/dev/null
+  python3 - "$OUT/$id.json" "$name" >> "$OUT/RESULTS.md" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))["results"]
-g, s = d[0]["median"], d[1]["median"]
+# hyperfine 2.x nests wall-clock stats under summary; 1.x has a top-level median.
+med = lambda r: r["summary"]["time_wall_clock"]["median"] if "summary" in r else r["median"]
+g, s = med(d[0]), med(d[1])
 ratio = f"{g/s:.1f}x faster" if s < g else f"{s/g:.1f}x slower"
 print(f"| {sys.argv[2]} | {g*1000:,.0f} ms | {s*1000:,.0f} ms | {ratio} |")
 PY
@@ -97,7 +102,7 @@ hf "blame $FILE" \
   "sap blame $FILE"
 
 # Commit + publish a one-line change. git pushes to its own bare remote.
-rm -rf push.git && git clone -q --bare "$GIT_URL" push.git && git -C g remote set-url origin "$WORK/push.git"
+rm -rf push.git && git clone -q --bare "$GIT_URL" push.git && git -C g remote set-url origin "$LINK/push.git"
 hf "commit + publish 1 file" \
   "bash -c 'git -C g commit -qam bench && git -C g push -q origin HEAD:master 2>/dev/null || git -C g push -q origin HEAD:main'" \
   "bash -c 'cd s && sap commit -m bench >/dev/null && sap land >/dev/null'" \

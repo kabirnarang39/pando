@@ -104,7 +104,11 @@ impl SapMcp {
     #[tool(description = "List a directory at any revision (mode, id, name per line).")]
     async fn sap_ls(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
         let entries = browse::ls(self.remote.as_ref(), &a.rev, &a.path).await.map_err(err)?;
-        Ok(entries.iter().map(|e| format!("{} {} {}", browse::mode_char(e.mode), e.id.short(), e.name)).collect::<Vec<_>>().join("\n"))
+        Ok(entries
+            .iter()
+            .map(|e| format!("{} {} {}", browse::mode_char(e.mode), e.id.short(), e.name))
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 
     #[tool(description = "Find files whose path contains a substring, at any revision.")]
@@ -125,7 +129,12 @@ impl SapMcp {
     #[tool(description = "Which changeset last changed each line of a file.")]
     async fn sap_blame(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
         let lines = self.remote.blame(&a.rev, &a.path).await.map_err(err)?;
-        Ok(lines.iter().enumerate().map(|(i, (id, l))| format!("{} {:>5} {l}", id.short(), i + 1)).collect::<Vec<_>>().join("\n"))
+        Ok(lines
+            .iter()
+            .enumerate()
+            .map(|(i, (id, l))| format!("{} {:>5} {l}", id.short(), i + 1))
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 
     #[tool(description = "Unified diff between two revisions (computed server-side).")]
@@ -157,7 +166,10 @@ impl SapMcp {
     #[tool(description = "Commit workspace changes as a server-side changeset (not yet landed).")]
     async fn sap_commit(&self, Parameters(a): Parameters<CommitArgs>) -> ToolResult {
         let mut ws = self.ws()?;
-        match commit::run(self.remote.as_ref(), &mut ws, &a.message, &crate::default_author(), &a.paths).await.map_err(err)? {
+        match commit::run(self.remote.as_ref(), &mut ws, &a.message, &crate::default_author(), &a.paths)
+            .await
+            .map_err(err)?
+        {
             Some(c) => Ok(format!("committed {} ({} files)", c.id, c.files)),
             None => Ok("nothing to commit".into()),
         }

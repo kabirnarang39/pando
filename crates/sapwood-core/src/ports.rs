@@ -30,17 +30,12 @@ pub trait ObjectStore: Send + Sync {
 
     /// Batch write. Override to use one transaction / multi-row insert.
     async fn put_many(&self, items: Vec<(Id, Bytes)>) -> Result<()> {
-        stream::iter(items)
-            .map(|(id, p)| self.put(id, p))
-            .buffer_unordered(BATCH_CONCURRENCY)
-            .try_collect::<()>()
-            .await
+        stream::iter(items).map(|(id, p)| self.put(id, p)).buffer_unordered(BATCH_CONCURRENCY).try_collect::<()>().await
     }
 
     /// Ids from `ids` this store cannot serve.
     async fn missing(&self, ids: &[Id]) -> Result<Vec<Id>> {
-        let present: Vec<bool> =
-            stream::iter(ids.iter().copied())
+        let present: Vec<bool> = stream::iter(ids.iter().copied())
             .map(|id| async move { self.has(&id).await })
             .buffered(BATCH_CONCURRENCY)
             .try_collect()

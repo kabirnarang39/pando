@@ -75,7 +75,8 @@ async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
     {
-        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
+        let mut term =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
         tokio::select! { _ = ctrl_c => {}, _ = term.recv() => {} }
     }
     #[cfg(not(unix))]
@@ -99,7 +100,9 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     let tls = match (&cli.tls_cert, &cli.tls_key) {
-        (Some(c), Some(k)) => Some(ServerTlsConfig::new().identity(Identity::from_pem(std::fs::read(c)?, std::fs::read(k)?))),
+        (Some(c), Some(k)) => {
+            Some(ServerTlsConfig::new().identity(Identity::from_pem(std::fs::read(c)?, std::fs::read(k)?)))
+        }
         _ => None,
     };
     let upstream_token = std::env::var("SAPWOOD_UPSTREAM_TOKEN").ok();

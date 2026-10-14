@@ -46,7 +46,13 @@ pub async fn working(remote: &dyn Remote, ws: &Workspace, pathspecs: &[String], 
             Some(e) => Some(read_object(objects.as_ref(), &sapwood_core::Id::from_slice(&e.blob)?, Kind::Blob).await?),
             None => None,
         };
-        let new = if c.kind == ChangeKind::Deleted { None } else { Some(std::fs::read(ws.abs(&c.path)).or_else(|_| std::fs::read_link(ws.abs(&c.path)).map(|t| t.to_string_lossy().into_owned().into_bytes()))?) };
+        let new = if c.kind == ChangeKind::Deleted {
+            None
+        } else {
+            Some(std::fs::read(ws.abs(&c.path)).or_else(|_| {
+                std::fs::read_link(ws.abs(&c.path)).map(|t| t.to_string_lossy().into_owned().into_bytes())
+            })?)
+        };
         out.push_str(&unified(&c.path, old.as_deref(), new.as_deref()));
     }
     Ok(out)
@@ -60,7 +66,13 @@ pub async fn revisions(remote: &dyn Remote, from: &str, to: &str, names_only: bo
     for c in changes {
         let old = remote.read_file(from, &c.path).await.ok().map(|(_, b)| b);
         if names_only {
-            let tag = if c.is_delete() { 'D' } else if old.is_some() { 'M' } else { 'A' };
+            let tag = if c.is_delete() {
+                'D'
+            } else if old.is_some() {
+                'M'
+            } else {
+                'A'
+            };
             let _ = writeln!(out, "{tag}\t{}", c.path);
             continue;
         }

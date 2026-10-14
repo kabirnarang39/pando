@@ -1,7 +1,7 @@
 //! Domain error -> gRPC status. The single place transport semantics are decided.
 
-use sapwood_core::{Error, Id};
 use futures::Stream;
+use sapwood_core::{Error, Id};
 use tonic::Status;
 
 pub fn to_status(e: Error) -> Status {

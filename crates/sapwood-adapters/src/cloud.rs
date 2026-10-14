@@ -29,10 +29,12 @@ impl CloudObjects {
 
     /// `file:///var/lib/sapwood`, `s3://bucket/prefix`, `gs://bucket`, `az://container`,
     /// `memory:///`. Credentials come from the provider's standard environment variables.
+    /// Build `file://` URLs with [`file_url`] so Windows paths are encoded correctly.
     pub fn from_url(url: &str) -> Result<Self> {
         let url = url::Url::parse(url).map_err(storage_err)?;
         if url.scheme() == "file" {
-            std::fs::create_dir_all(url.path()).map_err(storage_err)?;
+            let dir = url.to_file_path().map_err(|_| storage_err(format!("bad file URL `{url}`")))?;
+            std::fs::create_dir_all(dir).map_err(storage_err)?;
         }
         let env = std::env::vars().map(|(k, v)| (k.to_ascii_lowercase(), v));
         let (backend, prefix) = object_store::parse_url_opts(&url, env).map_err(storage_err)?;
@@ -84,4 +86,12 @@ impl ObjectStore for CloudObjects {
             .try_collect()
             .await
     }
+}
+
+/// `file://` URL for a local directory, correct on every platform (`C:\\x` included).
+pub fn file_url(dir: &std::path::Path) -> Result<String> {
+    let abs = std::path::absolute(dir).map_err(storage_err)?;
+    url::Url::from_directory_path(&abs)
+        .map(String::from)
+        .map_err(|_| storage_err(format!("bad path {}", abs.display())))
 }

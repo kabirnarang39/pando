@@ -40,7 +40,7 @@ impl GrpcObjects {
             .tcp_nodelay(true)
             .http2_adaptive_window(true)
             .connect_lazy();
-        Ok(Self::from_channel(channel, token)?)
+        Self::from_channel(channel, token)
     }
 
     pub fn from_channel(channel: Channel, token: Option<&str>) -> Result<Self> {

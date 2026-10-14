@@ -75,7 +75,9 @@ fn build_tree(rt: &tokio::runtime::Runtime, store: &Mem, n: usize) -> Id {
     rt.block_on(async {
         let blob = tree::put_blob(store, b"fn main() {}\n").await.unwrap();
         let changes: Vec<FileChange> = (0..n)
-            .map(|i| FileChange::upsert(format!("svc{}/mod{}/pkg{}/file{i}.rs", i % 20, i % 400, i % 4000), Mode::File, blob))
+            .map(|i| {
+                FileChange::upsert(format!("svc{}/mod{}/pkg{}/file{i}.rs", i % 20, i % 400, i % 4000), Mode::File, blob)
+            })
             .collect();
         tree::apply_changes(store, None, &changes).await.unwrap()
     })

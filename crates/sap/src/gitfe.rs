@@ -219,7 +219,11 @@ impl<R: BufRead> Parser<R> {
             } else if let Some(rest) = l.strip_prefix("M ") {
                 let (mode, rest) = rest.split_once(' ').context("M mode")?;
                 let (dref, path) = rest.split_once(' ').context("M dataref")?;
-                let data = if dref.starts_with(':') { DataRef::Mark(parse_mark(dref)?) } else { DataRef::Sha(dref.to_owned()) };
+                let data = if dref.starts_with(':') {
+                    DataRef::Mark(parse_mark(dref)?)
+                } else {
+                    DataRef::Sha(dref.to_owned())
+                };
                 let mode = u32::from_str_radix(mode, 8).context("M mode")?;
                 c.ops.push(Op::Modify { mode, data, path: unquote(path)? });
             } else if let Some(p) = l.strip_prefix("D ") {
@@ -296,20 +300,28 @@ author t <t@t> 6 +0000\ncommitter t <t@t> 6 +0000\ndata 0\nfrom :7\nM 160000 012
         let mut p = Parser::new(SAMPLE.as_bytes());
         assert_eq!(p.next_event().unwrap(), Some(Event::Blob { mark: 1, data: b"a\n".to_vec() }));
         let Some(Event::Commit(c)) = p.next_event().unwrap() else { panic!() };
-        assert_eq!((c.mark, c.author.as_str(), c.timestamp_s, c.message.as_str()), (Some(2), "t <t@t>", 1792016068, "one\n"));
+        assert_eq!(
+            (c.mark, c.author.as_str(), c.timestamp_s, c.message.as_str()),
+            (Some(2), "t <t@t>", 1792016068, "one\n")
+        );
         assert_eq!(c.ops, vec![Op::Modify { mode: 0o100644, data: DataRef::Mark(1), path: "a".into() }]);
         let Some(Event::Commit(c)) = p.next_event().unwrap() else { panic!() };
         assert_eq!((c.from, c.merges.clone(), c.message.as_str()), (Some(2), vec![2], "two\nline\n"));
         assert_eq!(c.ops[1], Op::Modify { mode: 0o100644, data: DataRef::Mark(1), path: "sp ace\"q".into() });
         assert_eq!(c.ops[2..], [Op::Delete("a".into()), Op::DeleteAll]);
         let Some(Event::Commit(c)) = p.next_event().unwrap() else { panic!() };
-        assert_eq!(c.ops, vec![Op::Modify { mode: 0o160000, data: DataRef::Sha("0123abcd".into()), path: "sub".into() }]);
+        assert_eq!(
+            c.ops,
+            vec![Op::Modify { mode: 0o160000, data: DataRef::Sha("0123abcd".into()), path: "sub".into() }]
+        );
         assert_eq!(p.next_event().unwrap(), None);
     }
 
     #[test]
     fn latin1_identity_is_tolerated_but_paths_are_strict() {
-        let mut ok = b"commit refs/heads/main\nmark :1\nauthor Ren\xe9 <r@x> 1 +0000\ncommitter c <c@x> 1 +0000\ndata 1\nx\n\n".to_vec();
+        let mut ok =
+            b"commit refs/heads/main\nmark :1\nauthor Ren\xe9 <r@x> 1 +0000\ncommitter c <c@x> 1 +0000\ndata 1\nx\n\n"
+                .to_vec();
         let Some(Event::Commit(c)) = Parser::new(&ok[..]).next_event().unwrap() else { panic!() };
         assert_eq!(c.author, "Ren\u{fffd} <r@x>");
         ok.splice(ok.len() - 1..ok.len() - 1, b"M 100644 :1 caf\xe9\n".iter().copied());

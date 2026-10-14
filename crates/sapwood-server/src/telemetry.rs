@@ -53,12 +53,17 @@ where
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
         // Bound label cardinality: arbitrary client paths collapse into "other".
         let path = req.uri().path();
-        let method = if path.starts_with("/sapwood.v1.") || path.starts_with("/grpc.") { path.to_owned() } else { "other".to_owned() };
+        let method = if path.starts_with("/sapwood.v1.") || path.starts_with("/grpc.") {
+            path.to_owned()
+        } else {
+            "other".to_owned()
+        };
         let start = Instant::now();
         let fut = self.0.call(req);
         Box::pin(async move {
             let out = fut.await;
-            metrics::histogram!("sapwood_rpc_seconds", "method" => method.clone()).record(start.elapsed().as_secs_f64());
+            metrics::histogram!("sapwood_rpc_seconds", "method" => method.clone())
+                .record(start.elapsed().as_secs_f64());
             metrics::counter!("sapwood_rpc_total", "method" => method).increment(1);
             out
         })

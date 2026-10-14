@@ -64,11 +64,8 @@ pub struct AuthInterceptor(pub Arc<dyn Authenticator>);
 
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
-        let bearer = req
-            .metadata()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "));
+        let bearer =
+            req.metadata().get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
         let who = self.0.authenticate(bearer)?;
         req.extensions_mut().insert(who);
         Ok(req)

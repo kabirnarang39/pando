@@ -17,8 +17,8 @@ use sapwood_proto::land_client::LandClient;
 use sapwood_proto::merge_base_client::MergeBaseClient;
 use sapwood_proto::refs_client::RefsClient;
 use sapwood_proto::{
-    BearerAuth, BlameRequest, BrowseRequest, CasRequest, CreateChangesetRequest, DiffRequest, Empty, FindRequest, LandRequest,
-    LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName, ResolveRequest,
+    BearerAuth, BlameRequest, BrowseRequest, CasRequest, CreateChangesetRequest, DiffRequest, Empty, FindRequest,
+    LandRequest, LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName, ResolveRequest,
 };
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::{Channel, Endpoint};

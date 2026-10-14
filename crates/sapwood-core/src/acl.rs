@@ -31,7 +31,11 @@ impl AccessPolicy for AllowAllPolicy {
     }
 }
 
-pub fn require_write<'a>(policy: &dyn AccessPolicy, who: &Principal, paths: impl IntoIterator<Item = &'a str>) -> Result<()> {
+pub fn require_write<'a>(
+    policy: &dyn AccessPolicy,
+    who: &Principal,
+    paths: impl IntoIterator<Item = &'a str>,
+) -> Result<()> {
     let denied: Vec<&str> = paths.into_iter().filter(|p| !policy.can_write(who, p)).take(10).collect();
     if denied.is_empty() {
         Ok(())

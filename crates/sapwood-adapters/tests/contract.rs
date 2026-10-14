@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use sapwood_adapters::cache::{BoundedCache, Tiered};
+use sapwood_adapters::cache::{BoundedCache, CachedDerived, CachedLog, Tiered};
 use sapwood_adapters::cloud::CloudObjects;
 use sapwood_adapters::memory::MemoryStore;
 use sapwood_adapters::sqlite::SqliteStore;
@@ -141,7 +141,7 @@ async fn sqlite_persists_across_reopen() {
 #[tokio::test(flavor = "multi_thread")]
 async fn object_storage_local_filesystem() {
     let dir = tempfile::tempdir().unwrap();
-    let url = format!("file://{}", dir.path().join("objs").display());
+    let url = sapwood_adapters::cloud::file_url(&dir.path().join("objs")).unwrap();
     object_contract(&CloudObjects::from_url(&url).unwrap()).await;
 }
 
@@ -208,4 +208,17 @@ async fn object_storage_s3() {
         return;
     };
     object_contract(&CloudObjects::from_url(&url).unwrap()).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cached_metadata_decorators() {
+    let inner = Arc::new(MemoryStore::new());
+    let log = CachedLog::new(inner.clone(), 1 << 20);
+    log_contract(&log).await;
+    let derived = CachedDerived::new(inner.clone(), 1 << 20);
+    derived_contract(&derived).await;
+    // Writes through the decorator reach the backing store.
+    let id = Id::hash(3, b"cs");
+    assert!(ChangesetLog::get(inner.as_ref(), &id).await.unwrap().is_some());
+    assert!(DerivedStore::get(inner.as_ref(), "k.v1", &Id([9; 32])).await.unwrap().is_some());
 }

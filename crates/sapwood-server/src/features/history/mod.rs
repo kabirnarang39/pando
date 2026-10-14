@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use futures::Stream;
 use sapwood_core::flags::{FeatureFlags, Flag, require};
-use sapwood_core::path::components_or_root;
 use sapwood_core::object::{Kind, Mode};
+use sapwood_core::path::components_or_root;
 use sapwood_core::{Error, Id, Repo, Result, paths_overlap, tree};
 use sapwood_proto::history_server::{self, HistoryServer};
 use sapwood_proto::{BlameLine, BlameRequest, BlameResponse, ChangesetInfo, LogRequest};

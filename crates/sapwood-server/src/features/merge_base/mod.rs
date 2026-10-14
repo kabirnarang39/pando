@@ -38,6 +38,9 @@ impl merge_base_server::MergeBase for MergeBase {
     async fn merge_base(&self, req: Request<MergeBaseRequest>) -> RpcResult<MergeBaseResponse> {
         let r = req.into_inner();
         let found = MergeBase::merge_base(self, &r.a, &r.b).await.map_err(to_status)?;
-        Ok(Response::new(MergeBaseResponse { found: found.is_some(), id: found.map(|i| i.0.to_vec()).unwrap_or_default() }))
+        Ok(Response::new(MergeBaseResponse {
+            found: found.is_some(),
+            id: found.map(|i| i.0.to_vec()).unwrap_or_default(),
+        }))
     }
 }

@@ -51,7 +51,10 @@ impl SqliteStore {
         let n = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(2, 16);
         let readers = (0..n)
             .map(|_| {
-                let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+                let c = Connection::open_with_flags(
+                    path,
+                    OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )?;
                 tune(&c)?;
                 Ok(Mutex::new(c))
             })
@@ -126,7 +129,9 @@ impl ObjectStore for SqliteStore {
         self.read(move |c| {
             let mut stmt = c.prepare_cached("SELECT payload FROM objects WHERE id = ?1")?;
             ids.iter()
-                .map(|id| stmt.query_row([&id.0[..]], |r| r.get::<_, Vec<u8>>(0)).optional().map(|o| o.map(Bytes::from)))
+                .map(|id| {
+                    stmt.query_row([&id.0[..]], |r| r.get::<_, Vec<u8>>(0)).optional().map(|o| o.map(Bytes::from))
+                })
                 .collect()
         })
         .await

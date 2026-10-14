@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
-use sapwood_adapters::cache::{BoundedCache, Tiered};
+use sapwood_adapters::cache::{BoundedCache, CachedDerived, CachedLog, Tiered};
 use sapwood_adapters::cloud::CloudObjects;
 use sapwood_adapters::grpc::GrpcObjects;
 use sapwood_adapters::memory::MemoryStore;
@@ -38,8 +38,11 @@ pub async fn open_repo(metadata: &str, objects: &str) -> anyhow::Result<Repo> {
     if objects != "metadata" {
         repo.objects = Arc::new(CloudObjects::from_url(objects)?);
     }
-    // Hot objects (trees, recent blobs) stay in memory in front of any backend.
+    // Everything below is immutable, so memory caches in front of any backend are always
+    // coherent: hot objects (trees, recent blobs), changesets, derived data.
     repo.objects = Arc::new(Tiered::new(Arc::new(BoundedCache::new(256 << 20)), repo.objects));
+    repo.log = Arc::new(CachedLog::new(repo.log, 128 << 20));
+    repo.derived = Arc::new(CachedDerived::new(repo.derived, 64 << 20));
     Ok(repo)
 }
 
@@ -51,11 +54,15 @@ pub fn cache_store(upstream: &str, token: Option<&str>, capacity_bytes: u64) -> 
 
 /// Node daemon: memory -> local disk -> upstream. Disk survives restarts so a node
 /// starts warm.
-pub fn daemon_store(upstream: &str, token: Option<&str>, dir: &str, memory_bytes: u64) -> anyhow::Result<Arc<dyn ObjectStore>> {
+pub fn daemon_store(
+    upstream: &str,
+    token: Option<&str>,
+    dir: &str,
+    memory_bytes: u64,
+) -> anyhow::Result<Arc<dyn ObjectStore>> {
     let up = Arc::new(GrpcObjects::connect(upstream, token)?);
     std::fs::create_dir_all(dir)?;
-    let abs = std::fs::canonicalize(dir)?;
-    let disk = Arc::new(CloudObjects::from_url(&format!("file://{}", abs.display()))?);
+    let disk = Arc::new(CloudObjects::from_url(&sapwood_adapters::cloud::file_url(std::path::Path::new(dir))?)?);
     let disk_tier = Arc::new(Tiered::new(disk, up));
     Ok(Arc::new(Tiered::new(Arc::new(BoundedCache::new(memory_bytes)), disk_tier)))
 }
