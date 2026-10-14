@@ -40,7 +40,12 @@ enum Role {
         #[arg(long, default_value = "0.0.0.0:7420")]
         listen: SocketAddr,
         /// memory | sqlite://PATH | postgres://...
-        #[arg(long, env = "SAPWOOD_METADATA", hide_env_values = true, default_value = "sqlite://./sapwood-data/meta.db")]
+        #[arg(
+            long,
+            env = "SAPWOOD_METADATA",
+            hide_env_values = true,
+            default_value = "sqlite://./sapwood-data/meta.db"
+        )]
         metadata: String,
         /// metadata | file:///PATH | s3://BUCKET/PREFIX | gs://BUCKET | az://CONTAINER | memory:///
         #[arg(long, env = "SAPWOOD_OBJECTS", hide_env_values = true, default_value = "metadata")]
