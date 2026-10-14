@@ -35,3 +35,5 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] Issue / PR templates, Dependabot
 - [x] CI and release workflows (5 targets + multi-arch GHCR image)
 - [ ] Public GitHub repository, CI green, v1.0.0 tag and release published
+
+<!-- dogfood: this line was landed through sap itself -->
