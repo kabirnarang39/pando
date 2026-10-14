@@ -122,6 +122,11 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Serve Sapwood as MCP tools over stdio for AI agents (Claude Code, Codex, Cursor...).
+    Mcp {
+        #[arg(long)]
+        server: Option<String>,
+    },
     /// Export first-parent history to a git repository.
     ExportGit {
         git_dir: PathBuf,
@@ -355,6 +360,15 @@ async fn run() -> Result<()> {
                 out.tip.map_or("none".into(), |t| t.short()),
                 if out.skipped_submodules > 0 { format!(" ({} submodule entries skipped)", out.skipped_submodules) } else { String::new() }
             );
+        }
+        Cmd::Mcp { server } => {
+            let ws = workspace().ok();
+            let remote = match &ws {
+                Some(w) if server.is_none() => ws_remote(w, token)?,
+                _ => connect(&server_for(server)?, None, token)?,
+            };
+            drop(stdout);
+            sap::mcp::SapMcp::new(remote, ws.map(|w| w.root)).serve_stdio().await?;
         }
         Cmd::ExportGit { git_dir, server, rev, git_ref } => {
             let remote = connect(&server_for(server)?, None, token)?;

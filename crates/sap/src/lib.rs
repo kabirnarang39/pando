@@ -2,6 +2,7 @@
 
 pub mod features;
 pub mod gitfe;
+pub mod mcp;
 pub mod remote;
 pub mod workspace;
 

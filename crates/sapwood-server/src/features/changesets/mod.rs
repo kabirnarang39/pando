@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use sapwood_core::acl::{AccessPolicy, Principal, require_write};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Changeset, FileChange};
 use sapwood_core::{Id, Repo, Result};
@@ -10,21 +11,27 @@ use sapwood_proto::changesets_server::{self, ChangesetsServer};
 use sapwood_proto::{ChangesetInfo, CreateChangesetRequest, ResolveRequest};
 use tonic::{Request, Response};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, changeset_info, to_status};
 
 #[derive(Clone)]
 pub struct Changesets {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 impl Changesets {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { repo, flags }
+    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { repo, flags, policy }
     }
 
-    pub async fn create(&self, cs: Changeset) -> Result<Id> {
+    /// Per-directory write permissions are enforced on every changed path.
+    pub async fn create(&self, who: &Principal, cs: Changeset) -> Result<Id> {
         require(self.flags.as_ref(), Flag::Changesets)?;
+        if self.flags.enabled(Flag::Permissions) {
+            require_write(self.policy.as_ref(), who, cs.changes.iter().map(|c| c.path.as_str()))?;
+        }
         self.repo.create_changeset(cs).await
     }
 
@@ -41,6 +48,7 @@ pub fn service(s: Changesets) -> ChangesetsServer<Changesets> {
 #[tonic::async_trait]
 impl changesets_server::Changesets for Changesets {
     async fn create(&self, req: Request<CreateChangesetRequest>) -> RpcResult<ChangesetInfo> {
+        let who = principal(&req);
         let r = req.into_inner();
         let cs = Changeset {
             parents: r.parents,
@@ -49,7 +57,7 @@ impl changesets_server::Changesets for Changesets {
             message: r.message,
             timestamp_ms: r.timestamp_ms,
         };
-        let id = Changesets::create(self, cs).await.map_err(to_status)?;
+        let id = Changesets::create(self, &who, cs).await.map_err(to_status)?;
         Ok(Response::new(changeset_info(&self.repo, id).await.map_err(to_status)?))
     }
 

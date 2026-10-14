@@ -50,6 +50,8 @@ ignore = "0.4"
 filetime = "0.2"
 url = "2"
 similar = "3"
+rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
+schemars = "1"
 tower = "0.5"
 rand = "0.9"
 

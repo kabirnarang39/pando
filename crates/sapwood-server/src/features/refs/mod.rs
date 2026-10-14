@@ -2,23 +2,26 @@
 
 use std::sync::Arc;
 
+use sapwood_core::acl::{AccessPolicy, Principal, require_ref};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::{Error, Id, Repo, Result, validate_ref_name};
 use sapwood_proto::refs_server::{self, RefsServer};
 use sapwood_proto::{CasRequest, CasResponse, Empty, RefEntry, RefList, RefName, RefValue};
 use tonic::{Request, Response};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, id_from, to_status};
 
 #[derive(Clone)]
 pub struct Refs {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 impl Refs {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { repo, flags }
+    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { repo, flags, policy }
     }
 
     pub async fn get(&self, name: &str) -> Result<Option<Id>> {
@@ -28,9 +31,12 @@ impl Refs {
     }
 
     /// The target must be an existing changeset: refs never dangle.
-    pub async fn compare_and_swap(&self, name: &str, expected: Option<Id>, new: Id) -> Result<bool> {
+    pub async fn compare_and_swap(&self, who: &Principal, name: &str, expected: Option<Id>, new: Id) -> Result<bool> {
         require(self.flags.as_ref(), Flag::Refs)?;
         validate_ref_name(name)?;
+        if self.flags.enabled(Flag::Permissions) {
+            require_ref(self.policy.as_ref(), who, name)?;
+        }
         if self.repo.log.get(&new).await?.is_none() {
             return Err(Error::not_found(format!("changeset {new}")));
         }
@@ -55,9 +61,10 @@ impl refs_server::Refs for Refs {
     }
 
     async fn compare_and_swap(&self, req: Request<CasRequest>) -> RpcResult<CasResponse> {
+        let who = principal(&req);
         let r = req.into_inner();
         let expected = if r.expect_exists { Some(id_from(&r.expected)?) } else { None };
-        let swapped = Refs::compare_and_swap(self, &r.name, expected, id_from(&r.new)?).await.map_err(to_status)?;
+        let swapped = Refs::compare_and_swap(self, &who, &r.name, expected, id_from(&r.new)?).await.map_err(to_status)?;
         Ok(Response::new(CasResponse { swapped }))
     }
 

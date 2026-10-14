@@ -8,6 +8,7 @@ use sap::features::{browse, clone, commit, git, land, sync};
 use sap::remote::{GrpcRemote, Remote};
 use sap::workspace::{ChangeKind, Config, Workspace};
 use sapwood_adapters::flags::SpecFlags;
+use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
 use sapwood_core::flags::FeatureFlags;
 use sapwood_server::auth::{AllowAll, Authenticator, StaticTokens};
 use sapwood_server::{authority_routes, config, serve, tier_routes};
@@ -29,8 +30,12 @@ async fn spawn(routes: tonic::service::Routes, auth: Arc<dyn Authenticator>) -> 
 }
 
 async fn start_with(flags: SpecFlags, auth: Arc<dyn Authenticator>, metadata: &str) -> Cluster {
+    start_full(flags, auth, metadata, Arc::new(AllowAllPolicy)).await
+}
+
+async fn start_full(flags: SpecFlags, auth: Arc<dyn Authenticator>, metadata: &str, policy: Arc<dyn AccessPolicy>) -> Cluster {
     let repo = config::open_repo(metadata, "metadata").await.unwrap();
-    let (server, tx) = spawn(authority_routes(repo, Arc::new(flags)), auth).await;
+    let (server, tx) = spawn(authority_routes(repo, Arc::new(flags), policy), auth).await;
     Cluster { server, _shutdown: vec![tx] }
 }
 
@@ -436,4 +441,99 @@ async fn checkout_branch_and_switch() {
     assert_eq!(read(&p, "f"), "main\n");
     assert_eq!(ws.config.ref_name, "main");
     assert_eq!(r.merge_base("main", "feature/x").await.unwrap(), Some(m1));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn per_directory_write_and_ref_permissions() {
+    let policy = sapwood_adapters::acl::RulesPolicy::parse(
+        r#"{"default":{"refs":["user/*"]},
+            "principals":{"api":{"write":["services/api"],"refs":["main"]},
+                          "admin":{"write":["*"],"refs":["*"]}}}"#,
+    )
+    .unwrap();
+    let tokens = StaticTokens::new(["api:api-token".to_owned(), "admin:admin-token".to_owned()]);
+    let c = start_full(SpecFlags::all_on(), Arc::new(tokens), "memory", Arc::new(policy)).await;
+    let as_ = |t: &str| -> Arc<dyn Remote> { Arc::new(GrpcRemote::connect(&c.server, None, Some(t)).unwrap()) };
+    let (admin, api) = (as_("admin-token"), as_("api-token"));
+
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let cfg = |s: &str| Config { server: s.to_owned(), objects: None, ref_name: "main".into(), sparse: vec![] };
+    let mut wa = clone::run(admin.as_ref(), &flags(), &p, cfg(&c.server)).await.unwrap();
+    write(&p, "services/api/a.rs", "a");
+    write(&p, "libs/core/b.rs", "b");
+    commit_land(&mut wa, admin.as_ref(), "seed").await;
+
+    let d2 = tempfile::tempdir().unwrap();
+    let p2 = d2.path().join("w");
+    let mut wb = clone::run(api.as_ref(), &flags(), &p2, cfg(&c.server)).await.unwrap();
+    write(&p2, "libs/core/b.rs", "not yours");
+    let err = commit::run(api.as_ref(), &mut wb, "x", "api", &[]).await.unwrap_err().to_string();
+    assert!(err.contains("may not write libs/core/b.rs"), "{err}");
+    std::fs::write(p2.join("libs/core/b.rs"), "b").unwrap();
+    write(&p2, "services/api/a.rs", "mine");
+    commit_land(&mut wb, api.as_ref(), "api change").await;
+    // api may land on main but not create release refs.
+    let base = wb.base.unwrap();
+    let err = api.compare_and_swap("release/1", None, base).await.unwrap_err().to_string();
+    assert!(err.contains("may not update ref"), "{err}");
+    assert!(admin.compare_and_swap("release/1", None, base).await.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_server_speaks_json_rpc_and_reads_repo() {
+    use rmcp::ServiceExt;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "docs/hello.md", "hi from sapwood\n");
+    commit_land(&mut ws, r.as_ref(), "doc").await;
+
+    let (client, server) = tokio::io::duplex(1 << 16);
+    let (sr, sw) = tokio::io::split(server);
+    let mcp = sap::mcp::SapMcp::new(r.clone(), Some(p.clone()));
+    tokio::spawn(async move { mcp.serve((sr, sw)).await.unwrap().waiting().await.unwrap() });
+    let (cr, mut cw) = tokio::io::split(client);
+    let mut lines = BufReader::new(cr).lines();
+    let mut send = async |v: serde_json::Value| {
+        cw.write_all(format!("{v}\n").as_bytes()).await.unwrap();
+    };
+    let mut recv = async || -> serde_json::Value { serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap() };
+
+    send(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}))
+    .await;
+    let init = recv().await;
+    assert!(init["result"]["capabilities"]["tools"].is_object(), "{init}");
+    send(serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})).await;
+
+    send(serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
+    let list = recv().await;
+    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for want in ["sap_cat", "sap_ls", "sap_find", "sap_log", "sap_blame", "sap_diff", "sap_status", "sap_commit", "sap_land", "sap_sync"] {
+        assert!(names.contains(&want), "missing {want} in {names:?}");
+    }
+
+    send(serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sap_cat","arguments":{"path":"docs/hello.md"}}})).await;
+    let cat = recv().await;
+    assert_eq!(cat["result"]["content"][0]["text"], "hi from sapwood\n", "{cat}");
+
+    // An agent edits, commits and lands entirely through MCP.
+    write(&p, "docs/hello.md", "edited by agent\n");
+    send(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"sap_commit","arguments":{"message":"agent edit"}}})).await;
+    let commit = recv().await;
+    assert!(commit["result"]["content"][0]["text"].as_str().unwrap().starts_with("committed"), "{commit}");
+    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"sap_land","arguments":{}}})).await;
+    let landed = recv().await;
+    assert!(landed["result"]["content"][0]["text"].as_str().unwrap().starts_with("landed"), "{landed}");
+    assert_eq!(browse::cat(r.as_ref(), "main", "docs/hello.md").await.unwrap(), b"edited by agent\n");
+
+    // Errors surface as tool errors, not protocol failures.
+    send(serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"sap_cat","arguments":{"path":"nope"}}})).await;
+    let missing = recv().await;
+    assert_eq!(missing["result"]["isError"], true, "{missing}");
 }

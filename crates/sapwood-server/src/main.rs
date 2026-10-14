@@ -2,7 +2,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
+use sapwood_adapters::acl::RulesPolicy;
 use sapwood_adapters::flags::SpecFlags;
+use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
 use sapwood_server::auth::{AllowAll, Authenticator, StaticTokens};
 use sapwood_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
@@ -43,6 +45,9 @@ enum Role {
         /// metadata | file:///PATH | s3://BUCKET/PREFIX | gs://BUCKET | az://CONTAINER | memory:///
         #[arg(long, env = "SAPWOOD_OBJECTS", default_value = "metadata")]
         objects: String,
+        /// JSON access rules (per-directory write and per-ref permissions). Unset = allow all.
+        #[arg(long, env = "SAPWOOD_ACL")]
+        acl: Option<std::path::PathBuf>,
     },
     /// Regional cache: stateless, memory-bounded, read-through to an upstream tier.
     Cache {
@@ -100,10 +105,14 @@ async fn main() -> anyhow::Result<()> {
     let upstream_token = std::env::var("SAPWOOD_UPSTREAM_TOKEN").ok();
 
     let (listen, routes) = match cli.role {
-        Role::Server { listen, metadata, objects } => {
+        Role::Server { listen, metadata, objects, acl } => {
             let repo = config::open_repo(&metadata, &objects).await?;
-            tracing::info!(%listen, %metadata, %objects, "sapwood server");
-            (listen, authority_routes(repo, flags))
+            let policy: Arc<dyn AccessPolicy> = match &acl {
+                Some(path) => Arc::new(RulesPolicy::load(path)?),
+                None => Arc::new(AllowAllPolicy),
+            };
+            tracing::info!(%listen, %metadata, %objects, acl = ?acl, "sapwood server");
+            (listen, authority_routes(repo, flags, policy))
         }
         Role::Cache { listen, upstream, capacity_mb } => {
             let store = config::cache_store(&upstream, upstream_token.as_deref(), capacity_mb << 20)?;

@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use sapwood_core::acl::{AccessPolicy, Principal, require_ref};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Changeset, FileChange};
 use sapwood_core::{Error, Id, Repo, Result, tree, validate_ref_name};
@@ -15,6 +16,7 @@ use sapwood_proto::land_server::{self, LandServer};
 use sapwood_proto::{LandRequest, LandResponse};
 use tonic::{Request, Response};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, id_from, to_status};
 
 pub const MAX_ATTEMPTS: u32 = 64;
@@ -23,6 +25,7 @@ pub const MAX_ATTEMPTS: u32 = 64;
 pub struct Land {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,13 +36,16 @@ pub struct Landed {
 }
 
 impl Land {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { repo, flags }
+    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { repo, flags, policy }
     }
 
-    pub async fn land(&self, ref_name: &str, cs_id: Id) -> Result<Landed> {
+    pub async fn land(&self, who: &Principal, ref_name: &str, cs_id: Id) -> Result<Landed> {
         require(self.flags.as_ref(), Flag::Land)?;
         validate_ref_name(ref_name)?;
+        if self.flags.enabled(Flag::Permissions) {
+            require_ref(self.policy.as_ref(), who, ref_name)?;
+        }
         let cs = self.repo.changeset(&cs_id).await?;
         let base = cs.first_parent()?;
         for attempt in 1..=MAX_ATTEMPTS {
@@ -117,8 +123,9 @@ pub fn service(s: Land) -> LandServer<Land> {
 #[tonic::async_trait]
 impl land_server::Land for Land {
     async fn land(&self, req: Request<LandRequest>) -> RpcResult<LandResponse> {
+        let who = principal(&req);
         let r = req.into_inner();
-        let landed = Land::land(self, &r.r#ref, id_from(&r.changeset)?).await.map_err(to_status)?;
+        let landed = Land::land(self, &who, &r.r#ref, id_from(&r.changeset)?).await.map_err(to_status)?;
         Ok(Response::new(LandResponse { landed: landed.id.0.to_vec(), rebased: landed.rebased, attempts: landed.attempts }))
     }
 }

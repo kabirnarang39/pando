@@ -10,6 +10,7 @@ pub fn to_status(e: Error) -> Status {
         Error::Conflict(m) => Status::aborted(m),
         Error::Invalid(m) => Status::invalid_argument(m),
         Error::Corrupt(m) => Status::data_loss(m),
+        Error::PermissionDenied(m) => Status::permission_denied(m),
         Error::Disabled(f) => Status::unimplemented(format!("feature `{f}` is disabled on this server")),
         Error::Storage(e) => {
             tracing::error!(error = %e, "storage failure");

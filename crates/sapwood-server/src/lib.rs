@@ -11,6 +11,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use sapwood_core::Repo;
+use sapwood_core::acl::AccessPolicy;
 use sapwood_core::flags::FeatureFlags;
 use sapwood_core::ports::ObjectStore;
 use tokio::net::TcpListener;
@@ -21,12 +22,12 @@ use crate::auth::{AuthInterceptor, Authenticator};
 use crate::features::*;
 
 /// All slices, served by the authoritative server.
-pub fn authority_routes(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Routes {
+pub fn authority_routes(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Routes {
     let f = || flags.clone();
     Routes::new(objects::service(objects::Objects::new(repo.objects.clone(), f())))
-        .add_service(changesets::service(changesets::Changesets::new(repo.clone(), f())))
-        .add_service(refs::service(refs::Refs::new(repo.clone(), f())))
-        .add_service(land::service(land::Land::new(repo.clone(), f())))
+        .add_service(changesets::service(changesets::Changesets::new(repo.clone(), f(), policy.clone())))
+        .add_service(refs::service(refs::Refs::new(repo.clone(), f(), policy.clone())))
+        .add_service(land::service(land::Land::new(repo.clone(), f(), policy)))
         .add_service(history::service(history::History::new(repo.clone(), f())))
         .add_service(diff::service(diff::Diff::new(repo.clone(), f())))
         .add_service(merge_base::service(merge_base::MergeBase::new(repo.clone(), f())))

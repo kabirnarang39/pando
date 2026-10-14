@@ -21,6 +21,8 @@ bytes.workspace = true
 futures.workspace = true
 object_store.workspace = true
 quick_cache.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 rusqlite = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 tokio.workspace = true

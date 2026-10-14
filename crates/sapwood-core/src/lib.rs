@@ -3,6 +3,7 @@
 //! Everything here is pure domain logic over the ports in [`ports`]; no transport,
 //! database or cloud SDK is referenced. Infrastructure lives in `sapwood-adapters`.
 
+pub mod acl;
 mod derived;
 mod error;
 pub mod flags;

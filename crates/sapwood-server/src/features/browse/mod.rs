@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use sapwood_core::flags::{FeatureFlags, Flag, require};
-use sapwood_core::object::{Kind, Mode, TreeEntry};
+use sapwood_core::object::{Kind, Mode, TreeEntry, decode_object};
 use sapwood_core::{Error, Id, Repo, Result, tree};
 use sapwood_proto::browse_server::{self, BrowseServer};
 use sapwood_proto::{BrowseRequest, DirEntry, FindRequest, FindResponse, ListDirResponse, ReadFileResponse};
@@ -62,8 +62,12 @@ impl Browse {
         let (mut level, mut found, mut visits) = (vec![(String::new(), root)], Vec::new(), 0usize);
         while !level.is_empty() {
             let mut next = Vec::new();
-            for (prefix, id) in level {
-                for e in tree::read_tree(objects, &id).await?.entries {
+            let ids: Vec<Id> = level.iter().map(|(_, id)| *id).collect();
+            let payloads = objects.get_many(&ids).await?;
+            for ((prefix, id), payload) in level.into_iter().zip(payloads) {
+                let payload = payload.ok_or_else(|| Error::not_found(format!("tree {id}")))?;
+                let (_, content) = decode_object(&id, &payload)?;
+                for e in tree::parse_tree(&id, &content)?.entries {
                     visits += 1;
                     let path = if prefix.is_empty() { e.name } else { format!("{prefix}/{}", e.name) };
                     if Mode::parse(e.mode)? == Mode::Dir {

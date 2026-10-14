@@ -10,6 +10,8 @@ pub enum Error {
     Invalid(String),
     #[error("corrupt object: {0}")]
     Corrupt(String),
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
     #[error("feature `{0}` is disabled")]
     Disabled(&'static str),
     #[error("storage: {0}")]

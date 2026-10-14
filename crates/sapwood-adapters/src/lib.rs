@@ -7,7 +7,9 @@
 //! | `RefStore`      | memory, SQLite, Postgres                                        |
 //! | `DerivedStore`  | memory, SQLite, Postgres                                        |
 //! | `FeatureFlags`  | spec string / env (`SAPWOOD_FLAGS`)                             |
+//! | `AccessPolicy`  | JSON rules file (`SAPWOOD_ACL`)                                 |
 
+pub mod acl;
 pub mod cache;
 pub mod cloud;
 pub mod flags;
