@@ -109,3 +109,71 @@ jobs:
           tags: ${{ steps.tags.outputs.list }}
       - name: Smoke test
         run: docker run --rm "ghcr.io/${{ github.repository }}:$TAG" --version
+
+  # Package registries. Each is opt-in through a repository variable (Settings → Secrets and
+  # variables → Actions → Variables) so a release never fails before its registry is set up.
+  crates:
+    needs: publish
+    if: github.event_name == 'push' && vars.PUBLISH_CRATES == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - run: cargo publish --workspace --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  pypi:
+    needs: publish
+    if: github.event_name == 'push' && vars.PUBLISH_PYPI == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing: no token stored in the repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+        working-directory: sdk/python
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with: { packages-dir: sdk/python/dist }
+
+  npm:
+    needs: publish
+    if: github.event_name == 'push' && vars.PUBLISH_NPM == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # provenance attestation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, registry-url: "https://registry.npmjs.org" }
+      - run: npm ci && npm publish --provenance --access public
+        working-directory: sdk/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  homebrew:
+    needs: publish
+    if: github.event_name == 'push' && vars.PUBLISH_HOMEBREW == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: kabirnarang39/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Update the formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" > tap/Formula/sapwood.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "sapwood ${GITHUB_REF_NAME#v}"
+          git push

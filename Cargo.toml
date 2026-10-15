@@ -8,12 +8,16 @@ edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/kabirnarang39/sapwood"
 rust-version = "1.85"
+homepage = "https://kabirnarang39.github.io/sapwood/"
+readme = "README.md"
+keywords = ["vcs", "source-control", "monorepo", "git", "agents"]
+categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-sapwood-core = { path = "crates/sapwood-core" }
-sapwood-adapters = { path = "crates/sapwood-adapters" }
-sapwood-proto = { path = "crates/sapwood-proto" }
-sapwood-server = { path = "crates/sapwood-server" }
+sapwood-core = { path = "crates/sapwood-core", version = "1" }
+sapwood-adapters = { path = "crates/sapwood-adapters", version = "1" }
+sapwood-proto = { path = "crates/sapwood-proto", version = "1" }
+sapwood-server = { path = "crates/sapwood-server", version = "1" }
 anyhow = "1"
 async-trait = "0.1"
 blake3 = "1"

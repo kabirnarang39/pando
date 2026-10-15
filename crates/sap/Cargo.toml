@@ -1,10 +1,17 @@
 [package]
-name = "sap"
-description = "Sapwood command-line client"
+name = "sapwood"
+description = "Sapwood: source control for monorepos at agent scale. Command-line client (`sap`) and git remote helper"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "sap"
 
 [[bin]]
 name = "sap"

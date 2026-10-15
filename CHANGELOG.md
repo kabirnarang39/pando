@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Install with Homebrew: `brew install kabirnarang39/tap/sapwood`.
+- Release workflow publishes to crates.io (`sapwood`, `sapwood-server` and the library
+  crates), PyPI (`sapwood`), npm (`sapwood-client`) and the Homebrew tap, each enabled by a
+  repository variable. CI builds every crate from its packaged tarball.
+
+### Changed
+- The client crate is now named `sapwood` (binaries `sap` and `git-remote-sapwood` are
+  unchanged): `cargo install sapwood`. The protocol files moved to
+  `crates/sapwood-proto/proto/` so the crate can be published.
+
 ### Fixed
 - Linux release binaries are built on Ubuntu 22.04 and need glibc 2.35 or newer (Debian 12,
   Ubuntu 22.04, RHEL 10); they previously needed glibc 2.39.
