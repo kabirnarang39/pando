@@ -1,0 +1,44 @@
+{
+  "name": "sapwood-client",
+  "version": "1.4.0",
+  "description": "TypeScript/Node.js client for Sapwood, source control for monorepos at agent scale",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "proto"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kabirnarang39/sapwood.git",
+    "directory": "sdk/typescript"
+  },
+  "homepage": "https://kabirnarang39.github.io/sapwood/",
+  "keywords": [
+    "source-control",
+    "version-control",
+    "monorepo",
+    "grpc",
+    "sapwood"
+  ],
+  "scripts": {
+    "proto": "mkdir -p proto && cp ../../proto/*.proto proto/",
+    "build": "npm run proto && tsc -p .",
+    "test": "npm run proto && node --test 'test/*.test.ts'"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.8.1",
+    "@noble/hashes": "^2.4.0",
+    "protobufjs": "^8.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

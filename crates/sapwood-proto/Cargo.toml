@@ -11,6 +11,9 @@ prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
 
+[dev-dependencies]
+sapwood-core.workspace = true
+
 [build-dependencies]
 tonic-prost-build.workspace = true
 

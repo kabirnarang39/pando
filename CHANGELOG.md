@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **SDKs for Python, Go and TypeScript** (`sdk/`): read files, list directories, search, log,
+  diff, blame, refs and merge-base without a clone, with BLAKE3 verification of changesets and
+  file contents. Tested in CI against a live server.
+- `proto/sapwood_objects.proto`: the canonical object encodings, published for third-party
+  tools; a test proves it is byte-identical to the core's encoding.
+
 ## [1.4.0] - 2026-10-15
 
 ### Added
