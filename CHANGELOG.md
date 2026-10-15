@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Performance
+- `pandod compact` is incremental: finished changesets are recorded and later runs process
+  only what landed since, instead of rescanning all history.
+- Compaction looks up paths in a cache of parsed trees instead of re-reading and re-parsing
+  every directory level from storage for each changed file.
+
 ## [2.0.0] - 2026-10-15
 
 ### Changed (breaking)
