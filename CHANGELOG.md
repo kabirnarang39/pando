@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-16
+
 ### Added
 - `examples/land_load.rs` and `bench/git_push_load.py`: landing throughput with N
   concurrent agents, for Pando and git.
@@ -205,6 +207,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.1.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.0
 [2.0.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.0.0
 [1.9.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.9.0
 [1.8.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.8.0
