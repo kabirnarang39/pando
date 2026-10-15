@@ -779,3 +779,84 @@ async fn oidc_tokens_authenticate_and_drive_permissions() {
     assert!(as_("ci-token").list_refs().await.is_ok());
     assert!(as_("not-a-token").list_refs().await.is_err());
 }
+
+fn noise(n: usize, seed: u64) -> Vec<u8> {
+    let mut x = seed;
+    (0..n)
+        .map(|_| {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (x >> 56) as u8
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn large_files_are_chunked_streamed_and_deduplicated() {
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    let big = noise(40 << 20, 42); // incompressible, well above the chunking threshold
+    std::fs::create_dir_all(p.join("assets")).unwrap();
+    std::fs::write(p.join("assets/model.bin"), &big).unwrap();
+    write(&p, "small.txt", "small\n");
+    let first = commit::run(r.as_ref(), &mut ws, "add model", "t", &[]).await.unwrap().unwrap();
+    assert!(first.uploaded >= 12, "chunks + manifest + small file: {}", first.uploaded);
+    land::run(r.as_ref(), &mut ws).await.unwrap();
+    assert!(ws.status(&[]).unwrap().is_empty());
+
+    // Server-side read reassembles and verifies.
+    assert_eq!(browse::cat(r.as_ref(), "main", "assets/model.bin").await.unwrap(), big);
+
+    // Fresh clone, directly and through cache + daemon tiers.
+    let d2 = tempfile::tempdir().unwrap();
+    let p2 = d2.path().join("w");
+    let ws2 = clone_into(&c, &p2, &[]).await;
+    assert!(std::fs::read(p2.join("assets/model.bin")).unwrap() == big);
+    assert!(ws2.status(&[]).unwrap().is_empty(), "streamed checkout matches its index");
+    let tier_flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (cache_url, _c1) = spawn(
+        tier_routes(config::cache_store(&c.server, None, 256 << 20).unwrap(), tier_flags.clone()),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let ddir = tempfile::tempdir().unwrap();
+    let daemon = config::daemon_store(&cache_url, None, ddir.path().to_str().unwrap(), 64 << 20).unwrap();
+    let (daemon_url, _c2) = spawn(tier_routes(daemon, tier_flags), Arc::new(AllowAll)).await;
+    let d3 = tempfile::tempdir().unwrap();
+    let via: Arc<dyn Remote> = Arc::new(GrpcRemote::connect(&c.server, Some(&daemon_url), None).unwrap());
+    let cfg =
+        Config { server: c.server.clone(), objects: Some(daemon_url.clone()), ref_name: "main".into(), sparse: vec![] };
+    clone::run(via.as_ref(), &flags(), &d3.path().join("w"), cfg).await.unwrap();
+    assert!(std::fs::read(d3.path().join("w/assets/model.bin")).unwrap() == big);
+
+    // A small edit in the middle re-uploads only the chunks it touches.
+    let mut edited = big.clone();
+    edited.splice(20 << 20..20 << 20, b"patched weights".iter().copied());
+    std::fs::write(p.join("assets/model.bin"), &edited).unwrap();
+    let second = commit::run(r.as_ref(), &mut ws, "patch model", "t", &[]).await.unwrap().unwrap();
+    assert!(second.uploaded <= 4, "only changed chunks + manifest uploaded, got {}", second.uploaded);
+    land::run(r.as_ref(), &mut ws).await.unwrap();
+    let mut ws2 = ws2;
+    sync::run(r.as_ref(), &mut ws2, None).await.unwrap();
+    assert!(std::fs::read(p2.join("assets/model.bin")).unwrap() == edited);
+
+    // A manifest that lies about its id is refused by the server.
+    let mut chunks = Vec::new();
+    let (_, manifest) = sapwood_core::chunked::chunk_reader(&noise(9 << 20, 7)[..], |id, p| {
+        chunks.push((id, p));
+        Ok(())
+    })
+    .unwrap();
+    let objects = r.objects();
+    objects.put_many(chunks).await.unwrap();
+    let err = objects.put_many(vec![(sapwood_core::Id([9; 32]), manifest)]).await.unwrap_err().to_string();
+    assert!(err.contains("does not match"), "{err}");
+
+    // git export carries the large file byte-for-byte.
+    let g = tempfile::tempdir().unwrap();
+    git::export(r.as_ref(), &flags(), "main", g.path(), "main").await.unwrap();
+    git_cmd(g.path(), &["checkout", "-q", "main"]);
+    assert!(std::fs::read(g.path().join("assets/model.bin")).unwrap() == edited);
+}

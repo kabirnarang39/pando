@@ -9,8 +9,9 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use bytes::Bytes;
+use sapwood_core::chunked::{CHUNK_THRESHOLD, chunk_reader, read_content};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
-use sapwood_core::object::{Changeset, FileChange, Kind, Mode, decode_object, encode_object};
+use sapwood_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
 use sapwood_core::path::components;
 use sapwood_core::{Id, paths_overlap};
 
@@ -32,8 +33,29 @@ pub struct ImportOutcome {
 
 /// Parsed stream events with blobs already compressed and hashed (on the parser thread).
 enum Item {
-    Blob { mark: u64, id: Id, payload: Bytes },
+    /// `objects`: the blob itself, or its chunks followed by its manifest.
+    Blob {
+        mark: u64,
+        id: Id,
+        objects: Vec<(Id, Bytes)>,
+    },
     Commit(GitCommit),
+}
+
+/// Objects that store one file's content: a single blob, or (for large files) its
+/// chunks followed by the manifest, in upload order.
+pub fn encode_blob(data: &[u8]) -> Result<(Id, Vec<(Id, Bytes)>)> {
+    if (data.len() as u64) < CHUNK_THRESHOLD {
+        let (id, payload) = encode_object(Kind::Blob, data);
+        return Ok((id, vec![(id, payload)]));
+    }
+    let mut objects = Vec::new();
+    let (id, manifest) = chunk_reader(data, |cid, payload| {
+        objects.push((cid, payload));
+        Ok(())
+    })?;
+    objects.push((id, manifest));
+    Ok((id, objects))
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String> {
@@ -88,8 +110,7 @@ pub async fn import(
             let item = match p.next_event() {
                 Ok(None) => return,
                 Ok(Some(Event::Blob { mark, data })) => {
-                    let (id, payload) = encode_object(Kind::Blob, &data);
-                    Ok(Item::Blob { mark, id, payload })
+                    encode_blob(&data).map(|(id, objects)| Item::Blob { mark, id, objects })
                 }
                 Ok(Some(Event::Commit(c))) => Ok(Item::Commit(c)),
                 Ok(Some(Event::Reset { .. })) => continue,
@@ -111,10 +132,10 @@ pub async fn import(
 
     while let Some(item) = rx.recv().await {
         match item? {
-            Item::Blob { mark, id, payload } => {
+            Item::Blob { mark, id, objects } => {
                 blob_marks.insert(mark, id);
-                pending_bytes += payload.len();
-                pending.push((id, payload));
+                pending_bytes += objects.iter().map(|(_, p)| p.len()).sum::<usize>();
+                pending.extend(objects);
                 out.blobs += 1;
                 if pending_bytes >= UPLOAD_FLUSH_BYTES {
                     out.uploaded += upload(remote, &std::mem::take(&mut pending)).await?;
@@ -288,7 +309,8 @@ pub async fn export(
             .collect();
         for chunk in new_blobs.chunks(512) {
             for (id, payload) in chunk.iter().zip(objects.get_many(chunk).await?) {
-                let (_, content) = decode_object(id, &payload.with_context(|| format!("blob {id} missing"))?)?;
+                let payload = payload.with_context(|| format!("blob {id} missing"))?;
+                let (_, content) = read_content(objects.as_ref(), id, &payload).await?;
                 w.blob(next_mark, &content)?;
                 blob_marks.insert(*id, next_mark);
                 next_mark += 1;

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::Stream;
+use sapwood_core::chunked::{is_manifest, verify_manifest};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{MAX_OBJECT_BYTES, decode_object};
 use sapwood_core::ports::ObjectStore;
@@ -43,6 +44,9 @@ impl Objects {
         if items.is_empty() {
             return Ok(());
         }
+        // Large-file manifests are verified after the ordinary objects of the same batch are
+        // stored, by streaming their chunks and hashing the reassembled file against its id.
+        let (manifests, items): (Vec<_>, Vec<_>) = items.into_iter().partition(|(_, p)| is_manifest(p));
         let items = tokio::task::spawn_blocking(move || {
             for (id, payload) in &items {
                 // Compressed size can only exceed the bound for incompressible junk.
@@ -55,7 +59,11 @@ impl Objects {
         })
         .await
         .map_err(|e| Error::Storage(e.into()))??;
-        self.store.put_many(items).await
+        self.store.put_many(items).await?;
+        for (id, payload) in &manifests {
+            verify_manifest(self.store.as_ref(), id, payload).await?;
+        }
+        self.store.put_many(manifests).await
     }
 }
 

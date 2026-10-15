@@ -228,9 +228,10 @@ async fn run() -> Result<()> {
             let remote = ws_remote(&ws, token)?;
             match commit::run(remote.as_ref(), &mut ws, &message, &sap::default_author(), &paths).await? {
                 Some(c) => println!(
-                    "committed {} ({} files); run `sap land` to land on {}",
+                    "committed {} ({} files, {} new objects uploaded); run `sap land` to land on {}",
                     c.id.short(),
                     c.files,
+                    c.uploaded,
                     ws.config.ref_name
                 ),
                 None => println!("nothing to commit"),

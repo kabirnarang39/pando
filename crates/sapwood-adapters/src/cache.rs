@@ -2,7 +2,7 @@
 //!
 //! * [`BoundedCache`]: memory-bounded object cache (quick_cache: sharded, CLOCK-Pro style
 //!   eviction that resists scans, weighted by payload bytes).
-//! * [`Tiered`]: read-through/write-through composition of a local store with an
+//! * [`Tiered`]: read-through/write-around composition of a local store with an
 //!   upstream store.
 //! * [`CachedLog`] / [`CachedDerived`]: memory caches for immutable metadata. Server, regional cache and node daemon are all just different
 //!   `(local, upstream)` pairs behind the same `Objects` RPC.
@@ -74,8 +74,8 @@ impl TierStats {
     }
 }
 
-/// Read-through, write-through tier. Objects are immutable, so there is no
-/// invalidation: a cached object is correct forever.
+/// Read-through, write-around tier. Objects are immutable, so there is no invalidation:
+/// a cached object is correct forever.
 pub struct Tiered {
     pub local: Arc<dyn ObjectStore>,
     pub upstream: Arc<dyn ObjectStore>,
@@ -94,10 +94,15 @@ impl ObjectStore for Tiered {
         Ok(self.get_many(std::slice::from_ref(id)).await?.pop().flatten())
     }
 
+    /// Write-around: writes go to the authority only and the local tier fills on reads, so
+    /// a large upload never evicts the hot set other readers depend on.
     async fn put(&self, id: Id, payload: Bytes) -> Result<()> {
-        // Upstream first: an acknowledged write must be durable at the authority.
-        self.upstream.put(id, payload.clone()).await?;
-        self.local.put(id, payload).await
+        self.upstream.put(id, payload).await
+    }
+
+    /// Batches stay batches (one transaction / round trip upstream).
+    async fn put_many(&self, items: Vec<(Id, Bytes)>) -> Result<()> {
+        self.upstream.put_many(items).await
     }
 
     async fn has(&self, id: &Id) -> Result<bool> {

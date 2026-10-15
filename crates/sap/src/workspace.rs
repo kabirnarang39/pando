@@ -12,6 +12,7 @@ use anyhow::{Context, Result, bail};
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt, stream};
 use prost::Message;
+use sapwood_core::chunked::{CHUNK_THRESHOLD, is_manifest};
 use sapwood_core::object::{FileChange, Kind, Mode, decode_object, encode_object};
 use sapwood_core::path::{META_DIR, components};
 use sapwood_core::ports::ObjectStore;
@@ -114,6 +115,24 @@ fn read_entry(abs: &Path) -> Result<(Mode, Vec<u8>, fs::Metadata)> {
     }
     let content = fs::read(abs).with_context(|| format!("read {}", abs.display()))?;
     Ok((if is_exec(&meta) { Mode::Exec } else { Mode::File }, content, meta))
+}
+
+/// Blob id of a working file without loading it: files are hashed as a stream, so
+/// status stays memory-flat for multi-gigabyte files.
+fn hash_entry(abs: &Path) -> Result<(Mode, Id)> {
+    let meta = fs::symlink_metadata(abs).with_context(|| format!("stat {}", abs.display()))?;
+    if meta.file_type().is_symlink() {
+        let target = fs::read_link(abs)?.to_string_lossy().into_owned();
+        return Ok((Mode::Symlink, Id::hash(Kind::Blob as u8, target.as_bytes())));
+    }
+    let file = fs::File::open(abs).with_context(|| format!("read {}", abs.display()))?;
+    let id = Id::hash_reader(Kind::Blob as u8, file)?;
+    Ok((if is_exec(&meta) { Mode::Exec } else { Mode::File }, id))
+}
+
+/// Is `path` a regular file large enough to be stored as chunks?
+pub fn is_large(abs: &Path) -> bool {
+    fs::symlink_metadata(abs).is_ok_and(|m| m.is_file() && m.len() >= CHUNK_THRESHOLD)
 }
 
 /// Is `path` covered by the sparse prefixes?
@@ -295,12 +314,7 @@ impl Workspace {
                 .chunks(chunk)
                 .map(|part| {
                     s.spawn(move || -> Result<Vec<(Mode, Id)>> {
-                        part.iter()
-                            .map(|p| {
-                                let (mode, content, _) = read_entry(&self.abs(p))?;
-                                Ok((mode, Id::hash(Kind::Blob as u8, &content)))
-                            })
-                            .collect()
+                        part.iter().map(|p| hash_entry(&self.abs(p))).collect()
                     })
                 })
                 .collect();
@@ -312,7 +326,8 @@ impl Workspace {
         })
     }
 
-    /// Compress local files into object payloads (parallel), for upload.
+    /// Compress small local files into object payloads (parallel), for upload. Large files
+    /// (see [`is_large`]) are streamed by the commit path instead.
     pub fn encode_files(&self, paths: &[String]) -> Result<Vec<(Id, Bytes)>> {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let chunk = paths.len().div_ceil(threads).max(1);
@@ -324,12 +339,6 @@ impl Workspace {
                         part.iter()
                             .map(|p| {
                                 let (_, content, _) = read_entry(&self.abs(p))?;
-                                if content.len() as u64 > sapwood_core::object::MAX_OBJECT_BYTES {
-                                    bail!(
-                                        "{p}: larger than the {} MiB object limit",
-                                        sapwood_core::object::MAX_OBJECT_BYTES >> 20
-                                    );
-                                }
                                 Ok(encode_object(Kind::Blob, &content))
                             })
                             .collect()
@@ -377,18 +386,29 @@ impl Workspace {
                 async move {
                     let ids: Vec<Id> = batch.iter().map(|(_, _, id)| *id).collect();
                     let payloads = objects.get_many(&ids).await?;
-                    tokio::task::spawn_blocking(move || -> Result<Vec<(String, Mode, Id)>> {
-                        for ((path, mode, id), payload) in batch.iter().zip(payloads) {
-                            let payload = payload.with_context(|| format!("object {id} for `{path}` not found"))?;
-                            let (kind, content) = decode_object(id, &payload)?;
+                    let mut small = Vec::new();
+                    let mut large = Vec::new();
+                    for (item, payload) in batch.iter().cloned().zip(payloads) {
+                        let payload =
+                            payload.with_context(|| format!("object {} for `{}` not found", item.2, item.0))?;
+                        if is_manifest(&payload) { large.push((item, payload)) } else { small.push((item, payload)) }
+                    }
+                    let root2 = root.clone();
+                    tokio::task::spawn_blocking(move || -> Result<()> {
+                        for ((path, mode, id), payload) in &small {
+                            let (kind, content) = decode_object(id, payload)?;
                             if kind != Kind::Blob {
                                 bail!("{path}: expected blob");
                             }
-                            write_file(&root, path, *mode, &content)?;
+                            write_file(&root2, path, *mode, &content)?;
                         }
-                        Ok(batch)
+                        Ok(())
                     })
-                    .await?
+                    .await??;
+                    for ((path, mode, id), payload) in &large {
+                        write_large_file(objects.as_ref(), &root, path, *mode, id, payload).await?;
+                    }
+                    Ok::<_, anyhow::Error>(batch)
                 }
             })
             .buffer_unordered(FETCH_CONCURRENCY)
@@ -465,13 +485,64 @@ fn ensure_parents(root: &Path, rel: &str) -> Result<PathBuf> {
     Ok(cur)
 }
 
-pub fn write_file(root: &Path, rel: &str, mode: Mode, content: &[u8]) -> Result<()> {
+/// Create parents and clear whatever occupies `rel` (file, symlink or directory) so the
+/// new file is created fresh: nothing is ever written through an existing symlink.
+fn prepare_target(root: &Path, rel: &str) -> Result<PathBuf> {
     let abs = ensure_parents(root, rel)?;
     match fs::symlink_metadata(&abs) {
         Ok(m) if m.is_dir() => fs::remove_dir_all(&abs)?,
-        Ok(_) => fs::remove_file(&abs)?, // never write through an existing symlink
+        Ok(_) => fs::remove_file(&abs)?,
         Err(_) => {}
     }
+    Ok(abs)
+}
+
+#[cfg(unix)]
+fn set_exec(abs: &Path, mode: Mode) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if mode == Mode::Exec {
+        fs::set_permissions(abs, fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+#[cfg(not(unix))]
+fn set_exec(_: &Path, _: Mode) -> Result<()> {
+    Ok(())
+}
+
+/// Reassemble a chunked file into a temporary file beside its destination, verifying every
+/// chunk and the whole-file id, then move it into place. Memory stays at one chunk batch.
+async fn write_large_file(
+    objects: &dyn ObjectStore,
+    root: &Path,
+    rel: &str,
+    mode: Mode,
+    id: &Id,
+    manifest: &[u8],
+) -> Result<()> {
+    if mode == Mode::Symlink || mode == Mode::Dir {
+        bail!("{rel}: a chunked object must be a regular file");
+    }
+    let abs = ensure_parents(root, rel)?;
+    let tmp = abs.with_file_name(format!(".sapwood-partial-{}", id.short()));
+    let result = async {
+        let mut out = std::io::BufWriter::with_capacity(1 << 20, fs::File::create(&tmp)?);
+        sapwood_core::chunked::write_content(objects, id, manifest, &mut out).await?;
+        std::io::Write::flush(&mut out)?;
+        drop(out);
+        let abs = prepare_target(root, rel)?;
+        fs::rename(&tmp, &abs)?;
+        set_exec(&abs, mode)
+    }
+    .await;
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+pub fn write_file(root: &Path, rel: &str, mode: Mode, content: &[u8]) -> Result<()> {
+    let abs = prepare_target(root, rel)?;
     match mode {
         Mode::Symlink => {
             let target = std::str::from_utf8(content).context("symlink target is not UTF-8")?;
@@ -482,11 +553,7 @@ pub fn write_file(root: &Path, rel: &str, mode: Mode, content: &[u8]) -> Result<
         }
         Mode::File | Mode::Exec => {
             fs::write(&abs, content)?;
-            #[cfg(unix)]
-            if mode == Mode::Exec {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(&abs, fs::Permissions::from_mode(0o755))?;
-            }
+            set_exec(&abs, mode)?;
         }
         Mode::Dir => bail!("{rel}: cannot write a directory as a file"),
     }
