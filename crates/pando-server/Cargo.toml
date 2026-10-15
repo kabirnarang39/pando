@@ -1,0 +1,46 @@
+[package]
+name = "pando-server"
+description = "Pando server, regional cache and node daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "pandod"
+path = "src/main.rs"
+
+[dependencies]
+pando-core.workspace = true
+pando-adapters.workspace = true
+pando-proto.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+clap.workspace = true
+futures.workspace = true
+metrics.workspace = true
+jsonwebtoken.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
+metrics-exporter-prometheus.workspace = true
+mimalloc.workspace = true
+quick_cache.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tonic-reflection.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+similar.workspace = true
+
+[dev-dependencies]
+base64 = "0.23"
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
+tempfile.workspace = true

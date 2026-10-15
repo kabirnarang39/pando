@@ -1,6 +1,6 @@
 /target
-/sapwood-data
-/sapwood-daemon
+/pando-data
+/pando-daemon
 *.db
 *.db-shm
 *.db-wal

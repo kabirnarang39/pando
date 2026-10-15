@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed (breaking)
+- **Sapwood is now Pando.** Named after the Pando aspen grove: some 47,000 trunks that share
+  one root system. What changed, and what to do:
+  - Binaries: `sap` → `pando`, `sapwood` → `pandod`, `git-remote-sapwood` → `git-remote-pando`
+    (git URLs `pando::https://…`).
+  - Environment variables: `SAPWOOD_*` → `PANDO_*`; `SAP_SERVER`, `SAP_TOKEN`, `SAP_AUTHOR`,
+    `SAP_OBJECTS` → `PANDO_SERVER`, `PANDO_TOKEN`, `PANDO_AUTHOR`, `PANDO_OBJECTS`.
+  - Workspaces live in `.pando/` instead of `.sap/`: clone existing workspaces again.
+  - Wire protocol package `sapwood.v1` → `pando.v1`: upgrade clients and servers together.
+  - Packages: crates `pando-vcs` (CLI), `pando-core`, `pando-adapters`, `pando-proto`,
+    `pando-server`; PyPI `pando-vcs` (import `pando`); npm `pando-vcs`; Go module
+    `github.com/kabirnarang39/pando/sdk/go/v2`; image `ghcr.io/kabirnarang39/pando`;
+    Homebrew `kabirnarang39/tap/pando`.
+- **Stored data carries over unchanged**: object ids, changesets and SQLite databases are
+  identical, and Postgres/CockroachDB tables named `sapwood_*` are renamed on first start.
+
+### Fixed
+- `pando import-git` accepts merges that list the same parent twice, which git allows and
+  the Linux kernel's history contains four of; the repeated parent is imported once.
+
 ## [1.9.0] - 2026-10-15
 
 ### Added

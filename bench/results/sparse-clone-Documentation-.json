@@ -225,8 +225,8 @@
       }
     },
     {
-      "command": "sap clone http://127.0.0.1:7420 s-sparse --path Documentation",
-      "name": "sapwood",
+      "command": "pando clone http://127.0.0.1:7420 s-sparse --path Documentation",
+      "name": "pando",
       "measurements": [
         {
           "time_wall_clock": {

@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+// Pando wire protocol. Every object request names an immutable, content-addressed
+// object, so any tier (server, regional cache, node daemon) can answer it.
+package pando.v1;
+
+message Empty {}
+message IdMsg { bytes id = 1; }
+message IdList { repeated bytes ids = 1; }
+
+// Object payload exactly as stored: 1 kind byte followed by zstd-compressed content.
+// Receivers verify id == blake3(kind || content) before trusting it.
+message ObjectPayload {
+  bytes id = 1;
+  bytes payload = 2;
+}
+message PutObjectsResponse { uint32 stored = 1; }
+
+// Tier-agnostic object service. Served identically by server, cache and daemon.
+service Objects {
+  rpc Get(IdList) returns (stream ObjectPayload);
+  rpc Put(stream ObjectPayload) returns (PutObjectsResponse);
+  // Returns the subset of ids the tier cannot serve.
+  rpc Missing(IdList) returns (IdList);
+}
+
+message FileChange {
+  string path = 1;
+  bytes blob = 2; // empty => delete
+  int32 mode = 3;
+}
+
+message ChangesetInfo {
+  bytes id = 1;
+  bytes root_tree = 2;
+  uint64 generation = 3;
+  // Canonical changeset encoding; clients may re-hash it to verify `id`.
+  bytes encoded = 4;
+  // Changes outside the caller's read scope were removed, so `encoded` no longer hashes
+  // to `id` and cannot be verified by the client.
+  bool redacted = 5;
+}
+
+message CreateChangesetRequest {
+  repeated bytes parents = 1;
+  repeated FileChange changes = 2;
+  string author = 3;
+  string message = 4;
+  int64 timestamp_ms = 5;
+}
+
+message ResolveRequest { string rev = 1; }
+
+service Changesets {
+  rpc Create(CreateChangesetRequest) returns (ChangesetInfo);
+  rpc Get(ResolveRequest) returns (ChangesetInfo);
+}
+
+message RefName { string name = 1; }
+message RefValue { bool exists = 1; bytes id = 2; }
+message CasRequest {
+  string name = 1;
+  bool expect_exists = 2;
+  bytes expected = 3;
+  bytes new = 4;
+}
+message CasResponse { bool swapped = 1; }
+message RefEntry { string name = 1; bytes id = 2; }
+message RefList { repeated RefEntry refs = 1; }
+
+service Refs {
+  rpc Get(RefName) returns (RefValue);
+  rpc CompareAndSwap(CasRequest) returns (CasResponse);
+  rpc List(Empty) returns (RefList);
+}
+
+message LandRequest {
+  string ref = 1;
+  bytes changeset = 2;
+}
+message LandResponse {
+  bytes landed = 1;
+  bool rebased = 2;
+  uint32 attempts = 3;
+}
+
+// Server-side rebase + lock-free compare-and-swap of a ref.
+service Land {
+  rpc Land(LandRequest) returns (LandResponse);
+}
+
+message LogRequest {
+  string rev = 1;
+  string path = 2;
+  uint32 limit = 3;
+}
+
+message BlameRequest {
+  string rev = 1;
+  string path = 2;
+}
+message BlameLine {
+  // Changeset that last changed this line.
+  bytes changeset = 1;
+  string text = 2;
+}
+message BlameResponse { repeated BlameLine lines = 1; }
+
+service History {
+  rpc Log(LogRequest) returns (stream ChangesetInfo);
+  rpc Blame(BlameRequest) returns (BlameResponse);
+}
+
+message DiffRequest {
+  string from = 1;
+  string to = 2;
+}
+message DiffResponse { repeated FileChange changes = 1; }
+
+service Diff {
+  rpc Diff(DiffRequest) returns (DiffResponse);
+}
+
+message MergeBaseRequest {
+  string a = 1;
+  string b = 2;
+}
+message MergeBaseResponse { bool found = 1; bytes id = 2; }
+
+service MergeBase {
+  rpc MergeBase(MergeBaseRequest) returns (MergeBaseResponse);
+}
+
+message BrowseRequest {
+  string rev = 1;
+  string path = 2;
+}
+message DirEntry {
+  string name = 1;
+  int32 mode = 2;
+  bytes id = 3;
+}
+message ListDirResponse { repeated DirEntry entries = 1; }
+message ReadFileResponse { bytes content = 1; int32 mode = 2; bytes id = 3; }
+
+message FindRequest {
+  string rev = 1;
+  // Case-sensitive substring matched against full repo paths.
+  string pattern = 2;
+  uint32 limit = 3;
+}
+message FindResponse {
+  repeated string paths = 1;
+  bool truncated = 2;
+}
+
+message CheckoutRequest {
+  string rev = 1;
+  // Paths (files or directories) to materialise; empty = everything readable.
+  repeated string paths = 2;
+}
+// Files are streamed in pieces of at most 4 MiB; every piece names its file, and the
+// last piece of a file has `last` set. Clients verify each file's content against `id`.
+message CheckoutPiece {
+  string path = 1;
+  int32 mode = 2;
+  bytes id = 3;
+  bytes data = 4;
+  bool last = 5;
+}
+
+// API-first file access: CI and tools read source without any checkout.
+service Browse {
+  rpc ListDir(BrowseRequest) returns (ListDirResponse);
+  rpc ReadFile(BrowseRequest) returns (ReadFileResponse);
+  rpc Find(FindRequest) returns (FindResponse);
+  // Path-scoped checkout: only files the caller may read. Used by principals with
+  // restricted read access, who may not read objects by id.
+  rpc Checkout(CheckoutRequest) returns (stream CheckoutPiece);
+}
+
+message WhoAmIResponse {
+  string principal = 1;
+  bool full_read = 2;
+  repeated string read_prefixes = 3;
+}
+
+service Access {
+  rpc WhoAmI(Empty) returns (WhoAmIResponse);
+}

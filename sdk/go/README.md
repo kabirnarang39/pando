@@ -1,9 +1,9 @@
-# Sapwood Go client
+# Pando Go client
 
 ```go
-import sapwood "github.com/kabirnarang39/sapwood/sdk/go"
+import pando "github.com/kabirnarang39/pando/sdk/go/v2"
 
-c, _ := sapwood.New("http://127.0.0.1:7420", "")
+c, _ := pando.New("http://127.0.0.1:7420", "")
 defer c.Close()
 data, _ := c.ReadFile(ctx, "main", "src/lib.rs")
 log, _ := c.Log(ctx, "main", "src", 10)

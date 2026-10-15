@@ -1,4 +1,4 @@
-package sapwood
+package pando
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// Runs against a seeded server: eval "$(../test-server.sh)" (sets SAPWOOD_URL).
+// Runs against a seeded server: eval "$(../test-server.sh)" (sets PANDO_URL).
 func client(t *testing.T) *Client {
-	url := os.Getenv("SAPWOOD_URL")
+	url := os.Getenv("PANDO_URL")
 	if url == "" {
-		t.Skip("SAPWOOD_URL not set (start ../test-server.sh)")
+		t.Skip("PANDO_URL not set (start ../test-server.sh)")
 	}
 	c, err := New(url, "")
 	if err != nil {

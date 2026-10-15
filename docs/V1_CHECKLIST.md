@@ -27,7 +27,7 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] `cargo audit` clean
 - [x] Docker image builds; `docker compose up` topology serves a clone end to end
 - [x] Benchmarks run and published (`bench/results/RESULTS.md`)
-- [x] Dogfood: Sapwood's own history imported, a change landed through `sap`, exported back to git with identical tree (commit `docs: dogfood marker landed through sap` in this repo's history)
+- [x] Dogfood: Pando's own history imported, a change landed through `pando`, exported back to git with identical tree (commit `docs: dogfood marker landed through pando` in this repo's history)
 
 ## Repository
 - [x] README, ARCHITECTURE, DECISIONS (ADRs), ROADMAP, comparisons
@@ -36,4 +36,4 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] CI and release workflows (5 targets + multi-arch GHCR image)
 - [x] Public GitHub repository, CI green, v1.0.0 tag and release published (5 platform binaries + checksums, multi-arch GHCR image); v1.0.1 patch released
 
-<!-- dogfood: this line was landed through sap itself -->
+<!-- dogfood: this line was landed through pando itself -->

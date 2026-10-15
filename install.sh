@@ -1,17 +1,17 @@
 #!/bin/sh
-# Install the latest Sapwood release (sap + sapwood) for macOS or Linux.
+# Install the latest Pando release (pando + pandod) for macOS or Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/kabirnarang39/sapwood/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/kabirnarang39/pando/main/install.sh | sh
 #
 # Environment:
-#   SAPWOOD_VERSION   release tag to install (default: latest), e.g. v1.0.1
-#   SAPWOOD_INSTALL   install directory (default: ~/.local/bin)
+#   PANDO_VERSION   release tag to install (default: latest), e.g. v1.0.1
+#   PANDO_INSTALL   install directory (default: ~/.local/bin)
 set -eu
 
-REPO="kabirnarang39/sapwood"
-DEST="${SAPWOOD_INSTALL:-$HOME/.local/bin}"
+REPO="kabirnarang39/pando"
+DEST="${PANDO_INSTALL:-$HOME/.local/bin}"
 
-fail() { echo "sapwood install: $*" >&2; exit 1; }
+fail() { echo "pando install: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "'$1' is required"; }
 need curl
 need tar
@@ -28,13 +28,13 @@ case "$(uname -m)" in
   *) fail "unsupported architecture $(uname -m)" ;;
 esac
 
-version="${SAPWOOD_VERSION:-}"
+version="${PANDO_VERSION:-}"
 if [ -z "$version" ]; then
   version="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)"
   [ -n "$version" ] || fail "could not determine the latest release"
 fi
 
-name="sapwood-$version-$arch-$os"
+name="pando-$version-$arch-$os"
 url="https://github.com/$REPO/releases/download/$version/$name.tar.gz"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -53,13 +53,13 @@ fi
 
 tar xzf "$tmp/$name.tar.gz" -C "$tmp"
 mkdir -p "$DEST"
-for bin in sap sapwood git-remote-sapwood; do
+for bin in pando pandod git-remote-pando; do
   # Releases before v1.1 do not include the git bridge.
   [ -f "$tmp/$name/$bin" ] || continue
   install -m 0755 "$tmp/$name/$bin" "$DEST/$bin"
 done
 
-echo "Installed Sapwood $version to $DEST (sap, sapwood, git-remote-sapwood)"
+echo "Installed Pando $version to $DEST (pando, pandod, git-remote-pando)"
 case ":$PATH:" in
   *":$DEST:"*) ;;
   *) echo "Add $DEST to your PATH, for example: export PATH=\"$DEST:\$PATH\"" ;;

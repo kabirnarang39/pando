@@ -1,4 +1,4 @@
-module github.com/kabirnarang39/sapwood/sdk/go
+module github.com/kabirnarang39/pando/sdk/go/v2
 
 go 1.25.0
 

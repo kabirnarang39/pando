@@ -1,6 +1,6 @@
-# Contributing to Sapwood
+# Contributing to Pando
 
-Thanks for helping. Sapwood aims to stay small, fast and correct, so contributions are
+Thanks for helping. Pando aims to stay small, fast and correct, so contributions are
 held to a few concrete rules.
 
 ## Setup
@@ -14,21 +14,21 @@ cargo test --workspace       # unit, property, contract and end-to-end tests
 Optional, for the database adapters:
 
 ```sh
-docker run -d -p 55432:5432 -e POSTGRES_PASSWORD=sapwood -e POSTGRES_DB=sapwood postgres:17-alpine
-SAPWOOD_TEST_POSTGRES_URL=postgres://postgres:sapwood@localhost:55432/sapwood \
-  cargo test -p sapwood-adapters --test contract
+docker run -d -p 55432:5432 -e POSTGRES_PASSWORD=pando -e POSTGRES_DB=pando postgres:17-alpine
+PANDO_TEST_POSTGRES_URL=postgres://postgres:pando@localhost:55432/pando \
+  cargo test -p pando-adapters --test contract
 ```
 
 ## Where code goes
 
-* **Domain logic** → `crates/sapwood-core`. No I/O, no transport.
-* **Infrastructure** → a new adapter in `crates/sapwood-adapters` implementing a port.
+* **Domain logic** → `crates/pando-core`. No I/O, no transport.
+* **Infrastructure** → a new adapter in `crates/pando-adapters` implementing a port.
   It must pass `tests/contract.rs`; add your adapter to that file.
-* **A server feature** → a new slice in `crates/sapwood-server/src/features/<name>/`
-  owning its use case, gRPC handler and feature flag (`sapwood_core::flags::Flag`).
-* **A client feature** → `crates/sap/src/features/<name>.rs`, returning data; printing
+* **A server feature** → a new slice in `crates/pando-server/src/features/<name>/`
+  owning its use case, gRPC handler and feature flag (`pando_core::flags::Flag`).
+* **A client feature** → `crates/pando/src/features/<name>.rs`, returning data; printing
   belongs in `main.rs`.
-* **Protocol changes** → `crates/sapwood-proto/proto/sapwood.proto`. v1 is stable: add fields and RPCs, never
+* **Protocol changes** → `crates/pando-proto/proto/pando.proto`. v1 is stable: add fields and RPCs, never
   renumber or change the meaning of existing ones.
 
 ## Before opening a PR
@@ -40,12 +40,12 @@ cargo test --workspace
 ```
 
 * Every behaviour change comes with a test that fails without it.
-* Performance-sensitive changes include before/after numbers (`cargo bench -p sapwood-core`
+* Performance-sensitive changes include before/after numbers (`cargo bench -p pando-core`
   or `bench/run.sh`).
 * Keep commits focused; use [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `perf:`, `docs:`...).
 
 ## Reporting bugs
 
-Open an issue with the `sap --version` / `sapwood --version` output, the command, what
+Open an issue with the `pando --version` / `pando --version` output, the command, what
 you expected and what happened. Security issues: see [SECURITY.md](SECURITY.md).

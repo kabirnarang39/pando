@@ -1,17 +1,17 @@
 [project]
-name = "sapwood"
-version = "1.9.0"
-description = "Python client for Sapwood, source control for monorepos at agent scale"
+name = "pando-vcs"
+version = "2.0.0"
+description = "Python client for Pando, source control for monorepos at agent scale"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = ["grpcio>=1.66", "protobuf>=5.28", "blake3>=1.0"]
-keywords = ["source-control", "version-control", "monorepo", "grpc", "sapwood"]
+keywords = ["source-control", "version-control", "monorepo", "grpc", "pando"]
 classifiers = ["Programming Language :: Python :: 3", "Topic :: Software Development :: Version Control"]
 
 [project.urls]
-Homepage = "https://kabirnarang39.github.io/sapwood/"
-Repository = "https://github.com/kabirnarang39/sapwood"
+Homepage = "https://kabirnarang39.github.io/pando/"
+Repository = "https://github.com/kabirnarang39/pando"
 
 [dependency-groups]
 dev = ["pytest>=8", "grpcio-tools>=1.66"]
@@ -21,4 +21,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sapwood"]
+packages = ["src/pando"]

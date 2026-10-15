@@ -1,7 +1,7 @@
-# sapwood-client (TypeScript / Node.js)
+# pando-client (TypeScript / Node.js)
 
 ```ts
-import { Client } from "sapwood-client";
+import { Client } from "pando-client";
 
 const repo = new Client("http://127.0.0.1:7420");
 console.log((await repo.readFile("src/lib.rs")).toString());

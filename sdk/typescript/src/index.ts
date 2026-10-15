@@ -1,4 +1,4 @@
-// TypeScript/Node.js client for Sapwood (https://github.com/kabirnarang39/sapwood).
+// TypeScript/Node.js client for Pando (https://github.com/kabirnarang39/pando).
 // Read files, list directories, search and inspect history at any revision without cloning.
 // Changeset and file contents are verified against their BLAKE3 ids.
 
@@ -44,16 +44,16 @@ export class Client {
   constructor(url: string, token?: string) {
     const u = new URL(url);
     const creds = u.protocol === "https:" ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
-    const def = protoLoader.loadSync(path.join(PROTO_DIR, "sapwood.proto"), {
+    const def = protoLoader.loadSync(path.join(PROTO_DIR, "pando.proto"), {
       keepCase: true, longs: Number, enums: Number, defaults: true, includeDirs: [PROTO_DIR],
     });
-    const v1 = (grpc.loadPackageDefinition(def) as any).sapwood.v1;
+    const v1 = (grpc.loadPackageDefinition(def) as any).pando.v1;
     const opts = { "grpc.max_receive_message_length": MAX_MESSAGE, "grpc.max_send_message_length": MAX_MESSAGE };
     for (const name of ["Browse", "History", "Changesets", "Diff", "Refs", "MergeBase", "Access"]) {
       this.#svc[name] = new v1[name](u.host, creds, opts);
     }
     if (token) this.#md.set("authorization", `Bearer ${token}`);
-    this.#objects = protobuf.loadSync(path.join(PROTO_DIR, "sapwood_objects.proto"));
+    this.#objects = protobuf.loadSync(path.join(PROTO_DIR, "pando_objects.proto"));
   }
 
   close(): void {
@@ -70,7 +70,7 @@ export class Client {
     if (!info.redacted && !idOf(3, encoded).equals(info.id)) {
       throw new IntegrityError(`changeset ${hex(info.id)} does not match its content`);
     }
-    const Cs = this.#objects.lookupType("sapwood.objects.v1.Changeset");
+    const Cs = this.#objects.lookupType("pando.objects.v1.Changeset");
     const cs: any = Cs.toObject(Cs.decode(encoded), { longs: Number, enums: Number, defaults: true });
     return {
       id: hex(info.id),

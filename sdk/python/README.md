@@ -1,10 +1,10 @@
-# sapwood (Python)
+# pando (Python)
 
-Python client for [Sapwood](https://github.com/kabirnarang39/sapwood): read files, list
+Python client for [Pando](https://github.com/kabirnarang39/pando): read files, list
 directories, search, and inspect history at any revision without cloning.
 
 ```python
-from sapwood import Client
+from pando import Client
 
 repo = Client("http://127.0.0.1:7420", token=None)
 print(repo.read_file("src/lib.rs").decode())

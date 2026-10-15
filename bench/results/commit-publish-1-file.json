@@ -225,8 +225,8 @@
       }
     },
     {
-      "command": "bash -c 'cd s && sap commit -m bench >/dev/null && sap land >/dev/null'",
-      "name": "sapwood",
+      "command": "bash -c 'cd s && pando commit -m bench >/dev/null && pando land >/dev/null'",
+      "name": "pando",
       "measurements": [
         {
           "time_wall_clock": {

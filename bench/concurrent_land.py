@@ -3,7 +3,7 @@
 to the same branch at the same time.
 
 git:     commit, push; on rejection fetch + rebase and retry (the standard agent loop).
-Sapwood: commit, land (the server rebases; no client retry loop).
+Pando: commit, land (the server rebases; no client retry loop).
 
 Prints a markdown section with wall time, merges/second and client-side retries.
 """
@@ -41,8 +41,8 @@ def sap_worker(path, wid, k, stats, lock):
         os.makedirs(os.path.join(path, "bench-concurrency"), exist_ok=True)
         with open(os.path.join(path, name), "w") as f:
             f.write(f"{wid} {j}\n")
-        run(["sap", "commit", "-m", f"w{wid} {j}"], cwd=path)
-        out = run(["sap", "land"], cwd=path).stdout
+        run(["pando", "commit", "-m", f"w{wid} {j}"], cwd=path)
+        out = run(["pando", "land"], cwd=path).stdout
         if "rebased" in out:
             with lock:
                 stats["server_rebases"] += 1
@@ -63,7 +63,7 @@ def timed(worker, paths, k):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--git-url", required=True)
-    ap.add_argument("--sap-url", required=True)
+    ap.add_argument("--pando-url", required=True)
     ap.add_argument("--work", required=True)
     ap.add_argument("--agents", type=int, default=16)
     ap.add_argument("--each", type=int, default=5)
@@ -80,7 +80,7 @@ def main():
         run(["git", "clone", "-q", "--depth", "1", remote, g])
         git_paths.append(g)
         s = os.path.join(base, f"s{i}")
-        run(["sap", "clone", a.sap_url, s, "--path", "bench-concurrency"])
+        run(["pando", "clone", a.sap_url, s, "--path", "bench-concurrency"])
         sap_paths.append(s)
 
     merges = a.agents * a.each
@@ -89,7 +89,7 @@ def main():
     print()
     print(f"## Concurrent publishing: {a.agents} agents x {a.each} changes = {merges} merges to one branch")
     print()
-    print("| | git (push / fetch+rebase retry) | Sapwood (land) |")
+    print("| | git (push / fetch+rebase retry) | Pando (land) |")
     print("|---|---:|---:|")
     print(f"| Wall time | {g_time:.1f} s | {s_time:.1f} s |")
     print(f"| Throughput | {merges / g_time:.1f} merges/s | {merges / s_time:.1f} merges/s |")

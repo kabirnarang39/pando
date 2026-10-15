@@ -1,11 +1,11 @@
-// Runs against a seeded server: eval "$(../test-server.sh)" (sets SAPWOOD_URL).
+// Runs against a seeded server: eval "$(../test-server.sh)" (sets PANDO_URL).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "../src/index.ts";
 
-const url = process.env.SAPWOOD_URL;
+const url = process.env.PANDO_URL;
 
-test("reads, history, diff, blame against a live server", { skip: !url && "SAPWOOD_URL not set" }, async () => {
+test("reads, history, diff, blame against a live server", { skip: !url && "PANDO_URL not set" }, async () => {
   const c = new Client(url!);
   try {
     assert.equal((await c.readFile("src/lib.rs")).toString(), "pub fn answer() -> u32 { 42 }\n");

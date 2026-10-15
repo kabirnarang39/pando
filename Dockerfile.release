@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1
 # Release image: packages the binaries already built (natively, per architecture) by the
 # release workflow, so a multi-arch image needs no emulated compilation.
-# Context layout: dist/<amd64|arm64>/{sapwood,sap,git-remote-sapwood}, dist/data (empty).
+# Context layout: dist/<amd64|arm64>/{pandod,pando,git-remote-pando}, dist/data (empty).
 
 FROM gcr.io/distroless/cc-debian13:nonroot
 ARG TARGETARCH
-COPY dist/${TARGETARCH}/sapwood dist/${TARGETARCH}/sap dist/${TARGETARCH}/git-remote-sapwood /usr/local/bin/
+COPY dist/${TARGETARCH}/pandod dist/${TARGETARCH}/pando dist/${TARGETARCH}/git-remote-pando /usr/local/bin/
 COPY --chown=65532:65532 dist/data /data
 WORKDIR /data
 VOLUME /data
 # 7420 server, 7421 regional cache, 7422 node daemon, 9420 Prometheus metrics
 EXPOSE 7420 7421 7422 9420
-ENTRYPOINT ["/usr/local/bin/sapwood"]
+ENTRYPOINT ["/usr/local/bin/pandod"]
 CMD ["server", "--listen", "0.0.0.0:7420", "--metadata", "sqlite:///data/meta.db", "--metrics", "0.0.0.0:9420"]

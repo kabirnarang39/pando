@@ -3,21 +3,21 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.9.0"
+version = "2.0.0"
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://github.com/kabirnarang39/sapwood"
+repository = "https://github.com/kabirnarang39/pando"
 rust-version = "1.85"
-homepage = "https://kabirnarang39.github.io/sapwood/"
+homepage = "https://kabirnarang39.github.io/pando/"
 readme = "README.md"
 keywords = ["vcs", "source-control", "monorepo", "git", "agents"]
 categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-sapwood-core = { path = "crates/sapwood-core", version = "1" }
-sapwood-adapters = { path = "crates/sapwood-adapters", version = "1" }
-sapwood-proto = { path = "crates/sapwood-proto", version = "1" }
-sapwood-server = { path = "crates/sapwood-server", version = "1" }
+pando-core = { path = "crates/pando-core", version = "2" }
+pando-adapters = { path = "crates/pando-adapters", version = "2" }
+pando-proto = { path = "crates/pando-proto", version = "2" }
+pando-server = { path = "crates/pando-server", version = "2" }
 anyhow = "1"
 async-trait = "0.1"
 blake3 = "1"

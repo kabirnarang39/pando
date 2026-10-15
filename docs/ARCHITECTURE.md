@@ -1,9 +1,9 @@
 # Architecture
 
-Sapwood is a client/server source control system designed around one observation: when
+Pando is a client/server source control system designed around one observation: when
 humans and AI agents merge tens of thousands of changes a day into one monorepo, the
 expensive operations of git (full clones, client-side history, pushing whole packfiles,
-merge queues behind a global lock) become the bottleneck. Sapwood moves history, commits,
+merge queues behind a global lock) become the bottleneck. Pando moves history, commits,
 merges and rebases to the server, keeps clients thin, and makes every read an API call.
 
 ## Topology
@@ -11,11 +11,11 @@ merges and rebases to the server, keeps clients thin, and makes every read an AP
 ```mermaid
 flowchart LR
   subgraph node["Build node / dev machine / agent sandbox"]
-    sap1["sap (CLI / MCP)"] -->|objects| daemon["sapwood daemon\nmemory + disk"]
+    sap1["pando (CLI / MCP)"] -->|objects| daemon["pandod daemon\nmemory + disk"]
     sap2["CI job"] -->|objects| daemon
   end
-  daemon -->|objects| cache["sapwood cache\n(regional, memory)"]
-  cache -->|objects| server["sapwood server\n(authoritative)"]
+  daemon -->|objects| cache["pandod cache\n(regional, memory)"]
+  cache -->|objects| server["pandod server\n(authoritative)"]
   sap1 -->|metadata RPCs| server
   sap2 -->|metadata RPCs| server
   server --> meta[("Metadata\nSQLite | Postgres | CockroachDB")]
@@ -49,7 +49,7 @@ two trees only descends into subtrees whose ids differ.
 ## Feature slices (vertical slicing)
 
 Each feature owns its use case, its transport adapter and its feature flag, and depends
-only on the domain kernel (`sapwood_core::Repo`), never on another slice.
+only on the domain kernel (`pando_core::Repo`), never on another slice.
 
 | Slice (server) | RPCs | Flag |
 |---|---|---|
@@ -67,18 +67,18 @@ Client slices: `clone`, `commit`, `land`, `sync`/`checkout`, `diff`, `browse`, `
 (import/export, flags `git-import` / `git-export`), `mcp`; sparse checkout is flagged by
 `sparse-checkout`.
 
-Flags are read from `SAPWOOD_FLAGS`, e.g. `SAPWOOD_FLAGS="land=off,git-import=on"`. All
+Flags are read from `PANDO_FLAGS`, e.g. `PANDO_FLAGS="land=off,git-import=on"`. All
 flags default to on. The flag source is a port (`FeatureFlags`), so a flag service can
 replace the env adapter.
 
 ## Ports and adapters (clean architecture)
 
 ```
-sapwood-core      domain + ports (no I/O, no transport)       <- depends on nothing
-sapwood-adapters  memory, SQLite, Postgres, object_store, caches, gRPC upstream, flags, ACL rules
-sapwood-proto     wire protocol (gRPC)
-sapwood-server    slices + composition root (config.rs) + binary
-sap               client slices + Remote port + CLI + MCP
+pando-core      domain + ports (no I/O, no transport)       <- depends on nothing
+pando-adapters  memory, SQLite, Postgres, object_store, caches, gRPC upstream, flags, ACL rules
+pando-proto     wire protocol (gRPC)
+pando-server    slices + composition root (config.rs) + binary
+pando               client slices + Remote port + CLI + MCP
 ```
 
 | Port | Purpose | Adapters |
@@ -93,7 +93,7 @@ sap               client slices + Remote port + CLI + MCP
 | `Remote` (client) | server access | `GrpcRemote` |
 
 Every adapter of a port passes the same contract test suite
-(`crates/sapwood-adapters/tests/contract.rs`), including a 16-writer CAS linearizability
+(`crates/pando-adapters/tests/contract.rs`), including a 16-writer CAS linearizability
 test, which is what makes adapters substitutable rather than merely type-compatible.
 
 ## Landing without a global lock
@@ -120,7 +120,7 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   receives it from upstream, and when a client materialises it. A tier never caches a
   corrupt object.
 * Decompression is capped (256 MiB per object) against zip bombs.
-* All paths are validated at every trust boundary (`..`, `.sap`, separators, NUL).
+* All paths are validated at every trust boundary (`..`, `.pando`, separators, NUL).
 * The client never writes through a symlink: every parent directory is checked with
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
@@ -146,7 +146,7 @@ implement the `LandCheck` port.
 
 ## Virtual checkouts
 
-`sap mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The
+`pando mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The
 platform-independent `VirtualTree` maps inodes to tree entries and loads each directory on first
 access; the FUSE adapter only translates kernel requests. A file's size comes from its zstd frame
 header or large-file manifest, so `ls -l` downloads no content, and a read of a chunked file
@@ -162,7 +162,7 @@ if the upstream cache is unreachable.
 
 ## Delta storage
 
-`sapwood compact` re-stores each blob version as a zstd delta against the previous version
+`pandod compact` re-stores each blob version as a zstd delta against the previous version
 of the same path (single writer, lease-protected, safe to run while serving). Reads go
 through `DeltaObjects`, which reconstructs chains on the blocking pool and verifies the
 result's BLAKE3 id, so nothing above the storage layer ever sees a delta. See ADR-014 for
@@ -179,19 +179,19 @@ ordinary blob objects and stored under the file's own id as a manifest
 trees, diffs and the git bridge are unaware of chunking. Editing part of a large file
 re-uploads only the chunks it touches, and identical chunks dedupe across files and versions.
 
-Nothing holds a whole large file in memory: `sap status` hashes files as streams, `sap commit`
+Nothing holds a whole large file in memory: `pando status` hashes files as streams, `pando commit`
 chunks on a worker thread and uploads through a bounded channel, and checkout reassembles
 into a temporary file (verifying every chunk and the whole-file id) before an atomic rename.
 The server verifies an uploaded manifest by streaming its chunks against the id; caches can
-only check structure, and clients verify end to end. Measured on a 1 GiB file: `sap commit`
-peaks at 195 MB, `sap clone` at 125 MB.
+only check structure, and clients verify end to end. Measured on a 1 GiB file: `pando commit`
+peaks at 195 MB, `pando clone` at 125 MB.
 
 ## Performance notes
 
 * BLAKE3 (SIMD) for ids, zstd level 3 for storage, mimalloc in both binaries.
 * Object fetches are batched (512-1024 ids per round trip) and pipelined (8 batches in
   flight); servers stream responses with bounded buffers (backpressure).
-* `sap status` uses size+mtime against the index and hashes only candidates, in parallel
+* `pando status` uses size+mtime against the index and hashes only candidates, in parallel
   on all cores; the walker is ripgrep's (`ignore`) and honours `.gitignore`/`.sapignore`.
 * SQLite runs in WAL mode with one writer and a pool of readers; Postgres batches use
   `UNNEST`/`ANY` for single-round-trip multi-row operations.

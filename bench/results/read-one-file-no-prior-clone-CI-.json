@@ -225,8 +225,8 @@
       }
     },
     {
-      "command": "sap cat main Makefile",
-      "name": "sapwood",
+      "command": "pando cat main Makefile",
+      "name": "pando",
       "measurements": [
         {
           "time_wall_clock": {

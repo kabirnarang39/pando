@@ -16,14 +16,14 @@ separately so nobody discovers them in production.
 | 6 | Code review | `find` fetched trees one by one despite its doc comment | Implementation drift | Batched `get_many` per tree level | `clone_commit_land_sync_roundtrip` |
 | 7 | Running the docker-compose topology | Server logged the Postgres URL **including its password**; `--help` could print env values | Raw URLs passed to the logger; clap shows env values by default | `config::redact` on every logged URL; `hide_env_values` on URL args | `redacts_credentials` |
 | 8 | First CI run | S3 job could not start | MinIO no longer publishes community images | SeaweedFS (Apache-2.0) for CI and compose; adapter unchanged | CI `s3` job |
-| 10 | Delta-storage test suite (after v1.0.0) | `sap commit` rejected a file replaced by a same-named directory | Client sent delete + upsert for overlapping paths, which the server rightly treats as ambiguous | Drop the redundant delete on the client (fixed in **v1.0.1**) | `file_and_directory_swaps_commit_cleanly` |
+| 10 | Delta-storage test suite (after v1.0.0) | `pando commit` rejected a file replaced by a same-named directory | Client sent delete + upsert for overlapping paths, which the server rightly treats as ambiguous | Drop the redundant delete on the client (fixed in **v1.0.1**) | `file_and_directory_swaps_commit_cleanly` |
 | 9 | Benchmarks | `log -- path` and `blame` slower than git | Every history step re-read and decoded the changeset from storage | Memory caches for immutable changesets and derived data (`CachedLog`, `CachedDerived`) | `cached_metadata_decorators`; log 6x faster than git after fix |
 
 ## Delta storage (unreleased, PR) review
 
 | # | Found by | Symptom | Root cause | Fix | Guarded by |
 |---|---|---|---|---|---|
-| D1 | Design review before coding | Write-time delta encoding on several replicas could form A→B / B→A cycles (unreadable data) | No cross-replica ordering | Conversion only in a single-writer, lease-protected `sapwood compact`; live servers only read | `compaction_preserves_every_version_and_shrinks_storage` (lease) |
+| D1 | Design review before coding | Write-time delta encoding on several replicas could form A→B / B→A cycles (unreadable data) | No cross-replica ordering | Conversion only in a single-writer, lease-protected `pandod compact`; live servers only read | `compaction_preserves_every_version_and_shrinks_storage` (lease) |
 | D2 | Unit test | "10x smaller" assertion passed for the wrong reason | Test data compressible on its own | Incompressible LCG data; assertion now proves the delta effect (>100x) | `encode_apply_roundtrip_and_compression` |
 | D3 | e2e test | Deltas only 2x smaller | zstd prefix matching without long-distance matching | Measured 7 settings; level 3 + LDM: 1,405 → 41 bytes at the same speed | ADR-014 measurements |
 | D4 | Compacting git/git (82k commits) | "delta chain longer than the maximum depth" | A base converted *after* something depended on it made depth headers stale (reverts/copies) | Pin bases before use; pinned objects are never converted; readers tolerate 5x the cap | `compaction_never_converts_a_base_that_others_depend_on` |
@@ -34,7 +34,7 @@ separately so nobody discovers them in production.
 
 | # | Found by | Symptom | Root cause | Fix | Guarded by |
 |---|---|---|---|---|---|
-| B1 | e2e (concurrent push) | `git pull` after a server-rebased push failed: "Not updating refs/sapwood/... does not contain ..." | git records the pushed commit in the helper's private ref; the server's rebased tip is its sibling | Import stream declares `feature force` (private refs mirror the server; user branches untouched) | `git_bridge_clone_push_pull_and_concurrent_push` |
+| B1 | e2e (concurrent push) | `git pull` after a server-rebased push failed: "Not updating refs/pando/... does not contain ..." | git records the pushed commit in the helper's private ref; the server's rebased tip is its sibling | Import stream declares `feature force` (private refs mirror the server; user branches untouched) | `git_bridge_clone_push_pull_and_concurrent_push` |
 | B2 | Cloning git/git's history through the bridge | Two files had the wrong case | macOS `core.ignorecase=true` makes fast-import fold case-only renames | Commits containing a case-only rename are emitted as `deleteall` + full tree | case-rename step in the bridge e2e (fails without the fix) |
 
 ## Verified properties
