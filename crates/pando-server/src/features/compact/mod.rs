@@ -88,6 +88,9 @@ pub struct Compactor {
     /// Parsed trees. Consecutive changesets share almost all of their trees, so path
     /// lookups are served from memory instead of re-reading and re-parsing each level.
     trees: Cache<Id, Entries>,
+    /// Delta chain below each object (its base, the base's base, ...). Chains never change
+    /// once something depends on them (pinning), so each is read from storage once per run.
+    chains: Cache<Id, Arc<Vec<Id>>>,
 }
 
 impl Compactor {
@@ -99,6 +102,7 @@ impl Compactor {
             flags,
             contents: Cache::with_weighter(16_384, budget, ContentWeight),
             trees: Cache::new(65_536),
+            chains: Cache::new(262_144),
         }
     }
 
@@ -245,19 +249,29 @@ impl Compactor {
         Ok(c)
     }
 
-    /// Does `needle` appear in the delta chain starting at `start` (stored as `payload`)?
-    async fn chain_contains(&self, mut payload: bytes::Bytes, needle: Id) -> Result<bool> {
-        for _ in 0..delta::READ_DEPTH_LIMIT {
-            if !delta::is_delta(&payload) {
-                return Ok(false);
+    /// The objects below `id` (stored as `payload`) in its delta chain, nearest first.
+    async fn chain(&self, id: Id, mut payload: bytes::Bytes) -> Result<Arc<Vec<Id>>> {
+        if let Some(c) = self.chains.get(&id) {
+            return Ok(c);
+        }
+        let mut below = Vec::new();
+        let mut tail: Arc<Vec<Id>> = Arc::default();
+        while delta::is_delta(&payload) {
+            if below.len() >= delta::READ_DEPTH_LIMIT {
+                return Err(Error::Corrupt("delta chain longer than the maximum depth".into()));
             }
             let (base, _, _) = delta::parse(&payload)?;
-            if base == needle {
-                return Ok(true);
+            below.push(base);
+            if let Some(c) = self.chains.get(&base) {
+                tail = c;
+                break;
             }
             payload = self.raw.get(&base).await?.ok_or_else(|| Error::Corrupt(format!("missing delta base {base}")))?;
         }
-        Err(Error::Corrupt("delta chain longer than the maximum depth".into()))
+        below.extend(tail.iter().copied());
+        let chain = Arc::new(below);
+        self.chains.insert(id, chain.clone());
+        Ok(chain)
     }
 
     async fn pair(&self, base: Id, target: Id, stats: &mut CompactStats) -> Result<()> {
@@ -287,7 +301,8 @@ impl Compactor {
             stats.skipped_depth += 1;
             return Ok(());
         }
-        if self.chain_contains(bp.clone(), target).await? {
+        let base_chain = self.chain(base, bp.clone()).await?;
+        if base == target || base_chain.contains(&target) {
             stats.skipped_cycle += 1;
             return Ok(());
         }
@@ -320,6 +335,9 @@ impl Compactor {
         // Pin first: a crash between pin and replace leaves a harmless extra pin.
         self.repo.derived.put(PIN_KIND, base, bytes::Bytes::from_static(b"1")).await?;
         if self.raw.replace(target, encoded.clone().into()).await? {
+            let mut chain = vec![base];
+            chain.extend(base_chain.iter().copied());
+            self.chains.insert(target, Arc::new(chain));
             stats.converted += 1;
             stats.trees_converted += (kind == Kind::Tree) as u64;
             stats.bytes_before += tp.len() as u64;
