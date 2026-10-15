@@ -202,6 +202,22 @@ pub async fn lookup(store: &dyn ObjectStore, root: Id, path: &str) -> Result<Opt
     Ok(Some(cur))
 }
 
+/// The entry at each prefix of `path` under `root`: element k is the entry for the first
+/// k+1 components, None from the first missing component or non-directory on.
+pub async fn trail(store: &dyn ObjectStore, root: Id, path: &str) -> Result<Vec<Option<(Mode, Id)>>> {
+    let parts = components_or_root(path)?;
+    let mut out = Vec::with_capacity(parts.len());
+    let mut cur = Some((Mode::Dir, root));
+    for part in parts {
+        cur = match cur {
+            Some((Mode::Dir, id)) => to_entries(read_tree(store, &id).await?)?.remove(part),
+            _ => None,
+        };
+        out.push(cur);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
