@@ -21,11 +21,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use sapwood_core::Id;
+use sapwood_core::chunked::read_content;
 use sapwood_core::flags::{FeatureFlags, Flag, require};
-use sapwood_core::object::{FileChange, Kind, Mode, decode_object, encode_object};
+use sapwood_core::object::{FileChange, Mode};
 
 use crate::features::commit::upload;
-use crate::features::git::{ImportOutcome, import_commit};
+use crate::features::git::{ImportOutcome, encode_blob, import_commit};
 use crate::gitfe::{Event, InlineOp, Parser, Writer};
 use crate::remote::Remote;
 use crate::workspace::list_files;
@@ -237,7 +238,7 @@ impl<'a> Bridge<'a> {
                 let mut contents: HashMap<Id, Vec<u8>> = HashMap::new();
                 for (id, p) in blob_ids.iter().zip(payloads) {
                     let p = p.with_context(|| format!("blob {id} missing on server"))?;
-                    contents.insert(*id, decode_object(id, &p)?.1);
+                    contents.insert(*id, read_content(objects.as_ref(), id, &p).await?.1);
                 }
                 let ops: Vec<InlineOp> = changes
                     .iter()
@@ -290,10 +291,10 @@ impl<'a> Bridge<'a> {
         while let Some(event) = parser.next_event()? {
             match event {
                 Event::Blob { mark, data } => {
-                    let (id, payload) = encode_object(Kind::Blob, &data);
+                    let (id, objects) = encode_blob(&data)?;
                     blobs.insert(mark, id);
                     marks.entries.insert(mark, ('b', id));
-                    pending.push((id, payload));
+                    pending.extend(objects);
                 }
                 Event::Commit(c) => {
                     upload(self.remote, &std::mem::take(&mut pending)).await?;

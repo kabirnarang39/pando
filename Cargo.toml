@@ -49,6 +49,7 @@ mimalloc = "0.1"
 ignore = "0.4"
 url = "2"
 similar = "3"
+fastcdc = "5"
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

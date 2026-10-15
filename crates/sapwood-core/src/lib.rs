@@ -4,6 +4,7 @@
 //! database or cloud SDK is referenced. Infrastructure lives in `sapwood-adapters`.
 
 pub mod acl;
+pub mod chunked;
 mod derived;
 mod error;
 pub mod flags;

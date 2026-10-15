@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Large files**: files of 8 MiB or more are stored as FastCDC chunks plus a manifest under
+  the file's own id, removing the 256 MiB file limit. Status hashing, commit upload, checkout
+  and sync all stream; chunks dedupe across files and versions; the server verifies uploaded
+  manifests against the file id and clients verify reassembled content end to end. Large git
+  blobs are chunked on `import-git` and on `git push` through the bridge.
+- `sap commit` reports how many new objects were uploaded.
+
+### Performance
+- Tiered storage is now write-around and forwards batched writes upstream intact (one
+  SQLite transaction per batch instead of per object): a 1 GiB commit went from 29 s to 14 s,
+  and large uploads no longer evict the server's hot read cache.
+
 ## [1.2.0] - 2026-10-15
 
 ### Added

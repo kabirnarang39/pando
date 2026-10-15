@@ -125,6 +125,21 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Large files
+
+Files of 8 MiB or more are split with FastCDC (content-defined, ~1 MiB average chunks) into
+ordinary blob objects and stored under the file's own id as a manifest
+(`0x03 | size | [(chunk id, length)]`). The file id is still BLAKE3 of the whole content, so
+trees, diffs and the git bridge are unaware of chunking. Editing part of a large file
+re-uploads only the chunks it touches, and identical chunks dedupe across files and versions.
+
+Nothing holds a whole large file in memory: `sap status` hashes files as streams, `sap commit`
+chunks on a worker thread and uploads through a bounded channel, and checkout reassembles
+into a temporary file (verifying every chunk and the whole-file id) before an atomic rename.
+The server verifies an uploaded manifest by streaming its chunks against the id; caches can
+only check structure, and clients verify end to end. Measured on a 1 GiB file: `sap commit`
+peaks at 195 MB, `sap clone` at 125 MB.
+
 ## Performance notes
 
 * BLAKE3 (SIMD) for ids, zstd level 3 for storage, mimalloc in both binaries.

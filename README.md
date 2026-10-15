@@ -155,6 +155,8 @@ sap (CLI/MCP) ──objects──▶ daemon (node) ──▶ cache (region) ─�
   each owns its use case, gRPC handler and **feature flag** (`SAPWOOD_FLAGS=land=off`).
 * **Ports and adapters**: every infrastructure detail is a trait; every adapter passes the
   same contract test suite.
+* **Large files**: content-defined chunking (FastCDC) with streaming upload and checkout;
+  a 1 GiB file commits in 195 MB of memory, and an edit re-uploads only the changed chunks.
 * **Security**: bearer tokens (constant-time), TLS, per-directory write ACLs, per-ref ACLs,
   hash verification at every tier, symlink-safe working-copy writes.
 * **Operations**: Prometheus metrics, JSON logs, gRPC health + reflection, graceful shutdown.

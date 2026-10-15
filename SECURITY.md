@@ -28,5 +28,5 @@ You will receive an acknowledgement within 72 hours and a fix timeline after tri
   by a tier from upstream, and when materialised by a client.
 * **Client filesystem safety**: paths are validated (`..`, `.sap`, separators, NUL) and no
   write follows a symlink, so a malicious tree cannot write outside the working copy.
-* **Resource limits**: per-object size cap (256 MiB) with bounded decompression; bounded
+* **Resource limits**: per-object size cap (256 MiB; larger files are chunked) with bounded decompression; bounded
   ids per request, history scan, find and blame work per request.
