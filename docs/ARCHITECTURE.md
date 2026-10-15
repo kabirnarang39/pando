@@ -98,21 +98,33 @@ test, which is what makes adapters substitutable rather than merely type-compati
 
 ## Landing without a global lock
 
+Lands to the same ref queue up inside a server process. Whoever takes the ref's turn lands
+everything queued as one batch:
+
 ```
-loop:
-  head = refs.get(ref)
-  if changeset.parent == head: candidate = changeset
+head = refs.get(ref)
+for each queued changeset, concurrently:          (reads only; depends on head alone)
+  already in head's history?                      -> lands as is
+  require parent is an ancestor of head           (O(log n) jump pointers)
+  record the entries along each changed path in root(parent)
+tip = head
+for each queued changeset, in order:              (reads staged, in-memory data)
+  if parent == tip: candidate = changeset
   else:
-     require parent is an ancestor of head            (O(log n) jump pointers)
-     theirs = diff_trees(root(parent), root(head))     (cost ∝ size of their changes)
-     conflict if any of our paths overlaps theirs with a different change
-     candidate = create_changeset(parents=[head], same changes)
-  if refs.compare_and_swap(ref, head, candidate): done
-  else retry (someone else landed first)
+    conflict if, along any of our paths, root(parent) and root(tip) differ
+      (unless tip already holds exactly our change)
+    candidate = create_changeset(parents=[tip], same changes)   (staged in memory)
+  tip = candidate                                 (a conflicting change fails alone)
+write everything staged; refs.compare_and_swap(ref, head, tip)
+  (lost only to another server replica: redo the batch on its head)
 ```
 
-There is no merge queue: concurrent lands that touch disjoint paths all succeed, each
-retry costs one small tree diff, and ref updates are single-row conditional writes.
+There is no merge queue to wait in and no client retry loop: concurrent lands that touch
+disjoint paths all succeed. The conflict check walks only the changeset's own paths, so its
+cost does not grow with the number of changes that landed since the changeset's base. One
+compare-and-swap moves the ref for the whole batch; between server replicas that swap is
+still the only coordination. On SQLite, one writer thread commits whatever writes have
+queued as a single transaction (group commit).
 
 ## Integrity and safety
 
