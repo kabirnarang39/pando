@@ -19,6 +19,10 @@ bytes.workspace = true
 clap.workspace = true
 futures.workspace = true
 metrics.workspace = true
+jsonwebtoken.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
 metrics-exporter-prometheus.workspace = true
 mimalloc.workspace = true
 tokio = { workspace = true, features = ["signal"] }
@@ -32,4 +36,6 @@ tracing-subscriber.workspace = true
 similar.workspace = true
 
 [dev-dependencies]
+base64 = "0.23"
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
 tempfile.workspace = true

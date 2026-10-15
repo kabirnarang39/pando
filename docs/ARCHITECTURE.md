@@ -89,7 +89,7 @@ sap               client slices + Remote port + CLI + MCP
 | `DerivedStore` | derived data cache | memory, SQLite, Postgres |
 | `FeatureFlags` | flags | `SpecFlags` (env) |
 | `AccessPolicy` | write/ref permissions | `RulesPolicy` (JSON), `AllowAllPolicy` |
-| `Authenticator` | identity | `StaticTokens`, `AllowAll` |
+| `Authenticator` | identity | `StaticTokens`, `OidcAuthenticator` (JWT/JWKS), `FirstMatch`, `AllowAll` |
 | `Remote` (client) | server access | `GrpcRemote` |
 
 Every adapter of a port passes the same contract test suite

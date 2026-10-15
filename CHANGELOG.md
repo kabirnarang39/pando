@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **SSO via OpenID Connect** (`--oidc-issuer`, `--oidc-audience`, `--oidc-claim`, flag `oidc`):
+  JWT bearer tokens verified against the issuer's JWKS with discovery and automatic key
+  rotation. Asymmetric algorithms only, algorithm must match the key, `iss`/`aud`/`exp`
+  required. The principal claim feeds per-directory and per-ref permissions. Static tokens
+  and OIDC can be used together.
+
 ## [1.1.0] - 2026-10-15
 
 ### Added
