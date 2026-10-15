@@ -609,7 +609,9 @@ async fn file_and_directory_swaps_commit_cleanly() {
 /// Run git with the remote helper on PATH. Returns (success, stdout, stderr).
 fn git_bridge(dir: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, String, String) {
     let helper_dir = Path::new(env!("CARGO_BIN_EXE_git-remote-sapwood")).parent().unwrap().to_owned();
-    let path = format!("{}:{}", helper_dir.display(), std::env::var("PATH").unwrap_or_default());
+    let mut dirs = vec![helper_dir];
+    dirs.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+    let path = std::env::join_paths(dirs).unwrap();
     let mut cmd = std::process::Command::new("git");
     cmd.current_dir(dir)
         .args(args)
