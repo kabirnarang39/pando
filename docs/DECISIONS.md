@@ -33,8 +33,7 @@ changes; every tier ships stored bytes as-is with no recompression.
 are computed by the generic derived-data mechanism.
 **Alternatives.** git-style commits pointing at a full tree.
 **Why.** Changeset creation cost scales with change size; derived data can be computed
-eagerly or lazily and re-defined without touching clients. Matches the design Anthropic
-described for Scion.
+eagerly or lazily and re-defined without touching clients.
 
 ## ADR-005: gRPC (tonic) over HTTP/2
 
@@ -47,8 +46,8 @@ in Python/Go/TS can call the API), reflection and health checking out of the box
 ## ADR-006: Lock-free landing via CAS + server-side rebase
 
 **Decision.** Refs move only by compare-and-swap; the server rebases on conflict-free races.
-**Alternatives.** Merge queue with a global lock (serialises all merges; Anthropic reports
-removing exactly this); client-side rebase + push retry loop (git; each retry is a fetch).
+**Alternatives.** Merge queue with a global lock (serialises all merges; large monorepo operators
+report removing exactly this); client-side rebase + push retry loop (git; each retry is a fetch).
 **Why.** Throughput scales with disjointness of changes, not with a lock.
 
 ## ADR-007: Ports and adapters with contract tests
@@ -63,7 +62,7 @@ touching features; the contract suite turns "implements the trait" into "behaves
 **Decision.** Default deployment is a single binary with SQLite (WAL). Postgres (and
 Postgres-wire databases such as CockroachDB) for multi-replica deployments. Objects may
 live in the metadata DB or in any `object_store` backend (S3, GCS, Azure, local).
-**Alternatives.** Spanner only (Scion's choice; not available to most users); FoundationDB
+**Alternatives.** Spanner only (not available to most users); FoundationDB
 (excellent, but operationally rare); RocksDB (single-node only, no SQL ops tooling).
 **Why.** Zero-setup start, standard managed services for scale, one adapter for every cloud.
 
