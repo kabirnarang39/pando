@@ -9,6 +9,9 @@ Server-side commits · lock-free landing · tiered caches · API-first reads · 
 [![CI](https://github.com/kabirnarang39/sapwood/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/sapwood/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![Release](https://img.shields.io/github/v/release/kabirnarang39/sapwood)](https://github.com/kabirnarang39/sapwood/releases)
+
+**[Website](https://kabirnarang39.github.io/sapwood/)** · **[Benchmarks](docs/comparisons/git-vs-sapwood.md)** · **[Architecture](docs/ARCHITECTURE.md)**
 
 </div>
 
@@ -74,8 +77,10 @@ Full results, methodology and the cases where git wins: [docs/comparisons/git-vs
 ## Quick start
 
 ```sh
-# 1. Install (or download a release binary)
-cargo install --git https://github.com/kabirnarang39/sapwood sap sapwood-server
+# 1. Install (macOS, Linux; verifies the release checksum). Windows: download the .zip from Releases.
+curl -fsSL https://raw.githubusercontent.com/kabirnarang39/sapwood/main/install.sh | sh
+#    or: docker run -p 7420:7420 ghcr.io/kabirnarang39/sapwood:latest
+#    or: cargo install --git https://github.com/kabirnarang39/sapwood sap sapwood-server
 
 # 2. Run a server (SQLite by default)
 sapwood server --listen 127.0.0.1:7420 &
@@ -96,6 +101,20 @@ Production topology (Postgres + S3 + regional cache + node daemon) in one comman
 docker compose up -d
 sap clone http://localhost:7420 work --objects http://localhost:7422
 ```
+
+## Or keep using plain git
+
+With `git-remote-sapwood` on your `PATH` (the installer puts it there), git talks to a
+Sapwood server directly:
+
+```sh
+git clone sapwood::http://127.0.0.1:7420 repo
+git push        # lands on the server; if main moved, the server rebases instead of rejecting
+git pull --rebase
+```
+
+Fetches are incremental. Set `SAPWOOD_PUSH=strict` to get git's reject-if-behind behaviour.
+Teams can adopt Sapwood one person at a time: git users and `sap` users share the same branch.
 
 ## git → sap cheat sheet
 

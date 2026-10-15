@@ -20,10 +20,11 @@ pub enum Flag {
     Search,
     Permissions,
     DeltaStorage,
+    GitBridge,
 }
 
 impl Flag {
-    pub const ALL: [Flag; 15] = [
+    pub const ALL: [Flag; 16] = [
         Flag::Objects,
         Flag::Changesets,
         Flag::Refs,
@@ -39,6 +40,7 @@ impl Flag {
         Flag::Search,
         Flag::Permissions,
         Flag::DeltaStorage,
+        Flag::GitBridge,
     ];
 
     pub fn key(self) -> &'static str {
@@ -58,6 +60,7 @@ impl Flag {
             Flag::Search => "search",
             Flag::Permissions => "permissions",
             Flag::DeltaStorage => "delta-storage",
+            Flag::GitBridge => "git-bridge",
         }
     }
 

@@ -1,5 +1,6 @@
 //! Sapwood client library. `main.rs` is a thin CLI over the feature slices here.
 
+pub mod bridge;
 pub mod features;
 pub mod gitfe;
 pub mod mcp;

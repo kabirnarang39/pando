@@ -19,8 +19,18 @@ All notable changes to this project are documented here. The format follows
 - `sap refs` / the Refs API hide system refs (`_sapwood/...`).
 
 ### Compatibility
-- A store compacted by this version cannot be read by v1.0.x servers (they do not understand
-  delta payloads). Upgrade every server before running `sapwood compact`.
+- A store compacted by this version cannot be read by v1.1.x or older servers (they do not
+  understand delta payloads). Upgrade every server before running `sapwood compact`.
+
+## [1.1.0] - 2026-10-15
+
+### Added
+- **Two-way git bridge**: `git-remote-sapwood` lets plain git clone, fetch, pull and push
+  against a Sapwood server (`git clone sapwood::http://host:7420`). Fetches are incremental;
+  pushes land server-side, so a push to a branch that moved is rebased instead of rejected
+  (`SAPWOOD_PUSH=strict` restores git's behaviour). Feature flag `git-bridge`. Verified by
+  cloning git/git's 24,466 mainline commits through plain `git clone` (136 s, identical tree).
+- Project website (GitHub Pages) and a checksum-verifying `install.sh`.
 
 ## [1.0.1] - 2026-10-15
 
@@ -53,5 +63,6 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.1.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.1.0
 [1.0.1]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.1
 [1.0.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.0

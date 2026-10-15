@@ -8,12 +8,12 @@ WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked --bin sapwood --bin sap \
+    cargo build --release --locked --bin sapwood --bin sap --bin git-remote-sapwood \
     && mkdir -p /out /data \
-    && cp target/release/sapwood target/release/sap /out/
+    && cp target/release/sapwood target/release/sap target/release/git-remote-sapwood /out/
 
 FROM gcr.io/distroless/cc-debian12:nonroot
-COPY --from=build /out/sapwood /out/sap /usr/local/bin/
+COPY --from=build /out/sapwood /out/sap /out/git-remote-sapwood /usr/local/bin/
 COPY --from=build --chown=65532:65532 /data /data
 WORKDIR /data
 VOLUME /data

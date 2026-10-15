@@ -92,6 +92,7 @@ pub async fn import(
                     Ok(Item::Blob { mark, id, payload })
                 }
                 Ok(Some(Event::Commit(c))) => Ok(Item::Commit(c)),
+                Ok(Some(Event::Reset { .. })) => continue,
                 Err(e) => Err(e),
             };
             let stop = item.is_err();
@@ -163,7 +164,9 @@ async fn move_ref(remote: &dyn Remote, name: &str, tip: Id, force: bool) -> Resu
     Ok(())
 }
 
-async fn import_commit(
+/// Turn one fast-export commit into a server-side changeset. `blobs` and `commits` map
+/// fast-export marks to Sapwood ids. Shared by `import-git` and the git remote helper.
+pub async fn import_commit(
     remote: &dyn Remote,
     c: &GitCommit,
     blobs: &HashMap<u64, Id>,

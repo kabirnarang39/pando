@@ -5,7 +5,6 @@ Items are ordered by expected impact. v1.x releases are backward compatible with
 
 | Item | Why | Notes |
 |---|---|---|
-| Two-way git bridge (`git` remote helper) | Let teams adopt incrementally: git clients push/pull against Sapwood | Built on import/export |
 | Virtualized checkouts (FUSE / ProjFS / FSKit) | Materialise files on first read, as Scion does | Per-OS kernel integration |
 | Path-scoped read ACLs | v1 read access is repository-wide | Needs object-level authorization |
 | Chunked large files (content-defined chunking) | Objects are capped at 256 MiB | FastCDC chunks + manifest objects |

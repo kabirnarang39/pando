@@ -30,6 +30,13 @@ separately so nobody discovers them in production.
 | D5 | Compacting git/git | Machine ran out of disk | SQLite VACUUM rewrites the whole file; test copies accumulated | Cleaned own artifacts only; disk watchdog during runs; documented VACUUM space need | docs (ARCHITECTURE: delta storage) |
 | D6 | Storage breakdown after blob deltas | Trees were 90% of remaining storage | Each changeset writes a new root tree | Delta-encode trees along changed paths; chain depth 50 (git's `pack.depth`) | `trees_converted` assertions in e2e |
 
+## v1.1.0 git bridge review
+
+| # | Found by | Symptom | Root cause | Fix | Guarded by |
+|---|---|---|---|---|---|
+| B1 | e2e (concurrent push) | `git pull` after a server-rebased push failed: "Not updating refs/sapwood/... does not contain ..." | git records the pushed commit in the helper's private ref; the server's rebased tip is its sibling | Import stream declares `feature force` (private refs mirror the server; user branches untouched) | `git_bridge_clone_push_pull_and_concurrent_push` |
+| B2 | Cloning git/git's history through the bridge | Two files had the wrong case | macOS `core.ignorecase=true` makes fast-import fold case-only renames | Commits containing a case-only rename are emitted as `deleteall` + full tree | case-rename step in the bridge e2e (fails without the fix) |
+
 ## Verified properties
 
 * Full git/git history (82,443 commits) imports, and its tip exports back to git with a
