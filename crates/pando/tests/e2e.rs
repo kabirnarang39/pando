@@ -1332,9 +1332,17 @@ async fn compaction_preserves_every_version_and_shrinks_storage() {
     assert_eq!(ws2.index.len(), 601);
     assert_eq!(r.blame("main", "src/big.rs/inner.rs").await.unwrap().len(), 1501);
 
-    // Idempotent; lease released.
+    // Incremental; lease released: a second run rescans nothing.
     let again = compactor.run(false).await.unwrap();
-    assert_eq!(again.converted, 0, "{again:?}");
+    assert_eq!((again.changesets, again.converted), (0, 0), "{again:?}");
+    // One new land: only that changeset is processed, and it reads back.
+    let v_new = format!("{v1}// one more line\n");
+    write(&p, "src/big.rs/inner.rs", &v_new);
+    let id = commit_land(&mut ws, r.as_ref(), "after compaction").await.landed;
+    let next = compactor.run(false).await.unwrap();
+    assert_eq!(next.changesets, 1, "{next:?}");
+    assert!(next.converted >= 1, "{next:?}");
+    assert_eq!(browse::cat(r.as_ref(), &id.to_hex(), "src/big.rs/inner.rs").await.unwrap(), v_new.as_bytes());
 
     // Flag off => compaction refused.
     let off = Compactor::new(
