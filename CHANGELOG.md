@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Pre-land checks** (`sapwood server --land-hook URL [--land-hook-token T]
+  [--land-hook-timeout SECS]`, flag `land-checks`): every land is POSTed as JSON to a CI gate,
+  code review service or policy bot, and proceeds only on a 2xx answer. The response body is
+  shown to the author as the reason; timeouts and unreachable hooks refuse the land. The check
+  runs once before any server-side rebase, which happens only without path conflicts, so the
+  approved changes are exactly what lands. New `LandCheck` port for in-process checks.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added

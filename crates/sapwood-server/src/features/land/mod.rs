@@ -11,6 +11,7 @@ use std::sync::Arc;
 use sapwood_core::acl::{AccessPolicy, Principal, require_ref};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Changeset, FileChange};
+use sapwood_core::ports::{LandCheck, LandProposal};
 use sapwood_core::{Error, Id, Repo, Result, tree, validate_ref_name};
 use sapwood_proto::land_server::{self, LandServer};
 use sapwood_proto::{LandRequest, LandResponse};
@@ -26,6 +27,7 @@ pub struct Land {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
     policy: Arc<dyn AccessPolicy>,
+    checks: Arc<dyn LandCheck>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,8 +38,13 @@ pub struct Landed {
 }
 
 impl Land {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
-        Self { repo, flags, policy }
+    pub fn new(
+        repo: Repo,
+        flags: Arc<dyn FeatureFlags>,
+        policy: Arc<dyn AccessPolicy>,
+        checks: Arc<dyn LandCheck>,
+    ) -> Self {
+        Self { repo, flags, policy, checks }
     }
 
     pub async fn land(&self, who: &Principal, ref_name: &str, cs_id: Id) -> Result<Landed> {
@@ -48,6 +55,20 @@ impl Land {
         }
         let cs = self.repo.changeset(&cs_id).await?;
         let base = cs.first_parent()?;
+        if self.flags.enabled(Flag::LandChecks) {
+            let proposal = LandProposal {
+                principal: who.0.clone(),
+                ref_name: ref_name.to_owned(),
+                changeset: cs_id,
+                parent: base,
+                author: cs.author.clone(),
+                message: cs.message.clone(),
+                paths: cs.changes.iter().map(|c| c.path.clone()).collect(),
+            };
+            self.checks.check(&proposal).await.inspect_err(|_| {
+                metrics::counter!("sapwood_land_rejected_total").increment(1);
+            })?;
+        }
         for attempt in 1..=MAX_ATTEMPTS {
             let head = self.repo.refs.get(ref_name).await?;
             let (candidate, rebased) = match (head, base) {

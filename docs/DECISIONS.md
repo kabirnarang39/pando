@@ -116,3 +116,14 @@ Read access is repository-wide.
 **Why.** Content-addressed objects are reachable through parent trees, so path-scoped
 reads require object-level authorization (tracked on the roadmap). Shipping write
 protection now covers the OWNERS-style use case without a leaky read model.
+
+## ADR-016: Pre-land checks as a fail-closed webhook, run before rebase
+
+**Decision.** Landing calls a `LandCheck` port once, after authorization and before the
+rebase/compare-and-swap loop. The shipped adapter POSTs the proposal to a URL; only a 2xx
+answer lands, and timeouts or errors refuse the land.
+**Why.** A webhook lets any CI system or review tool gate landing without Sapwood owning a
+review database. Checking before rebase keeps the hook off the contended retry path, and is
+sound because a server-side rebase only happens when no changed path conflicts, so the
+approved file changes are exactly what lands. Failing closed means an outage of the gate
+cannot let unreviewed code onto a protected branch.
