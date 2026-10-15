@@ -67,7 +67,7 @@ fn errno(e: &anyhow::Error) -> Errno {
     } else if msg.contains("not a symlink") {
         Errno::EINVAL
     } else {
-        tracing::warn!(error = %e, "mount read failed");
+        eprintln!("sap mount: {e:#}");
         Errno::EIO
     }
 }
@@ -131,15 +131,10 @@ impl Filesystem for Fs {
 
 /// Mount `tree` read-only at `dir`; unmounts when the returned session is dropped.
 pub fn mount(tree: Arc<VirtualTree>, dir: &Path) -> Result<BackgroundSession> {
-    let config = Config {
-        mount_options: vec![
-            MountOption::RO,
-            MountOption::FSName("sapwood".into()),
-            MountOption::Subtype("sapwood".into()),
-        ],
-        n_threads: Some(8),
-        ..Config::default()
-    };
+    let mut config = Config::default();
+    config.mount_options =
+        vec![MountOption::RO, MountOption::FSName("sapwood".into()), MountOption::Subtype("sapwood".into())];
+    config.n_threads = Some(8);
     let meta = std::fs::metadata(dir)?;
     let fs = Fs { tree, owner: (meta.uid(), meta.gid()) };
     Ok(fuser::spawn_mount(fs, dir, &config)?)
