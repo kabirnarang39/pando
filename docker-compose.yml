@@ -61,7 +61,8 @@ services:
   daemon:
     image: ghcr.io/kabirnarang39/sapwood:latest
     depends_on: [cache]
-    command: [daemon, --listen=0.0.0.0:7422, --upstream=http://cache:7421, --dir=/data/daemon]
+    command: [daemon, --listen=0.0.0.0:7422, --upstream=http://cache:7421, --dir=/data/daemon,
+              --server=http://server:7420, --prefetch=main, --prefetch-interval=300]
     ports: ["7422:7422"]
 
 volumes:
