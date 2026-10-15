@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start a throwaway Pando server with a known repository for SDK tests.
 #   eval "$(sdk/test-server.sh)"   # exports PANDO_URL and PANDO_TEST_PID
-# Needs release binaries (cargo build --release -p pando-server -p pando).
+# Needs release binaries (cargo build --release -p pando-server -p pando-vcs).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${PANDO_BIN:-$ROOT/target/release}"
