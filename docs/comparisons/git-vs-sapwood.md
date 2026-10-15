@@ -24,7 +24,7 @@ as parity to ~2x faster. Other rows were stable across runs.
 | | git | Sapwood |
 |---|---:|---:|
 | Client metadata | 334M (`.git`, full history) | 380K (`.sap`, index only) |
-| Server storage | 333M (delta-compressed pack) | 4.6G (per-object zstd, no deltas) |
+| Server storage | 333M (delta-compressed pack) | 4.6G per-object zstd; 369M after `sapwood compact` |
 
 Full-history import: 226 s for 82,443 commits (first run). Re-import of unchanged history
 uploads nothing.
