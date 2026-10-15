@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `pandod compact` on SQLite no longer leaves a write-ahead log as large as the database
+  behind after VACUUM; on git/git that was 392 MB next to a 388 MB database.
+
 ### Performance
 - `pandod compact` is incremental: finished changesets are recorded and later runs process
   only what landed since, instead of rescanning all history.

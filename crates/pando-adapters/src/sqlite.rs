@@ -43,9 +43,11 @@ fn id_of(b: Vec<u8>) -> rusqlite::Result<Id> {
 }
 
 impl SqliteStore {
-    /// Return free pages to the filesystem (after compaction shrank stored objects).
+    /// Return free pages to the filesystem (after compaction shrank stored objects). In WAL
+    /// mode VACUUM writes the whole database through the log, so truncate the log afterwards
+    /// or it keeps that space until the next checkpoint.
     pub async fn vacuum(&self) -> Result<()> {
-        self.write(|c| c.execute_batch("VACUUM")).await
+        self.write(|c| c.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")).await
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
