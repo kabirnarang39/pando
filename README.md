@@ -102,6 +102,20 @@ docker compose up -d
 sap clone http://localhost:7420 work --objects http://localhost:7422
 ```
 
+## Or keep using plain git
+
+With `git-remote-sapwood` on your `PATH` (the installer puts it there), git talks to a
+Sapwood server directly:
+
+```sh
+git clone sapwood::http://127.0.0.1:7420 repo
+git push        # lands on the server; if main moved, the server rebases instead of rejecting
+git pull --rebase
+```
+
+Fetches are incremental. Set `SAPWOOD_PUSH=strict` to get git's reject-if-behind behaviour.
+Teams can adopt Sapwood one person at a time: git users and `sap` users share the same branch.
+
 ## git → sap cheat sheet
 
 | git | sap | Notes |

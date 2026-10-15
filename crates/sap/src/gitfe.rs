@@ -37,8 +37,16 @@ pub struct GitCommit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    Blob { mark: u64, data: Vec<u8> },
+    Blob {
+        mark: u64,
+        data: Vec<u8>,
+    },
     Commit(GitCommit),
+    /// `reset <ref>` optionally followed by `from :<mark>` (a ref pointed at a commit).
+    Reset {
+        refname: String,
+        from: Option<u64>,
+    },
 }
 
 pub struct Parser<R> {
@@ -179,8 +187,18 @@ impl<R: BufRead> Parser<R> {
                 return self.commit(refname.to_owned()).map(|c| Some(Event::Commit(c)));
             } else if line.starts_with("tag ") {
                 self.expect_data()?; // annotated tags are not imported
+            } else if let Some(refname) = line.strip_prefix("reset ") {
+                let mut from = None;
+                match self.line()? {
+                    Some(l) if l.starts_with("from ") => from = Some(parse_mark(&l[5..])?),
+                    other => self.peeked = other,
+                }
+                return Ok(Some(Event::Reset { refname: refname.to_owned(), from }));
+            } else if line == "done" {
+                // End of a `feature done` stream; the caller's protocol continues after it.
+                return Ok(None);
             }
-            // reset/from, feature, progress, done, blank lines: nothing to do.
+            // feature, progress, blank lines: nothing to do.
         }
     }
 
@@ -284,6 +302,50 @@ impl<W: Write> Writer<W> {
     }
 }
 
+/// One file operation for [`Writer::commit_inline`]: write (git mode, content) or delete.
+pub type InlineOp = (String, Option<(u32, Vec<u8>)>);
+
+impl<W: Write> Writer<W> {
+    /// A commit whose file contents are written inline (no blob marks needed).
+    /// `ops`: (path, Some((git mode, content))) to write, (path, None) to delete. With
+    /// `delete_all`, the tree is rebuilt from `ops` alone.
+    #[allow(clippy::too_many_arguments)]
+    pub fn commit_inline(
+        &mut self,
+        refname: &str,
+        mark: u64,
+        author: &str,
+        timestamp_s: i64,
+        message: &str,
+        from: Option<u64>,
+        delete_all: bool,
+        ops: &[InlineOp],
+    ) -> Result<()> {
+        let ident = if author.contains('<') { author.to_owned() } else { format!("{author} <>") };
+        write!(self.w, "commit {refname}\nmark :{mark}\n")?;
+        write!(self.w, "author {ident} {timestamp_s} +0000\ncommitter {ident} {timestamp_s} +0000\n")?;
+        write!(self.w, "data {}\n{message}\n", message.len())?;
+        if let Some(f) = from {
+            writeln!(self.w, "from :{f}")?;
+        }
+        if delete_all {
+            writeln!(self.w, "deleteall")?;
+        }
+        for (path, op) in ops {
+            match op {
+                Some((mode, content)) => {
+                    write!(self.w, "M {mode:o} inline {}\ndata {}\n", quote(path), content.len())?;
+                    self.w.write_all(content)?;
+                    self.w.write_all(b"\n")?;
+                }
+                None => writeln!(self.w, "D {}", quote(path))?,
+            }
+        }
+        writeln!(self.w)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +361,7 @@ author t <t@t> 6 +0000\ncommitter t <t@t> 6 +0000\ndata 0\nfrom :7\nM 160000 012
     fn parses_real_fast_export_shape() {
         let mut p = Parser::new(SAMPLE.as_bytes());
         assert_eq!(p.next_event().unwrap(), Some(Event::Blob { mark: 1, data: b"a\n".to_vec() }));
+        assert_eq!(p.next_event().unwrap(), Some(Event::Reset { refname: "refs/heads/main".into(), from: None }));
         let Some(Event::Commit(c)) = p.next_event().unwrap() else { panic!() };
         assert_eq!(
             (c.mark, c.author.as_str(), c.timestamp_s, c.message.as_str()),
@@ -326,6 +389,17 @@ author t <t@t> 6 +0000\ncommitter t <t@t> 6 +0000\ndata 0\nfrom :7\nM 160000 012
         assert_eq!(c.author, "Ren\u{fffd} <r@x>");
         ok.splice(ok.len() - 1..ok.len() - 1, b"M 100644 :1 caf\xe9\n".iter().copied());
         assert!(Parser::new(&ok[..]).next_event().unwrap_err().to_string().contains("non-UTF-8 path"));
+    }
+
+    #[test]
+    fn stops_at_done_and_reads_reset_from() {
+        let input = "reset refs/heads/x\nfrom :5\n\ndone\nprotocol continues\n";
+        let mut r = input.as_bytes();
+        let mut p = Parser::new(&mut r);
+        assert_eq!(p.next_event().unwrap(), Some(Event::Reset { refname: "refs/heads/x".into(), from: Some(5) }));
+        assert_eq!(p.next_event().unwrap(), None);
+        drop(p);
+        assert_eq!(r, b"protocol continues\n");
     }
 
     #[test]

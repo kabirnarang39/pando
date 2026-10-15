@@ -10,6 +10,10 @@ repository.workspace = true
 name = "sap"
 path = "src/main.rs"
 
+[[bin]]
+name = "git-remote-sapwood"
+path = "src/bin/git-remote-sapwood.rs"
+
 [dependencies]
 sapwood-core.workspace = true
 sapwood-adapters.workspace = true

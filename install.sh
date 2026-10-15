@@ -53,11 +53,13 @@ fi
 
 tar xzf "$tmp/$name.tar.gz" -C "$tmp"
 mkdir -p "$DEST"
-for bin in sap sapwood; do
+for bin in sap sapwood git-remote-sapwood; do
+  # Releases before v1.1 do not include the git bridge.
+  [ -f "$tmp/$name/$bin" ] || continue
   install -m 0755 "$tmp/$name/$bin" "$DEST/$bin"
 done
 
-echo "Installed sap and sapwood $version to $DEST"
+echo "Installed Sapwood $version to $DEST (sap, sapwood, git-remote-sapwood)"
 case ":$PATH:" in
   *":$DEST:"*) ;;
   *) echo "Add $DEST to your PATH, for example: export PATH=\"$DEST:\$PATH\"" ;;

@@ -605,3 +605,120 @@ async fn file_and_directory_swaps_commit_cleanly() {
     assert_eq!(read(&p2, "b"), "file b\n");
     assert_eq!(ws2.index.len(), 2);
 }
+
+/// Run git with the remote helper on PATH. Returns (success, stdout, stderr).
+fn git_bridge(dir: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, String, String) {
+    let helper_dir = Path::new(env!("CARGO_BIN_EXE_git-remote-sapwood")).parent().unwrap().to_owned();
+    let path = format!("{}:{}", helper_dir.display(), std::env::var("PATH").unwrap_or_default());
+    let mut cmd = std::process::Command::new("git");
+    cmd.current_dir(dir)
+        .args(args)
+        .env("PATH", path)
+        .env("GIT_AUTHOR_NAME", "g")
+        .env("GIT_AUTHOR_EMAIL", "g@example.com")
+        .env("GIT_COMMITTER_NAME", "g")
+        .env("GIT_COMMITTER_EMAIL", "g@example.com");
+    for (k, v) in extra {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).trim().to_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+fn git_ok(dir: &Path, args: &[&str]) -> String {
+    let (ok, out, err) = git_bridge(dir, args, &[]);
+    assert!(ok, "git {args:?} failed: {err}");
+    out
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn git_bridge_clone_push_pull_and_concurrent_push() {
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let sp = d.path().join("sap-ws");
+    let mut ws = clone_into(&c, &sp, &[]).await;
+    write(&sp, "README.md", "hello\n");
+    write(&sp, "src/lib.rs", "pub fn a() {}\n");
+    commit_land(&mut ws, r.as_ref(), "initial from sap").await;
+    let url = format!("sapwood::{}", c.server);
+
+    // Plain git clone through the helper.
+    git_ok(d.path(), &["clone", "-q", &url, "g1"]);
+    let g1 = d.path().join("g1");
+    assert_eq!(read(&g1, "src/lib.rs"), "pub fn a() {}\n");
+    assert_eq!(git_ok(&g1, &["log", "--format=%s"]), "initial from sap");
+
+    // git push lands on the server.
+    write(&g1, "src/lib.rs", "pub fn a() {}\npub fn b() {}\n");
+    git_ok(&g1, &["commit", "-qam", "add b from git"]);
+    git_ok(&g1, &["push", "-q", "origin", "main"]);
+    assert_eq!(browse::cat(r.as_ref(), "main", "src/lib.rs").await.unwrap(), b"pub fn a() {}\npub fn b() {}\n");
+
+    // A sap client lands; git pull fetches only the new changeset.
+    sync::run(r.as_ref(), &mut ws, None).await.unwrap();
+    write(&sp, "docs/new.md", "from sap\n");
+    commit_land(&mut ws, r.as_ref(), "docs from sap").await;
+    git_ok(&g1, &["pull", "-q", "--rebase", "origin", "main"]);
+    assert_eq!(read(&g1, "docs/new.md"), "from sap\n");
+    assert_eq!(git_ok(&g1, &["log", "--format=%s"]).lines().count(), 3);
+
+    // Two git clones push different files at the same time: both land, no rejection.
+    git_ok(d.path(), &["clone", "-q", &url, "g2"]);
+    let g2 = d.path().join("g2");
+    write(&g1, "one.txt", "1\n");
+    git_ok(&g1, &["add", "."]);
+    git_ok(&g1, &["commit", "-qm", "one from g1"]);
+    write(&g2, "two.txt", "2\n");
+    git_ok(&g2, &["add", "."]);
+    git_ok(&g2, &["commit", "-qm", "two from g2"]);
+    git_ok(&g1, &["push", "-q", "origin", "main"]);
+    let (ok, _, err) = git_bridge(&g2, &["push", "origin", "main"], &[]);
+    assert!(ok, "behind push should be rebased, not rejected: {err}");
+    assert!(err.contains("rebased your push"), "{err}");
+    assert_eq!(browse::cat(r.as_ref(), "main", "one.txt").await.unwrap(), b"1\n");
+    assert_eq!(browse::cat(r.as_ref(), "main", "two.txt").await.unwrap(), b"2\n");
+    // The pusher catches up cleanly: git drops its now-duplicate local commit.
+    git_ok(&g2, &["pull", "-q", "--rebase", "origin", "main"]);
+    assert_eq!(read(&g2, "one.txt"), "1\n");
+    assert_eq!(git_ok(&g2, &["status", "--porcelain"]), "");
+    let subjects = git_ok(&g2, &["log", "--format=%s"]);
+    assert_eq!(subjects.lines().filter(|s| *s == "two from g2").count(), 1, "{subjects}");
+    assert_eq!(git_ok(&g2, &["rev-list", "--count", "HEAD"]), "5");
+
+    // Strict mode keeps git's reject-if-behind behaviour.
+    write(&g1, "three.txt", "3\n");
+    git_ok(&g1, &["add", "."]);
+    git_ok(&g1, &["commit", "-qm", "three, behind"]);
+    let (ok, _, err) = git_bridge(&g1, &["push", "origin", "main"], &[("SAPWOOD_PUSH", "strict")]);
+    assert!(!ok && err.contains("non-fast-forward"), "{err}");
+
+    // New branches can be pushed.
+    git_ok(&g2, &["checkout", "-qb", "feature/x"]);
+    write(&g2, "feature.txt", "f\n");
+    git_ok(&g2, &["add", "."]);
+    git_ok(&g2, &["commit", "-qm", "feature"]);
+    git_ok(&g2, &["push", "-q", "origin", "feature/x"]);
+    assert!(r.get_ref("feature/x").await.unwrap().is_some());
+    assert_eq!(browse::cat(r.as_ref(), "feature/x", "feature.txt").await.unwrap(), b"f\n");
+
+    // Case-only rename landed by sap, fetched by git (regression: on case-insensitive
+    // filesystems git's fast-import kept the old name).
+    sync::run(r.as_ref(), &mut ws, None).await.unwrap();
+    write(&sp, "Case.txt", "case\n");
+    commit_land(&mut ws, r.as_ref(), "add Case.txt").await;
+    std::fs::rename(sp.join("Case.txt"), sp.join("tmp-name")).unwrap();
+    std::fs::rename(sp.join("tmp-name"), sp.join("case.txt")).unwrap();
+    commit_land(&mut ws, r.as_ref(), "rename to case.txt").await;
+    git_ok(d.path(), &["clone", "-q", &url, "g4"]);
+    let names = git_ok(&d.path().join("g4"), &["ls-tree", "--name-only", "HEAD"]);
+    assert!(names.lines().any(|n| n == "case.txt") && !names.lines().any(|n| n == "Case.txt"), "{names}");
+
+    // Feature flag off: the helper refuses.
+    let (ok, _, err) = git_bridge(d.path(), &["clone", "-q", &url, "g3"], &[("SAPWOOD_FLAGS", "git-bridge=off")]);
+    assert!(!ok && err.contains("git-bridge"), "{err}");
+}

@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "sap"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2684,7 +2684,7 @@ dependencies = [
 
 [[package]]
 name = "sapwood-adapters"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2707,7 +2707,7 @@ dependencies = [
 
 [[package]]
 name = "sapwood-core"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2725,7 +2725,7 @@ dependencies = [
 
 [[package]]
 name = "sapwood-proto"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "prost",
  "tonic",
@@ -2735,7 +2735,7 @@ dependencies = [
 
 [[package]]
 name = "sapwood-server"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "bytes",

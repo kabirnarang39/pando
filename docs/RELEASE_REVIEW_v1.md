@@ -19,6 +19,13 @@ separately so nobody discovers them in production.
 | 10 | Delta-storage test suite (after v1.0.0) | `sap commit` rejected a file replaced by a same-named directory | Client sent delete + upsert for overlapping paths, which the server rightly treats as ambiguous | Drop the redundant delete on the client (fixed in **v1.0.1**) | `file_and_directory_swaps_commit_cleanly` |
 | 9 | Benchmarks | `log -- path` and `blame` slower than git | Every history step re-read and decoded the changeset from storage | Memory caches for immutable changesets and derived data (`CachedLog`, `CachedDerived`) | `cached_metadata_decorators`; log 6x faster than git after fix |
 
+## v1.1.0 git bridge review
+
+| # | Found by | Symptom | Root cause | Fix | Guarded by |
+|---|---|---|---|---|---|
+| B1 | e2e (concurrent push) | `git pull` after a server-rebased push failed: "Not updating refs/sapwood/... does not contain ..." | git records the pushed commit in the helper's private ref; the server's rebased tip is its sibling | Import stream declares `feature force` (private refs mirror the server; user branches untouched) | `git_bridge_clone_push_pull_and_concurrent_push` |
+| B2 | Cloning git/git's history through the bridge | Two files had the wrong case | macOS `core.ignorecase=true` makes fast-import fold case-only renames | Commits containing a case-only rename are emitted as `deleteall` + full tree | case-rename step in the bridge e2e (fails without the fix) |
+
 ## Verified properties
 
 * Full git/git history (82,443 commits) imports, and its tip exports back to git with a
