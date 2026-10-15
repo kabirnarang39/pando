@@ -6,9 +6,12 @@ use std::sync::Arc;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use sapwood_adapters::grpc::{GrpcObjects, status_err};
+use sapwood_core::acl::ReadScope;
 use sapwood_core::object::{Changeset, FileChange, Mode};
+use sapwood_core::path::components as validate_path;
 use sapwood_core::ports::ObjectStore;
 use sapwood_core::{Id, path::validate_name};
+use sapwood_proto::access_client::AccessClient;
 use sapwood_proto::browse_client::BrowseClient;
 use sapwood_proto::changesets_client::ChangesetsClient;
 use sapwood_proto::diff_client::DiffClient;
@@ -17,8 +20,8 @@ use sapwood_proto::land_client::LandClient;
 use sapwood_proto::merge_base_client::MergeBaseClient;
 use sapwood_proto::refs_client::RefsClient;
 use sapwood_proto::{
-    BearerAuth, BlameRequest, BrowseRequest, CasRequest, CreateChangesetRequest, DiffRequest, Empty, FindRequest,
-    LandRequest, LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName, ResolveRequest,
+    BearerAuth, BlameRequest, BrowseRequest, CasRequest, CheckoutRequest, CreateChangesetRequest, DiffRequest, Empty,
+    FindRequest, LandRequest, LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName, ResolveRequest,
 };
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::{Channel, Endpoint};
@@ -27,16 +30,29 @@ use tonic::transport::{Channel, Endpoint};
 #[derive(Debug, Clone)]
 pub struct RemoteChangeset {
     pub id: Id,
+    /// Changes outside the caller's read scope were removed by the server.
+    pub redacted: bool,
     pub root_tree: Id,
     pub generation: u64,
     pub changeset: Changeset,
+}
+
+/// A piece of a file from a path-scoped checkout; `last` ends the file.
+#[derive(Debug, Clone)]
+pub struct Piece {
+    pub path: String,
+    pub mode: Mode,
+    pub id: Id,
+    pub data: Vec<u8>,
+    pub last: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct DirEntry {
     pub name: String,
     pub mode: Mode,
-    pub id: Id,
+    /// Absent for directories the caller may traverse but not read.
+    pub id: Option<Id>,
 }
 
 #[async_trait]
@@ -54,6 +70,15 @@ pub trait Remote: Send + Sync {
     async fn merge_base(&self, a: &str, b: &str) -> Result<Option<Id>>;
     async fn list_dir(&self, rev: &str, path: &str) -> Result<Vec<DirEntry>>;
     async fn read_file(&self, rev: &str, path: &str) -> Result<(Mode, Vec<u8>)>;
+    /// The caller's read scope.
+    async fn whoami(&self) -> Result<ReadScope>;
+    /// Stream readable files under `paths` (everything readable when empty) at `rev`.
+    async fn checkout(
+        &self,
+        rev: &str,
+        paths: &[String],
+        sink: &mut (dyn FnMut(Piece) -> Result<()> + Send),
+    ) -> Result<()>;
     async fn find(&self, rev: &str, pattern: &str, limit: u32) -> Result<Vec<String>>;
     /// (changeset that last changed the line, line text) for each line.
     async fn blame(&self, rev: &str, path: &str) -> Result<Vec<(Id, String)>>;
@@ -70,8 +95,16 @@ pub struct GrpcRemote {
 
 fn verify(info: sapwood_proto::ChangesetInfo) -> Result<RemoteChangeset> {
     let id = Id::from_slice(&info.id)?;
+    // A redacted changeset (changes outside our read scope removed) cannot hash to its id;
+    // everything else is verified.
+    let changeset = if info.redacted {
+        <Changeset as prost::Message>::decode(&info.encoded[..])?
+    } else {
+        Changeset::decode_verified(&id, &info.encoded)?
+    };
     Ok(RemoteChangeset {
-        changeset: Changeset::decode_verified(&id, &info.encoded)?,
+        changeset,
+        redacted: info.redacted,
         root_tree: Id::from_slice(&info.root_tree)?,
         generation: info.generation,
         id,
@@ -186,7 +219,11 @@ impl Remote for GrpcRemote {
             .into_iter()
             .map(|e| {
                 validate_name(&e.name)?;
-                Ok(DirEntry { name: e.name, mode: Mode::parse(e.mode)?, id: Id::from_slice(&e.id)? })
+                Ok(DirEntry {
+                    name: e.name,
+                    mode: Mode::parse(e.mode)?,
+                    id: if e.id.is_empty() { None } else { Some(Id::from_slice(&e.id)?) },
+                })
             })
             .collect()
     }
@@ -217,5 +254,32 @@ impl Remote for GrpcRemote {
         let mut c = HistoryClient::new(self.ch()).max_decoding_message_size(MAX_MESSAGE_BYTES);
         let r = c.blame(req).await.map_err(st)?.into_inner();
         r.lines.into_iter().map(|l| Ok((Id::from_slice(&l.changeset)?, l.text))).collect()
+    }
+
+    async fn whoami(&self) -> Result<ReadScope> {
+        let r = AccessClient::new(self.ch()).who_am_i(Empty {}).await.map_err(st)?.into_inner();
+        Ok(if r.full_read { ReadScope::All } else { ReadScope::Prefixes(r.read_prefixes) })
+    }
+
+    async fn checkout(
+        &self,
+        rev: &str,
+        paths: &[String],
+        sink: &mut (dyn FnMut(Piece) -> Result<()> + Send),
+    ) -> Result<()> {
+        let req = CheckoutRequest { rev: rev.to_owned(), paths: paths.to_vec() };
+        let mut c = BrowseClient::new(self.ch()).max_decoding_message_size(MAX_MESSAGE_BYTES);
+        let mut stream = c.checkout(req).await.map_err(st)?.into_inner();
+        while let Some(p) = stream.message().await.map_err(st)? {
+            validate_path(&p.path)?;
+            sink(Piece {
+                mode: Mode::parse(p.mode)?,
+                id: Id::from_slice(&p.id)?,
+                path: p.path,
+                data: p.data,
+                last: p.last,
+            })?;
+        }
+        Ok(())
     }
 }

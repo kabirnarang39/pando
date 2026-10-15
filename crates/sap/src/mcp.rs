@@ -106,7 +106,7 @@ impl SapMcp {
         let entries = browse::ls(self.remote.as_ref(), &a.rev, &a.path).await.map_err(err)?;
         Ok(entries
             .iter()
-            .map(|e| format!("{} {} {}", browse::mode_char(e.mode), e.id.short(), e.name))
+            .map(|e| format!("{} {} {}", browse::mode_char(e.mode), e.id.map_or("-".into(), |i| i.short()), e.name))
             .collect::<Vec<_>>()
             .join("\n"))
     }

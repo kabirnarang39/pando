@@ -135,6 +135,36 @@ pub fn is_large(abs: &Path) -> bool {
     fs::symlink_metadata(abs).is_ok_and(|m| m.is_file() && m.len() >= CHUNK_THRESHOLD)
 }
 
+/// A file being received from a path-scoped checkout.
+struct PartialFile {
+    path: String,
+    mode: Mode,
+    id: Id,
+    tmp: PathBuf,
+    /// Symlink target bytes (symlinks are not written through a temporary file).
+    link: Vec<u8>,
+    file: Option<fs::File>,
+}
+
+impl PartialFile {
+    /// Verify the received content against its id, then move it into place.
+    fn finish(&self, root: &Path) -> Result<()> {
+        if self.mode == Mode::Symlink {
+            if Id::hash(Kind::Blob as u8, &self.link) != self.id {
+                bail!("{}: content does not match {}", self.path, self.id);
+            }
+            return write_file(root, &self.path, self.mode, &self.link);
+        }
+        if Id::hash_reader(Kind::Blob as u8, fs::File::open(&self.tmp)?)? != self.id {
+            let _ = fs::remove_file(&self.tmp);
+            bail!("{}: content does not match {}", self.path, self.id);
+        }
+        let abs = prepare_target(root, &self.path)?;
+        fs::rename(&self.tmp, &abs)?;
+        set_exec(&abs, self.mode)
+    }
+}
+
 /// Is `path` covered by the sparse prefixes?
 pub fn in_sparse(sparse: &[String], path: &str) -> bool {
     sparse.is_empty()
@@ -419,6 +449,46 @@ impl Workspace {
             self.mark_clean(&path, mode, id)?;
         }
         Ok(())
+    }
+
+    /// Materialise `paths` at `rev` through the path-scoped checkout stream (how principals
+    /// with restricted read access fetch content). Each file is written to a temporary
+    /// file, verified against its id, then moved into place.
+    pub async fn checkout_scoped(
+        &mut self,
+        remote: &dyn crate::remote::Remote,
+        rev: &str,
+        paths: &[String],
+    ) -> Result<usize> {
+        let root = self.root.clone();
+        let mut written: Vec<(String, Mode, Id)> = Vec::new();
+        let mut open: Option<PartialFile> = None;
+        let mut sink = |p: crate::remote::Piece| -> Result<()> {
+            if open.as_ref().is_none_or(|o| o.path != p.path) {
+                let abs = ensure_parents(&root, &p.path)?;
+                let tmp = abs.with_file_name(format!(".sapwood-partial-{}", p.id.short()));
+                let file = if p.mode == Mode::Symlink { None } else { Some(fs::File::create(&tmp)?) };
+                open = Some(PartialFile { path: p.path.clone(), mode: p.mode, id: p.id, tmp, link: Vec::new(), file });
+            }
+            let o = open.as_mut().expect("opened above");
+            match &mut o.file {
+                Some(f) => std::io::Write::write_all(f, &p.data)?,
+                None => o.link.extend_from_slice(&p.data),
+            }
+            if p.last {
+                let o = open.take().expect("open file");
+                o.finish(&root)?;
+                written.push((o.path, o.mode, o.id));
+            }
+            Ok(())
+        };
+        remote.checkout(rev, paths, &mut sink).await?;
+        let n = written.len();
+        for (path, mode, id) in written {
+            self.drop_index_overlapping(&path);
+            self.mark_clean(&path, mode, id)?;
+        }
+        Ok(n)
     }
 
     /// Remove index entries at `path` or nested under/above it (file <-> dir replacement).

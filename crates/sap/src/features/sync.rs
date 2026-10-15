@@ -45,7 +45,23 @@ pub async fn run(remote: &dyn Remote, ws: &mut Workspace, target: Option<&str>) 
         }
     };
     guard_dirty(ws, &incoming)?;
-    ws.apply(remote.objects(), &incoming).await?;
+    if remote.whoami().await?.is_full() {
+        ws.apply(remote.objects(), &incoming).await?;
+    } else {
+        // Path-scoped readers: the server already filtered the diff to readable paths.
+        for c in incoming.iter().filter(|c| c.is_delete() && crate::workspace::in_sparse(&ws.config.sparse, &c.path)) {
+            crate::workspace::remove_path(&ws.root, &c.path)?;
+            ws.index.remove(&c.path);
+        }
+        let paths: Vec<String> = incoming
+            .iter()
+            .filter(|c| !c.is_delete() && crate::workspace::in_sparse(&ws.config.sparse, &c.path))
+            .map(|c| c.path.clone())
+            .collect();
+        if !paths.is_empty() {
+            ws.checkout_scoped(remote, &to.to_hex(), &paths).await?;
+        }
+    }
     ws.base = Some(to);
     ws.base_landed = true;
     ws.save()?;

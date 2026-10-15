@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use sapwood_core::acl::{AccessPolicy, Principal, effective_scope};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::FileChange;
 use sapwood_core::{Repo, Result, tree};
@@ -10,20 +11,30 @@ use sapwood_proto::diff_server::{self, DiffServer};
 use sapwood_proto::{DiffRequest, DiffResponse};
 use tonic::{Request, Response};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, to_status};
 
 #[derive(Clone)]
 pub struct Diff {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 impl Diff {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { repo, flags }
+    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { repo, flags, policy }
     }
 
-    pub async fn diff(&self, from: &str, to: &str) -> Result<Vec<FileChange>> {
+    /// Changes outside the caller's read scope are omitted.
+    pub async fn diff(&self, who: &Principal, from: &str, to: &str) -> Result<Vec<FileChange>> {
+        let scope = effective_scope(self.flags.as_ref(), self.policy.as_ref(), who);
+        let mut changes = self.diff_all(from, to).await?;
+        changes.retain(|c| scope.allows(&c.path));
+        Ok(changes)
+    }
+
+    async fn diff_all(&self, from: &str, to: &str) -> Result<Vec<FileChange>> {
         require(self.flags.as_ref(), Flag::Diff)?;
         let (a, b) = futures::try_join!(self.repo.resolve(from), self.repo.resolve(to))?;
         let (ra, rb) = futures::try_join!(self.repo.root_tree(a), self.repo.root_tree(b))?;
@@ -38,8 +49,9 @@ pub fn service(s: Diff) -> DiffServer<Diff> {
 #[tonic::async_trait]
 impl diff_server::Diff for Diff {
     async fn diff(&self, req: Request<DiffRequest>) -> RpcResult<DiffResponse> {
+        let who = principal(&req);
         let r = req.into_inner();
-        let changes = Diff::diff(self, &r.from, &r.to).await.map_err(to_status)?;
+        let changes = Diff::diff(self, &who, &r.from, &r.to).await.map_err(to_status)?;
         Ok(Response::new(DiffResponse {
             changes: changes
                 .into_iter()

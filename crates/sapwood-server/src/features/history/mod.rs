@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use futures::Stream;
+use sapwood_core::acl::{AccessPolicy, Principal, ReadScope, effective_scope, require_read};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Kind, Mode};
 use sapwood_core::path::components_or_root;
@@ -13,6 +14,7 @@ use sapwood_proto::{BlameLine, BlameRequest, BlameResponse, ChangesetInfo, LogRe
 use similar::{Algorithm, DiffOp, capture_diff_slices};
 use tonic::{Request, Response, Status};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, async_stream, changeset_info, to_status};
 
 pub const DEFAULT_LIMIT: u32 = 50;
@@ -29,22 +31,31 @@ pub const MAX_BLAME_BYTES: usize = 8 << 20;
 pub struct History {
     repo: Repo,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 impl History {
-    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { repo, flags }
+    pub fn new(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { repo, flags, policy }
+    }
+
+    fn scope(&self, who: &Principal) -> ReadScope {
+        effective_scope(self.flags.as_ref(), self.policy.as_ref(), who)
     }
 
     /// Walk first parents from `rev`, returning up to `limit` changesets that touch `path`
-    /// (all changesets when `path` is empty), newest first.
-    pub async fn walk(&self, rev: &str, path: &str, limit: u32) -> Result<Vec<Id>> {
+    /// (all changesets when `path` is empty), newest first. With a restricted read scope,
+    /// only changesets touching something readable are returned.
+    pub async fn walk(&self, scope: &ReadScope, rev: &str, path: &str, limit: u32) -> Result<Vec<Id>> {
         require(self.flags.as_ref(), Flag::History)?;
+        if !scope.traversable(&components_or_root(path)?.join("/")) {
+            return Err(Error::PermissionDenied(format!("no read access to `{path}`")));
+        }
         let limit = if limit == 0 { DEFAULT_LIMIT } else { limit.min(MAX_LIMIT) };
-        self.walk_from(self.repo.resolve(rev).await?, path, limit).await
+        self.walk_from(scope, self.repo.resolve(rev).await?, path, limit).await
     }
 
-    async fn walk_from(&self, start: Id, path: &str, limit: u32) -> Result<Vec<Id>> {
+    async fn walk_from(&self, scope: &ReadScope, start: Id, path: &str, limit: u32) -> Result<Vec<Id>> {
         let filter = components_or_root(path)?.join("/");
         let mut cur = Some(start);
         let (mut out, mut scanned) = (Vec::new(), 0);
@@ -54,7 +65,14 @@ impl History {
             }
             scanned += 1;
             let cs = self.repo.changeset(&id).await?;
-            if filter.is_empty() || cs.changes.iter().any(|c| paths_overlap(&c.path, &filter)) {
+            let visible = if scope.is_full() {
+                filter.is_empty() || cs.changes.iter().any(|c| paths_overlap(&c.path, &filter))
+            } else {
+                cs.changes
+                    .iter()
+                    .any(|c| scope.allows(&c.path) && (filter.is_empty() || paths_overlap(&c.path, &filter)))
+            };
+            if visible {
                 out.push(id);
             }
             cur = cs.first_parent()?;
@@ -63,13 +81,14 @@ impl History {
     }
 
     /// Changeset that last changed each line of `path` at `rev` (first-parent history).
-    pub async fn blame(&self, rev: &str, path: &str) -> Result<Vec<(Id, String)>> {
+    pub async fn blame(&self, who: &Principal, rev: &str, path: &str) -> Result<Vec<(Id, String)>> {
         require(self.flags.as_ref(), Flag::Blame)?;
+        require_read(&self.scope(who), who, path)?;
         let start = self.repo.resolve(rev).await?;
         if !matches!(self.repo.lookup(start, path).await?, Some((m, _)) if m != Mode::Dir) {
             return Err(Error::not_found(format!("file `{path}` at {rev}")));
         }
-        let versions = self.walk_from(start, path, MAX_BLAME_VERSIONS).await?;
+        let versions = self.walk_from(&ReadScope::All, start, path, MAX_BLAME_VERSIONS).await?;
         let text = |id: Id| async move {
             match self.repo.lookup(id, path).await? {
                 Some((m, blob)) if m != Mode::Dir => {
@@ -138,12 +157,13 @@ impl history_server::History for History {
     type LogStream = Pin<Box<dyn Stream<Item = Result<ChangesetInfo, Status>> + Send>>;
 
     async fn log(&self, req: Request<LogRequest>) -> RpcResult<Self::LogStream> {
+        let scope = self.scope(&principal(&req));
         let r = req.into_inner();
-        let ids = self.walk(&r.rev, &r.path, r.limit).await.map_err(to_status)?;
+        let ids = self.walk(&scope, &r.rev, &r.path, r.limit).await.map_err(to_status)?;
         let repo = self.repo.clone();
         let stream = async_stream(move |tx| async move {
             for id in ids {
-                let item = changeset_info(&repo, id).await.map_err(to_status);
+                let item = changeset_info(&repo, id, &scope).await.map_err(to_status);
                 let failed = item.is_err();
                 if tx.send(item).await.is_err() || failed {
                     return;
@@ -154,8 +174,9 @@ impl history_server::History for History {
     }
 
     async fn blame(&self, req: Request<BlameRequest>) -> RpcResult<BlameResponse> {
+        let who = principal(&req);
         let r = req.into_inner();
-        let lines = History::blame(self, &r.rev, &r.path).await.map_err(to_status)?;
+        let lines = History::blame(self, &who, &r.rev, &r.path).await.map_err(to_status)?;
         Ok(Response::new(BlameResponse {
             lines: lines.into_iter().map(|(id, text)| BlameLine { changeset: id.0.to_vec(), text }).collect(),
         }))

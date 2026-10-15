@@ -39,13 +39,28 @@ where
 }
 
 /// Wire view of a changeset, including its derived root tree and generation.
-pub async fn changeset_info(repo: &sapwood_core::Repo, id: Id) -> sapwood_core::Result<sapwood_proto::ChangesetInfo> {
+/// Changes outside `scope` are removed (and the result marked `redacted`).
+pub async fn changeset_info(
+    repo: &sapwood_core::Repo,
+    id: Id,
+    scope: &sapwood_core::acl::ReadScope,
+) -> sapwood_core::Result<sapwood_proto::ChangesetInfo> {
     let encoded = repo.log.get(&id).await?.ok_or_else(|| Error::not_found(format!("changeset {id}")))?;
     let (root, graph) = futures::try_join!(repo.root_tree(id), repo.graph(id))?;
+    let (encoded, redacted) = if scope.is_full() {
+        (encoded.to_vec(), false)
+    } else {
+        let cs = sapwood_core::object::Changeset::decode_verified(&id, &encoded)?;
+        match sapwood_core::acl::redact(&cs, scope) {
+            (visible, true) => (visible.encode_canonical().1.to_vec(), true),
+            (_, false) => (encoded.to_vec(), false),
+        }
+    };
     Ok(sapwood_proto::ChangesetInfo {
         id: id.0.to_vec(),
         root_tree: root.0.to_vec(),
         generation: graph.generation,
-        encoded: encoded.to_vec(),
+        encoded,
+        redacted,
     })
 }

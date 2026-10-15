@@ -36,6 +36,9 @@ message ChangesetInfo {
   uint64 generation = 3;
   // Canonical changeset encoding; clients may re-hash it to verify `id`.
   bytes encoded = 4;
+  // Changes outside the caller's read scope were removed, so `encoded` no longer hashes
+  // to `id` and cannot be verified by the client.
+  bool redacted = 5;
 }
 
 message CreateChangesetRequest {
@@ -151,9 +154,37 @@ message FindResponse {
   bool truncated = 2;
 }
 
+message CheckoutRequest {
+  string rev = 1;
+  // Paths (files or directories) to materialise; empty = everything readable.
+  repeated string paths = 2;
+}
+// Files are streamed in pieces of at most 4 MiB; every piece names its file, and the
+// last piece of a file has `last` set. Clients verify each file's content against `id`.
+message CheckoutPiece {
+  string path = 1;
+  int32 mode = 2;
+  bytes id = 3;
+  bytes data = 4;
+  bool last = 5;
+}
+
 // API-first file access: CI and tools read source without any checkout.
 service Browse {
   rpc ListDir(BrowseRequest) returns (ListDirResponse);
   rpc ReadFile(BrowseRequest) returns (ReadFileResponse);
   rpc Find(FindRequest) returns (FindResponse);
+  // Path-scoped checkout: only files the caller may read. Used by principals with
+  // restricted read access, who may not read objects by id.
+  rpc Checkout(CheckoutRequest) returns (stream CheckoutPiece);
+}
+
+message WhoAmIResponse {
+  string principal = 1;
+  bool full_read = 2;
+  repeated string read_prefixes = 3;
+}
+
+service Access {
+  rpc WhoAmI(Empty) returns (WhoAmIResponse);
 }

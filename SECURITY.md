@@ -22,8 +22,11 @@ You will receive an acknowledgement within 72 hours and a fix timeline after tri
   accepted (no `alg: none`, no HMAC key confusion); `iss`, `aud` and `exp` are required. The
   principal is a configurable claim and works with the access rules below. Static tokens and
   OIDC can be enabled together.
-* **Authorization**: per-directory write permissions and per-ref permissions
-  (`--acl rules.json`). Read access is repository-wide in v1.
+* **Authorization**: per-directory **read** and write permissions and per-ref permissions
+  (`--acl rules.json`). Principals with path-scoped read access never read objects by id:
+  the server denies `Objects.Get/Missing` to them and serves filtered views instead (path-
+  scoped checkout, browse, find, diff, and redacted history). Regional caches and node daemons
+  serve objects by id without a policy, so expose them only to full-read principals.
 * **Integrity**: every object is hash-verified when accepted by a server, when received
   by a tier from upstream, and when materialised by a client.
 * **Client filesystem safety**: paths are validated (`..`, `.sap`, separators, NUL) and no
