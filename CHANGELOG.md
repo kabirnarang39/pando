@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Linux release binaries are built on Ubuntu 22.04 and need glibc 2.35 or newer (Debian 12,
+  Ubuntu 22.04, RHEL 10); they previously needed glibc 2.39.
+- The release container image is assembled from the release binaries instead of compiling
+  arm64 under emulation, which took over an hour and failed for v1.6.0. Images for earlier
+  tags can be rebuilt with the Release workflow's manual trigger.
+
 ## [1.8.0] - 2026-10-15
 
 ### Added
