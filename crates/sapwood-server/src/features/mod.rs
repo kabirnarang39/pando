@@ -9,4 +9,5 @@ pub mod history;
 pub mod land;
 pub mod merge_base;
 pub mod objects;
+pub mod prefetch;
 pub mod refs;

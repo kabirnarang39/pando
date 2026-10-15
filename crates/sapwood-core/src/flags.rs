@@ -21,10 +21,11 @@ pub enum Flag {
     Permissions,
     GitBridge,
     Oidc,
+    DaemonPrefetch,
 }
 
 impl Flag {
-    pub const ALL: [Flag; 16] = [
+    pub const ALL: [Flag; 17] = [
         Flag::Objects,
         Flag::Changesets,
         Flag::Refs,
@@ -41,6 +42,7 @@ impl Flag {
         Flag::Permissions,
         Flag::GitBridge,
         Flag::Oidc,
+        Flag::DaemonPrefetch,
     ];
 
     pub fn key(self) -> &'static str {
@@ -61,6 +63,7 @@ impl Flag {
             Flag::Permissions => "permissions",
             Flag::GitBridge => "git-bridge",
             Flag::Oidc => "oidc",
+            Flag::DaemonPrefetch => "daemon-prefetch",
         }
     }
 

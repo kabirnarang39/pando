@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Daemon prefetch** (`sapwood daemon --server URL --prefetch main [--prefetch-path P]
+  [--prefetch-interval SECS]`, flag `daemon-prefetch`): warms a node's cache with a revision
+  in the background and keeps it warm as the branch moves; already-cached objects cost
+  nothing. On git/git, a new node's first full checkout went from 4.2 s to 0.35 s.
+
 ## [1.5.0] - 2026-10-15
 
 ### Added

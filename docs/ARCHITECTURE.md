@@ -125,6 +125,14 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Warm build nodes
+
+A node daemon can prefetch a revision at startup and on an interval
+(`--prefetch main --prefetch-interval 300`), walking the tree through its own tiered store so
+every tree, file and chunk lands on local disk. Objects already cached are not refetched, so
+following a moving branch costs only what changed. The prefetched content keeps serving even
+if the upstream cache is unreachable.
+
 ## Large files
 
 Files of 8 MiB or more are split with FastCDC (content-defined, ~1 MiB average chunks) into

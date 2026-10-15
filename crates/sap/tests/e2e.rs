@@ -936,3 +936,63 @@ async fn path_scoped_read_permissions() {
     let open = sapwood_adapters::acl::RulesPolicy::parse(r#"{"default":{"write":["*"],"refs":["*"]}}"#).unwrap();
     assert!(sapwood_core::acl::AccessPolicy::read_scope(&open, &sapwood_core::acl::Principal::anonymous()).is_full());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn daemon_prefetch_serves_without_upstream() {
+    use sapwood_server::features::prefetch::Prefetcher;
+
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    for i in 0..20 {
+        write(&p, &format!("services/api/f{i}.rs"), &format!("api {i}\n"));
+        write(&p, &format!("services/web/f{i}.ts"), &format!("web {i}\n"));
+    }
+    std::fs::write(p.join("services/api/model.bin"), noise(10 << 20, 9)).unwrap(); // chunked
+    commit_land(&mut ws, r.as_ref(), "seed").await;
+
+    let tier_flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (cache_url, stop_cache) = spawn(
+        tier_routes(config::cache_store(&c.server, None, 64 << 20).unwrap(), tier_flags.clone()),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let ddir = tempfile::tempdir().unwrap();
+    let daemon = config::daemon_store(&cache_url, None, ddir.path().to_str().unwrap(), 16 << 20).unwrap();
+    let prefetcher = Prefetcher::new(&c.server, None, daemon.clone(), tier_flags.clone()).unwrap();
+    let stats = prefetcher.run_once("main", &["services/api".into()]).await.unwrap();
+    assert_eq!(stats.files, 21, "{stats:?}");
+    assert!(stats.objects > 21 + 3, "trees, files and large-file chunks: {stats:?}");
+
+    // Cut the daemon off from its upstream: prefetched content is served from its disk.
+    let _ = stop_cache.send(());
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let (daemon_url, _d) = spawn(tier_routes(daemon, tier_flags.clone()), Arc::new(AllowAll)).await;
+    let via: Arc<dyn Remote> = Arc::new(GrpcRemote::connect(&c.server, Some(&daemon_url), None).unwrap());
+    let cfg = Config {
+        server: c.server.clone(),
+        objects: Some(daemon_url.clone()),
+        ref_name: "main".into(),
+        sparse: vec!["services/api".into()],
+    };
+    let d2 = tempfile::tempdir().unwrap();
+    let ws2 = clone::run(via.as_ref(), &flags(), &d2.path().join("w"), cfg).await.unwrap();
+    assert_eq!(ws2.index.len(), 21);
+    assert!(std::fs::read(d2.path().join("w/services/api/model.bin")).unwrap() == noise(10 << 20, 9));
+    // Paths outside the prefetch were never fetched, so they are unavailable offline.
+    let web_cfg = Config { sparse: vec!["services/web".into()], ..ws2.config.clone() };
+    let d3 = tempfile::tempdir().unwrap();
+    assert!(clone::run(via.as_ref(), &flags(), &d3.path().join("w"), web_cfg).await.is_err());
+
+    // Flag off: prefetch refuses.
+    let off = Prefetcher::new(
+        &c.server,
+        None,
+        Arc::new(sapwood_adapters::memory::MemoryStore::new()),
+        Arc::new(SpecFlags::parse("daemon-prefetch=off").unwrap()),
+    )
+    .unwrap();
+    assert!(off.run_once("main", &[]).await.unwrap_err().to_string().contains("daemon-prefetch"));
+}
