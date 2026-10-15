@@ -6,7 +6,7 @@
 
 <sub>Named after <a href="https://en.wikipedia.org/wiki/Pando_(tree)">Pando</a>, a grove of some 47,000 aspen trunks that share one root system: one repository, many agents.</sub>
 
-Server-side commits · lock-free landing · tiered caches · API-first reads · built-in MCP for AI agents
+Server-side commits · landing without a merge queue · tiered caches · API-first reads · built-in MCP for AI agents
 
 [![CI](https://github.com/kabirnarang39/pando/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/pando/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -63,6 +63,21 @@ Server storage after `pandod compact` (delta storage): **369 MB vs git's 333 MB 
 (1.1x; 4.6 GB before compaction). Where git still wins: offline work.
 <!-- BENCH:END -->
 
+**1,000 agents landing on one branch at once** (each agent on its own connection, writing its
+own directory; 30 s window, fresh store per run, same laptop):
+
+| Agents | git push (fetch + rebase + retry) | pando land | pando p99 latency | pando errors |
+|---:|---:|---:|---:|---:|
+| 16 | 2.0 lands/s | **758 lands/s** | 55 ms | 0 |
+| 200 | 0.5 lands/s | **1,012 lands/s** | 0.30 s | 0 |
+| 1,000 | 0.2 lands/s (5 in 30 s) | **504 lands/s** (907 across 64 directories) | 2.7 s | 0 |
+| 5,000 | not run | **172 lands/s** (531 across 64 directories) | 16 s | 0 |
+
+One `pandod` on SQLite. For scale: Anthropic reported over 30,000 merges per day in
+September 2026 and Google about 40,000 commits per workday in 2015, both under one per second on average.
+Reproduce with [`examples/land_load.rs`](crates/pando/examples/land_load.rs) and
+[`bench/git_push_load.py`](bench/git_push_load.py).
+
 Full results, methodology and the cases where git wins: [docs/comparisons/git-vs-pando.md](docs/comparisons/git-vs-pando.md).
 
 ## Why it is fast
@@ -71,7 +86,7 @@ Full results, methodology and the cases where git wins: [docs/comparisons/git-vs
 |---|---|---|
 | Clone | downloads **all history** | downloads **one tree**, lazily, only the paths you ask for |
 | Commit | local; publishing = push whole packs, lose races, fetch, rebase, retry | server builds the commit from the list of changed files; cost ∝ change size |
-| Landing concurrent changes | one winner per race; everyone else fetches + rebases | server rebases non-conflicting changes; ref moves by compare-and-swap; **no lock, no merge queue** |
+| Landing concurrent changes | one winner per race; everyone else fetches + rebases | server rebases non-conflicting changes in batches; one compare-and-swap per batch; **no merge queue, no client retries** |
 | Reading a file in CI | clone first | one RPC: `pando cat main path` |
 | log / blame / diff / merge-base | local history required | server-side APIs, O(log n) ancestry via jump pointers |
 | Caching | mirrors drift from the tip | immutable content-addressed objects: any tier answers any request, forever correct |

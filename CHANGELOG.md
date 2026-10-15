@@ -6,11 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `examples/land_load.rs` and `bench/git_push_load.py`: landing throughput with N
+  concurrent agents, for Pando and git.
+
 ### Fixed
+- `bench/concurrent_land.py` failed after the rename; README links to the benchmark page
+  pointed at a file that still had the old name.
 - `pandod compact` on SQLite no longer leaves a write-ahead log as large as the database
   behind after VACUUM; on git/git that was 392 MB next to a 388 MB database.
 
 ### Performance
+- Concurrent lands to the same branch are batched: the server rebases everything queued as
+  one chain and moves the branch with one compare-and-swap. With 200 agents landing at once
+  on one machine, throughput went from 10 lands/s with 237 "too contended" errors to 1,012
+  lands/s with none; 1,000 agents sustain 504 lands/s (git: 0.2/s). A conflicting change
+  fails without affecting the rest of its batch.
+- The rebase conflict check walks only the changeset's own paths instead of diffing
+  everything that landed since its base.
+- SQLite writes are group-committed by one writer thread instead of one transaction per
+  write behind a mutex.
 - `pandod compact` is incremental: finished changesets are recorded and later runs process
   only what landed since, instead of rescanning all history.
 - Compaction looks up paths in a cache of parsed trees instead of re-reading and re-parsing

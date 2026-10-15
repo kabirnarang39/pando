@@ -80,7 +80,7 @@ def main():
         run(["git", "clone", "-q", "--depth", "1", remote, g])
         git_paths.append(g)
         s = os.path.join(base, f"s{i}")
-        run(["pando", "clone", a.sap_url, s, "--path", "bench-concurrency"])
+        run(["pando", "clone", a.pando_url, s, "--path", "bench-concurrency"])
         sap_paths.append(s)
 
     merges = a.agents * a.each

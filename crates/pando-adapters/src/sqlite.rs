@@ -1,11 +1,14 @@
 //! SQLite adapter for single-node deployments and local development.
 //!
 //! WAL mode, one writer connection plus a pool of reader connections so reads never
-//! block on writes. All SQLite calls run on tokio's blocking pool.
+//! block on writes. Reads run on tokio's blocking pool. Writes go through a queue to one
+//! writer thread that commits whatever has queued up as a single transaction (group
+//! commit): at 1000 concurrent agents, one transaction per write left the land path waiting
+//! behind hundreds of threads contending for the writer.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -23,8 +26,22 @@ CREATE TABLE IF NOT EXISTS derived    (kind TEXT NOT NULL, id BLOB NOT NULL, val
                                        PRIMARY KEY (kind, id)) WITHOUT ROWID;
 ";
 
+/// Most writes committed in one transaction.
+const MAX_BATCH: usize = 512;
+
+/// Runs one write; returns whether it succeeded and how to report the outcome once the
+/// batch's commit is known.
+type Job = Box<dyn FnOnce(&mut Connection) -> (bool, Deliver) + Send>;
+type Deliver = Box<dyn FnOnce(bool) + Send>;
+
+/// `alone`: run outside any transaction (VACUUM cannot run inside one).
+struct Queued {
+    alone: bool,
+    job: Job,
+}
+
 pub struct SqliteStore {
-    writer: Arc<Mutex<Connection>>,
+    writer: mpsc::Sender<Queued>,
     readers: Arc<Vec<Mutex<Connection>>>,
     next: AtomicUsize,
 }
@@ -52,7 +69,7 @@ impl SqliteStore {
     /// mode VACUUM writes the whole database through the log, so truncate the log afterwards
     /// or it keeps that space until the next checkpoint.
     pub async fn vacuum(&self) -> Result<()> {
-        self.write(|c| c.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")).await
+        self.enqueue(true, |c| c.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")).await
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -72,7 +89,12 @@ impl SqliteStore {
             })
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(storage_err)?;
-        Ok(Self { writer: Arc::new(Mutex::new(writer)), readers: Arc::new(readers), next: AtomicUsize::new(0) })
+        let (tx, rx) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("sqlite-writer".into())
+            .spawn(move || write_loop(writer, rx))
+            .map_err(storage_err)?;
+        Ok(Self { writer: tx, readers: Arc::new(readers), next: AtomicUsize::new(0) })
     }
 
     async fn read<T, F>(&self, f: F) -> Result<T>
@@ -93,11 +115,76 @@ impl SqliteStore {
         T: Send + 'static,
         F: FnOnce(&mut Connection) -> rusqlite::Result<T> + Send + 'static,
     {
-        let writer = self.writer.clone();
-        tokio::task::spawn_blocking(move || f(&mut writer.lock().expect("sqlite writer poisoned")))
-            .await
-            .map_err(storage_err)?
-            .map_err(storage_err)
+        self.enqueue(false, f).await
+    }
+
+    async fn enqueue<T, F>(&self, alone: bool, f: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> rusqlite::Result<T> + Send + 'static,
+    {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let job: Job = Box::new(move |c| {
+            let r = f(c);
+            (
+                r.is_ok(),
+                Box::new(move |committed| {
+                    let r = r.and_then(|v| if committed { Ok(v) } else { Err(failed("group commit failed")) });
+                    let _ = tx.send(r);
+                }),
+            )
+        });
+        self.writer.send(Queued { alone, job }).map_err(|_| storage_err(failed("sqlite writer stopped")))?;
+        rx.await.map_err(|_| storage_err(failed("sqlite writer stopped")))?.map_err(storage_err)
+    }
+}
+
+fn failed(msg: &str) -> rusqlite::Error {
+    rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ABORT), Some(msg.to_owned()))
+}
+
+/// The writer thread: take whatever has queued (up to [`MAX_BATCH`]), run each write in its
+/// own savepoint so a failing one is rolled back alone, commit once, then report. Results
+/// are reported only after the commit, so a write is durable when its caller sees Ok.
+fn write_loop(mut c: Connection, rx: mpsc::Receiver<Queued>) {
+    let mut held: Option<Queued> = None;
+    while let Some(first) = held.take().or_else(|| rx.recv().ok()) {
+        let mut batch = vec![first];
+        if !batch[0].alone {
+            while batch.len() < MAX_BATCH {
+                match rx.try_recv() {
+                    Ok(q) if q.alone => {
+                        held = Some(q);
+                        break;
+                    }
+                    Ok(q) => batch.push(q),
+                    Err(_) => break,
+                }
+            }
+        }
+        if batch.len() == 1 {
+            let (_, deliver) = (batch.pop().unwrap().job)(&mut c);
+            deliver(true);
+            continue;
+        }
+        let mut delivers = Vec::with_capacity(batch.len());
+        let committed = c.execute_batch("BEGIN IMMEDIATE").is_ok() && {
+            for q in batch {
+                let sp = c.execute_batch("SAVEPOINT w").is_ok();
+                let (ok, deliver) = (q.job)(&mut c);
+                if sp {
+                    let _ = c.execute_batch(if ok { "RELEASE w" } else { "ROLLBACK TO w; RELEASE w" });
+                }
+                delivers.push(deliver);
+            }
+            c.execute_batch("COMMIT").is_ok()
+        };
+        if !committed {
+            let _ = c.execute_batch("ROLLBACK");
+        }
+        for d in delivers {
+            d(committed);
+        }
     }
 }
 
@@ -120,7 +207,8 @@ impl ObjectStore for SqliteStore {
 
     async fn put_many(&self, items: Vec<(Id, Bytes)>) -> Result<()> {
         self.write(move |c| {
-            let tx = c.transaction()?;
+            // A savepoint, not a transaction: it nests inside the writer's batch.
+            let tx = c.savepoint()?;
             {
                 let mut stmt = tx.prepare_cached("INSERT OR IGNORE INTO objects (id, payload) VALUES (?1, ?2)")?;
                 for (id, p) in &items {

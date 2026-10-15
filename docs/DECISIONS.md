@@ -158,3 +158,20 @@ review database. Checking before rebase keeps the hook off the contended retry p
 sound because a server-side rebase only happens when no changed path conflicts, so the
 approved file changes are exactly what lands. Failing closed means an outage of the gate
 cannot let unreviewed code onto a protected branch.
+
+## ADR-017: Batch concurrent lands per ref instead of retrying compare-and-swap
+
+**Decision.** Within one server process, lands to the same ref join a queue. The land that
+takes the ref's turn rebases everything queued as one chain over an in-memory overlay,
+writes the chain and advances the ref with a single compare-and-swap. Checks that depend
+only on the starting head run concurrently; the conflict check compares base and tip only
+along the changeset's own paths.
+**Why.** The original loop (read head, rebase, compare-and-swap, retry on loss) is
+lock-free but does quadratic work under contention: with N landers, N-1 lose each swap and
+rebase again. Measured on one machine it fell from 105 lands/s at 16 agents to 10 lands/s
+with 237 "too contended" errors at 200 agents. Batched, the same machine sustains 758-1,012
+lands/s at 16-200 agents and 504 at 1,000, with no errors. The compare-and-swap stays as
+the arbiter between replicas, so correctness does not depend on the queue, and a
+conflicting change fails without affecting the rest of its batch. A randomized test checks
+the path-scoped conflict check against the previous full-diff rule.
+
