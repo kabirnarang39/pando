@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Path-scoped read permissions**: `read` grants in the access rules. Restricted principals
+  are denied raw object reads and get path-filtered views instead: streaming `Checkout`, filtered
+  `ListDir`/`Find`, diffs limited to readable paths, and redacted history. New `Access.WhoAmI`
+  lets `sap clone/sync` switch to path-scoped checkout automatically. Rules without `read`
+  keep full read access for everyone.
+
 ## [1.3.0] - 2026-10-15
 
 ### Added

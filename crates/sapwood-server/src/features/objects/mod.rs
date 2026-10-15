@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::Stream;
+use sapwood_core::acl::{AccessPolicy, Principal, effective_scope, require_full_read};
 use sapwood_core::chunked::{is_manifest, verify_manifest};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{MAX_OBJECT_BYTES, decode_object};
@@ -14,17 +15,25 @@ use sapwood_proto::objects_server::{self, ObjectsServer};
 use sapwood_proto::{IdList, MAX_MESSAGE_BYTES, OBJECT_BATCH, ObjectPayload, PutObjectsResponse};
 use tonic::{Request, Response, Status, Streaming};
 
+use crate::auth::principal;
 use crate::status::{RpcResult, async_stream, id_from, to_status};
 
 #[derive(Clone)]
 pub struct Objects {
     store: Arc<dyn ObjectStore>,
     flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
 }
 
 impl Objects {
-    pub fn new(store: Arc<dyn ObjectStore>, flags: Arc<dyn FeatureFlags>) -> Self {
-        Self { store, flags }
+    pub fn new(store: Arc<dyn ObjectStore>, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Self {
+        Self { store, flags, policy }
+    }
+
+    /// Reading objects by id bypasses path checks, so it requires full read access.
+    /// Writing (Put) is always allowed: it reveals nothing.
+    fn require_object_reads(&self, who: &Principal) -> Result<()> {
+        require_full_read(&effective_scope(self.flags.as_ref(), self.policy.as_ref(), who), who)
     }
 
     pub async fn get_many(&self, ids: &[Id]) -> Result<Vec<Option<Bytes>>> {
@@ -90,6 +99,7 @@ impl objects_server::Objects for Objects {
     /// Streams found objects in request order, fetching from storage in batches so the
     /// first bytes leave before the whole request is resolved. Missing ids are omitted.
     async fn get(&self, req: Request<IdList>) -> RpcResult<Self::GetStream> {
+        self.require_object_reads(&principal(&req)).map_err(to_status)?;
         let ids = ids(req.get_ref())?;
         let this = self.clone();
         let stream = async_stream(move |tx| async move {
@@ -134,6 +144,7 @@ impl objects_server::Objects for Objects {
     }
 
     async fn missing(&self, req: Request<IdList>) -> RpcResult<IdList> {
+        self.require_object_reads(&principal(&req)).map_err(to_status)?;
         let missing = Objects::missing(self, &ids(req.get_ref())?).await.map_err(to_status)?;
         Ok(Response::new(IdList { ids: missing.into_iter().map(|i| i.0.to_vec()).collect() }))
     }

@@ -860,3 +860,79 @@ async fn large_files_are_chunked_streamed_and_deduplicated() {
     git_cmd(g.path(), &["checkout", "-q", "main"]);
     assert!(std::fs::read(g.path().join("assets/model.bin")).unwrap() == edited);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn path_scoped_read_permissions() {
+    let policy = sapwood_adapters::acl::RulesPolicy::parse(
+        r#"{"principals":{
+            "alice":{"read":["*"],"write":["*"],"refs":["*"]},
+            "bob":{"read":["services/api","docs"],"write":["services/api"],"refs":["main"]}}}"#,
+    )
+    .unwrap();
+    let tokens = StaticTokens::new(["alice:a-token".to_owned(), "bob:b-token".to_owned()]);
+    let c = start_full(SpecFlags::all_on(), Arc::new(tokens), "memory", Arc::new(policy)).await;
+    let as_ = |t: &str| -> Arc<dyn Remote> { Arc::new(GrpcRemote::connect(&c.server, None, Some(t)).unwrap()) };
+    let (alice, bob) = (as_("a-token"), as_("b-token"));
+    let cfg = |_who: &str| Config { server: c.server.clone(), objects: None, ref_name: "main".into(), sparse: vec![] };
+
+    let da = tempfile::tempdir().unwrap();
+    let pa = da.path().join("w");
+    let mut wa = clone::run(alice.as_ref(), &flags(), &pa, cfg("a")).await.unwrap();
+    write(&pa, "services/api/main.rs", "api v1\n");
+    write(&pa, "docs/guide.md", "guide\n");
+    write(&pa, "secrets/prod.key", "TOP SECRET\n");
+    write(&pa, "services/billing/ledger.rs", "ledger\n");
+    let seed = commit_land(&mut wa, alice.as_ref(), "seed").await.landed;
+
+    // Bob's clone contains only what he may read.
+    let db = tempfile::tempdir().unwrap();
+    let pb = db.path().join("w");
+    let mut wb = clone::run(bob.as_ref(), &flags(), &pb, cfg("b")).await.unwrap();
+    assert_eq!(read(&pb, "services/api/main.rs"), "api v1\n");
+    assert_eq!(read(&pb, "docs/guide.md"), "guide\n");
+    assert!(!pb.join("secrets").exists() && !pb.join("services/billing").exists());
+    assert!(wb.status(&[]).unwrap().is_empty());
+
+    // Every read path refuses or hides secrets.
+    assert!(bob.read_file("main", "secrets/prod.key").await.unwrap_err().to_string().contains("may not read"));
+    let root: Vec<String> = bob.list_dir("main", "").await.unwrap().into_iter().map(|e| e.name).collect();
+    assert_eq!(root, vec!["docs", "services"]);
+    let services: Vec<String> = bob.list_dir("main", "services").await.unwrap().into_iter().map(|e| e.name).collect();
+    assert_eq!(services, vec!["api"]);
+    assert!(bob.list_dir("main", "secrets").await.is_err());
+    assert_eq!(bob.find("main", ".", 100).await.unwrap(), vec!["docs/guide.md", "services/api/main.rs"]);
+    let seed_cs = bob.changeset(&seed.to_hex()).await.unwrap();
+    assert!(seed_cs.redacted, "seed touched unreadable paths");
+    assert!(seed_cs.changeset.changes.iter().all(|c| !c.path.starts_with("secrets") && !c.path.contains("billing")));
+    let diff = bob.diff(&seed.to_hex(), "main").await.unwrap();
+    assert!(diff.is_empty());
+    assert!(bob.log("main", "secrets", 10).await.is_err());
+    // Raw object reads by id (e.g. the root tree, which lists secret ids) are denied.
+    let root_tree = seed_cs.root_tree;
+    let err = bob.objects().get(&root_tree).await.unwrap_err().to_string();
+    assert!(err.contains("path-scoped"), "{err}");
+    assert!(alice.objects().get(&root_tree).await.unwrap().is_some());
+
+    // Bob still works normally inside his scope: commit (uploads without existence
+    // probes), land, and sync alice's changes (secrets stay out).
+    write(&pb, "services/api/main.rs", "api v2 by bob\n");
+    commit_land(&mut wb, bob.as_ref(), "bob edits api").await;
+    sync::run(alice.as_ref(), &mut wa, None).await.unwrap();
+    assert_eq!(read(&pa, "services/api/main.rs"), "api v2 by bob\n");
+    write(&pa, "docs/guide.md", "guide v2\n");
+    write(&pa, "secrets/prod.key", "ROTATED SECRET\n");
+    commit_land(&mut wa, alice.as_ref(), "alice edits docs and secrets").await;
+    sync::run(bob.as_ref(), &mut wb, None).await.unwrap();
+    assert_eq!(read(&pb, "docs/guide.md"), "guide v2\n");
+    assert!(!pb.join("secrets").exists());
+    let log = bob.log("main", "", 10).await.unwrap();
+    assert!(log.iter().all(|c| c.changeset.changes.iter().all(|ch| !ch.path.starts_with("secrets"))));
+    // Bob's log omits changesets that only touched what he cannot read.
+    write(&pa, "secrets/other.key", "x\n");
+    let hidden = commit_land(&mut wa, alice.as_ref(), "secrets only").await.landed;
+    assert!(bob.log("main", "", 10).await.unwrap().iter().all(|c| c.id != hidden));
+
+    // Without read rules everyone keeps full access (backward compatible).
+    let open = sapwood_adapters::acl::RulesPolicy::parse(r#"{"default":{"write":["*"],"refs":["*"]}}"#).unwrap();
+    assert!(sapwood_core::acl::AccessPolicy::read_scope(&open, &sapwood_core::acl::Principal::anonymous()).is_full());
+}

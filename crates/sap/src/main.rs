@@ -333,7 +333,13 @@ async fn run() -> Result<()> {
         Cmd::Ls { rev, path } => {
             let remote = connect(&server_for(None)?, None, token)?;
             for e in browse::ls(remote.as_ref(), &rev, &path).await? {
-                writeln!(stdout, "{} {} {}", browse::mode_char(e.mode), e.id.short(), e.name)?;
+                writeln!(
+                    stdout,
+                    "{} {} {}",
+                    browse::mode_char(e.mode),
+                    e.id.map_or("-".into(), |i| i.short()),
+                    e.name
+                )?;
             }
         }
         Cmd::Find { pattern, rev } => {

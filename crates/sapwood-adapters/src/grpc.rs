@@ -29,6 +29,8 @@ pub fn status_err(s: tonic::Status) -> Error {
     match s.code() {
         tonic::Code::NotFound => Error::NotFound(s.message().to_owned()),
         tonic::Code::InvalidArgument => Error::Invalid(s.message().to_owned()),
+        tonic::Code::PermissionDenied => Error::PermissionDenied(s.message().to_owned()),
+        tonic::Code::Aborted => Error::Conflict(s.message().to_owned()),
         _ => storage_err(format!("upstream: {s}")),
     }
 }
