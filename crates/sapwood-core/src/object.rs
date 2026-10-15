@@ -134,10 +134,12 @@ pub const MAX_OBJECT_BYTES: u64 = 256 << 20;
 
 pub fn encode_object(kind: Kind, content: &[u8]) -> (Id, Bytes) {
     let id = Id::hash(kind as u8, content);
-    let mut payload = Vec::with_capacity(1 + content.len() / 3 + 16);
+    // The bulk encoder records the content size in the frame header, which lets readers
+    // size an object (e.g. for `stat` on a mounted checkout) without decompressing it.
+    let frame = zstd::bulk::compress(content, ZSTD_LEVEL).expect("zstd into memory");
+    let mut payload = Vec::with_capacity(1 + frame.len());
     payload.push(kind as u8);
-    // Writing into a Vec cannot fail.
-    zstd::stream::copy_encode(content, &mut payload, ZSTD_LEVEL).expect("zstd into Vec");
+    payload.extend_from_slice(&frame);
     (id, payload.into())
 }
 
@@ -156,6 +158,31 @@ pub fn decode_object(id: &Id, payload: &[u8]) -> Result<(Kind, Vec<u8>)> {
         return Err(Error::Corrupt(format!("{id}: hash mismatch")));
     }
     Ok((kind, content))
+}
+
+/// Content size of a stored object without decompressing it: from the zstd frame header,
+/// or from the manifest of a chunked large file.
+pub fn content_size(payload: &[u8]) -> Result<u64> {
+    if crate::chunked::is_manifest(payload) {
+        return Ok(crate::chunked::parse_manifest(payload)?.size);
+    }
+    let body = payload.get(1..).ok_or_else(|| Error::Corrupt("empty payload".into()))?;
+    match zstd::zstd_safe::get_frame_content_size(body) {
+        Ok(Some(n)) => Ok(n),
+        // Objects written before sizes were recorded: measure by decompressing.
+        _ => {
+            let mut n = 0u64;
+            let mut dec = zstd::stream::Decoder::new(body).map_err(|e| Error::Corrupt(e.to_string()))?;
+            let mut buf = [0u8; 64 * 1024];
+            loop {
+                let k = dec.read(&mut buf).map_err(|e| Error::Corrupt(e.to_string()))?;
+                if k == 0 {
+                    return Ok(n);
+                }
+                n += k as u64;
+            }
+        }
+    }
 }
 
 /// Cheap kind check without decompressing.
@@ -182,6 +209,21 @@ mod tests {
         fn decode_never_panics(junk in proptest::collection::vec(any::<u8>(), 0..512)) {
             let _ = decode_object(&Id([0; 32]), &junk);
             let _ = Changeset::decode_verified(&Id::hash(CHANGESET_TAG, &junk), &junk);
+        }
+    }
+
+    #[test]
+    fn content_size_of_legacy_frames_without_size() {
+        let mut p = vec![Kind::Blob as u8];
+        zstd::stream::copy_encode(&b"legacy"[..], &mut p, 3).unwrap();
+        assert_eq!(content_size(&p).unwrap(), 6);
+    }
+
+    #[test]
+    fn content_size_from_header() {
+        for n in [0usize, 1, 1000, 1 << 20] {
+            let (_, p) = encode_object(Kind::Blob, &vec![7u8; n]);
+            assert_eq!(content_size(&p).unwrap(), n as u64);
         }
     }
 

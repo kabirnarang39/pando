@@ -132,6 +132,7 @@ Teams can adopt Sapwood one person at a time: git users and `sap` users share th
 | `git blame f` | `sap blame f` | |
 | `git show REV:path` | `sap cat REV path` | works without a clone |
 | `git ls-tree` | `sap ls REV [dir]` | works without a clone |
+| (no equivalent) | `sap mount DIR --rev main` | Linux: read-only view, files fetched on first read |
 | `git branch` | `sap refs` | alias `branch` |
 | `git merge-base A B` | `sap merge-base A B` | |
 

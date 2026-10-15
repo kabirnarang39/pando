@@ -996,3 +996,56 @@ async fn daemon_prefetch_serves_without_upstream() {
     .unwrap();
     assert!(off.run_once("main", &[]).await.unwrap_err().to_string().contains("daemon-prefetch"));
 }
+
+/// Needs /dev/fuse and fusermount3 (or root); CI sets SAPWOOD_FUSE_TEST=1 on Linux.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn mounted_revision_reads_lazily() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if std::env::var_os("SAPWOOD_FUSE_TEST").is_none() {
+        eprintln!("skipping: set SAPWOOD_FUSE_TEST=1 to run the FUSE test");
+        return;
+    }
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "src/lib.rs", "pub fn answer() -> u32 { 42 }\n");
+    write(&p, "tools/run.sh", "#!/bin/sh\necho hi\n");
+    std::fs::set_permissions(p.join("tools/run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink("../src/lib.rs", p.join("tools/lib")).unwrap();
+    let big = noise(20 << 20, 4);
+    std::fs::create_dir_all(p.join("assets")).unwrap();
+    std::fs::write(p.join("assets/model.bin"), &big).unwrap();
+    commit_land(&mut ws, r.as_ref(), "seed").await;
+
+    let root = r.changeset("main").await.unwrap().root_tree;
+    let tree = Arc::new(sap::mount::VirtualTree::new(r.objects(), tokio::runtime::Handle::current(), root, 64 << 20));
+    let mnt = tempfile::tempdir().unwrap();
+    let session = sap::mount::fuse::mount(tree, mnt.path()).unwrap();
+    let m = mnt.path().to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut top: Vec<_> = std::fs::read_dir(&m).unwrap().map(|e| e.unwrap().file_name()).collect();
+        top.sort();
+        assert_eq!(top, ["assets", "src", "tools"]);
+        assert_eq!(std::fs::read_to_string(m.join("src/lib.rs")).unwrap(), "pub fn answer() -> u32 { 42 }\n");
+        assert_eq!(std::fs::metadata(m.join("tools/run.sh")).unwrap().permissions().mode() & 0o111, 0o111);
+        assert_eq!(std::fs::read_link(m.join("tools/lib")).unwrap(), std::path::Path::new("../src/lib.rs"));
+        assert_eq!(std::fs::read_to_string(m.join("tools/lib")).unwrap(), "pub fn answer() -> u32 { 42 }\n");
+        assert_eq!(std::fs::metadata(m.join("assets/model.bin")).unwrap().len(), big.len() as u64);
+        let mut f = std::fs::File::open(m.join("assets/model.bin")).unwrap();
+        f.seek(SeekFrom::Start(13_000_000)).unwrap();
+        let mut buf = vec![0u8; 100_000];
+        f.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, &big[13_000_000..13_100_000]);
+        assert_eq!(std::fs::read(m.join("assets/model.bin")).unwrap(), big);
+        assert!(std::fs::write(m.join("src/new.rs"), "x").is_err(), "mount is read-only");
+        assert!(std::fs::metadata(m.join("missing")).is_err());
+    })
+    .await
+    .unwrap();
+    session.umount_and_join().unwrap();
+}

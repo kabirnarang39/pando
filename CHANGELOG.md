@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Virtual checkouts on Linux** (`sap mount DIR [--rev main] [--objects URL]`, flag
+  `virtual-checkout`): mounts a revision read-only through FUSE. Directories load when first
+  listed, file sizes come from object headers without downloading content, and reads of a
+  large file fetch only the chunks covering the requested range. Every object is hash-verified.
+
+### Changed
+- New objects record their uncompressed size in the zstd frame header, so a file's size is
+  known without decompressing it. Ids and the storage format are unchanged; older objects are
+  still read (and sized by decompressing).
+
 ## [1.6.0] - 2026-10-15
 
 ### Added
