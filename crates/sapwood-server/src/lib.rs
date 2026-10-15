@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod config;
 pub mod features;
+pub mod land_hook;
 pub mod oidc;
 mod status;
 pub mod telemetry;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 use sapwood_core::Repo;
 use sapwood_core::acl::AccessPolicy;
 use sapwood_core::flags::FeatureFlags;
-use sapwood_core::ports::ObjectStore;
+use sapwood_core::ports::{LandCheck, ObjectStore};
 use tokio::net::TcpListener;
 use tonic::service::{InterceptorLayer, Routes};
 use tonic::transport::{Server, ServerTlsConfig};
@@ -23,13 +24,18 @@ use crate::auth::{AuthInterceptor, Authenticator};
 use crate::features::*;
 
 /// All slices, served by the authoritative server.
-pub fn authority_routes(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Routes {
+pub fn authority_routes(
+    repo: Repo,
+    flags: Arc<dyn FeatureFlags>,
+    policy: Arc<dyn AccessPolicy>,
+    checks: Arc<dyn LandCheck>,
+) -> Routes {
     let f = || flags.clone();
     Routes::new(objects::service(objects::Objects::new(repo.objects.clone(), f(), policy.clone())))
         .add_service(access::service(access::Access::new(f(), policy.clone())))
         .add_service(changesets::service(changesets::Changesets::new(repo.clone(), f(), policy.clone())))
         .add_service(refs::service(refs::Refs::new(repo.clone(), f(), policy.clone())))
-        .add_service(land::service(land::Land::new(repo.clone(), f(), policy.clone())))
+        .add_service(land::service(land::Land::new(repo.clone(), f(), policy.clone(), checks)))
         .add_service(history::service(history::History::new(repo.clone(), f(), policy.clone())))
         .add_service(diff::service(diff::Diff::new(repo.clone(), f(), policy.clone())))
         .add_service(merge_base::service(merge_base::MergeBase::new(repo.clone(), f())))

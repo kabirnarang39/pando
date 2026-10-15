@@ -11,6 +11,7 @@ use sapwood_adapters::flags::SpecFlags;
 use sapwood_core::Id;
 use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
 use sapwood_core::flags::FeatureFlags;
+use sapwood_core::ports::{LandCheck, NoChecks};
 use sapwood_server::auth::{AllowAll, Authenticator, StaticTokens};
 use sapwood_server::{authority_routes, config, serve, tier_routes};
 use tokio::net::TcpListener;
@@ -43,8 +44,18 @@ async fn start_full(
     metadata: &str,
     policy: Arc<dyn AccessPolicy>,
 ) -> Cluster {
+    start_checked(flags, auth, metadata, policy, Arc::new(NoChecks)).await
+}
+
+async fn start_checked(
+    flags: SpecFlags,
+    auth: Arc<dyn Authenticator>,
+    metadata: &str,
+    policy: Arc<dyn AccessPolicy>,
+    checks: Arc<dyn LandCheck>,
+) -> Cluster {
     let repo = config::open_repo(metadata, "metadata").await.unwrap();
-    let (server, tx) = spawn(authority_routes(repo, Arc::new(flags), policy), auth).await;
+    let (server, tx) = spawn(authority_routes(repo, Arc::new(flags), policy, checks), auth).await;
     Cluster { server, _shutdown: vec![tx] }
 }
 
@@ -1051,6 +1062,207 @@ async fn mounted_revision_reads_lazily() {
     session.umount_and_join().unwrap();
 }
 
+/// Minimal HTTP land hook: approves only changesets in `approved`, records every request.
+struct Hook {
+    url: String,
+    approved: Arc<std::sync::Mutex<Vec<String>>>,
+    seen: Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+}
+
+async fn land_hook() -> Hook {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/check", listener.local_addr().unwrap());
+    let approved = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (a, s) = (approved.clone(), seen.clone());
+    tokio::spawn(async move {
+        loop {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let (head, body) = loop {
+                let n = sock.read(&mut chunk).await.unwrap();
+                buf.extend_from_slice(&chunk[..n]);
+                if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..i]).to_lowercase();
+                    let len: usize = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .map_or(0, |v| v.trim().parse().unwrap());
+                    while buf.len() < i + 4 + len {
+                        let n = sock.read(&mut chunk).await.unwrap();
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    break (head, buf[i + 4..i + 4 + len].to_vec());
+                }
+            };
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            let auth = head.lines().find_map(|l| l.strip_prefix("authorization:")).unwrap_or("").trim().to_owned();
+            s.lock().unwrap().push((auth.clone(), json.clone()));
+            let (status, msg) = if auth != "bearer hook-secret" {
+                ("401 Unauthorized", "")
+            } else if a.lock().unwrap().contains(&json["changeset"].as_str().unwrap().to_owned()) {
+                ("200 OK", "ok")
+            } else {
+                ("403 Forbidden", "needs an approving review from @owners")
+            };
+            let resp = format!("HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{msg}", msg.len());
+            sock.write_all(resp.as_bytes()).await.unwrap();
+        }
+    });
+    Hook { url, approved, seen }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn land_hook_gates_landing() {
+    use std::time::Duration;
+
+    use sapwood_server::land_hook::WebhookCheck;
+
+    let hook = land_hook().await;
+    let check = WebhookCheck::new(&hook.url, Some("hook-secret".into()), Duration::from_secs(5)).unwrap();
+    let c = start_checked(SpecFlags::all_on(), Arc::new(AllowAll), "memory", Arc::new(AllowAllPolicy), Arc::new(check))
+        .await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "src/lib.rs", "pub fn f() {}\n");
+    write(&p, "README.md", "hi\n");
+    let committed = commit::run(r.as_ref(), &mut ws, "add lib", "Ada <ada@example.com>", &[]).await.unwrap().unwrap();
+
+    // Not yet approved: refused with the hook's reason, and the ref does not move.
+    let err = land::run(r.as_ref(), &mut ws).await.unwrap_err().to_string();
+    assert!(err.contains("needs an approving review from @owners"), "{err}");
+    assert!(r.changeset("main").await.is_err());
+    let (auth, body) = hook.seen.lock().unwrap()[0].clone();
+    assert_eq!(auth, "bearer hook-secret");
+    assert_eq!(body["ref"], "main");
+    assert_eq!(body["author"], "Ada <ada@example.com>");
+    assert_eq!(body["message"], "add lib");
+    assert_eq!(body["principal"], "anonymous");
+    assert_eq!(body["parent"], serde_json::Value::Null);
+    assert_eq!(body["paths"], serde_json::json!(["README.md", "src/lib.rs"]));
+    assert_eq!(body["paths_truncated"], false);
+
+    // The review approves this exact changeset: the same land now succeeds.
+    let id = body["changeset"].as_str().unwrap().to_owned();
+    assert_eq!(id, committed.id.to_hex());
+    hook.approved.lock().unwrap().push(id);
+    land::run(r.as_ref(), &mut ws).await.unwrap();
+    assert_eq!(r.changeset("main").await.unwrap().id, committed.id);
+
+    // Wrong token: the hook answers 401 with no body.
+    let bad = WebhookCheck::new(&hook.url, Some("wrong".into()), Duration::from_secs(5)).unwrap();
+    let proposal = sapwood_core::ports::LandProposal {
+        principal: "p".into(),
+        ref_name: "main".into(),
+        changeset: committed.id,
+        parent: None,
+        author: String::new(),
+        message: String::new(),
+        paths: vec![],
+    };
+    let e = bad.check(&proposal).await.unwrap_err().to_string();
+    assert!(e.contains("HTTP 401"), "{e}");
+
+    // Unreachable hook: fail closed, without leaking the URL.
+    let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead = format!("http://{}/check", closed.local_addr().unwrap());
+    drop(closed);
+    let e =
+        WebhookCheck::new(&dead, None, Duration::from_secs(2)).unwrap().check(&proposal).await.unwrap_err().to_string();
+    assert!(e.contains("land check unavailable") && !e.contains("127.0.0.1"), "{e}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn land_hook_skipped_when_flag_off() {
+    use std::time::Duration;
+
+    use sapwood_server::land_hook::WebhookCheck;
+
+    let hook = land_hook().await;
+    let check = WebhookCheck::new(&hook.url, Some("hook-secret".into()), Duration::from_secs(5)).unwrap();
+    let flags = SpecFlags::parse("land-checks=off").unwrap();
+    let c = start_checked(flags, Arc::new(AllowAll), "memory", Arc::new(AllowAllPolicy), Arc::new(check)).await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "a.txt", "a\n");
+    commit_land(&mut ws, r.as_ref(), "unchecked").await;
+    assert!(hook.seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_leaves_chunked_large_files_intact() {
+    use sapwood_server::features::compact::Compactor;
+
+    let storage = config::open_storage("memory", "metadata").await.unwrap();
+    let flags_on: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags_on.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let c = Cluster { server, _shutdown: vec![] };
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    let v1 = noise(12 << 20, 5);
+    let mut v2 = v1.clone();
+    v2.extend_from_slice(b"tail");
+    std::fs::write(p.join("big.bin"), &v1).unwrap();
+    commit_land(&mut ws, r.as_ref(), "v1").await;
+    std::fs::write(p.join("big.bin"), &v2).unwrap();
+    let head = commit_land(&mut ws, r.as_ref(), "v2").await.landed;
+    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags_on).run(false).await.unwrap();
+    assert!(stats.skipped_chunked >= 1, "{stats:?}");
+    assert!(browse::cat(r.as_ref(), &head.to_hex(), "big.bin").await.unwrap() == v2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_never_converts_a_base_that_others_depend_on() {
+    use sapwood_core::delta;
+    use sapwood_server::features::compact::Compactor;
+
+    // X is first a brand-new file at a/, then the base for Y at a/; later X reappears as
+    // the *new* version of b/ (a copy/revert). Converting X then would lengthen Y's chain.
+    let storage = config::open_storage("memory", "metadata").await.unwrap();
+    let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let c = Cluster { server, _shutdown: vec![] };
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    let x: String = (0..2000).map(|i| format!("line {i} of x\n")).collect();
+    let y = x.replace("line 7 of x", "line 7 of y");
+    let w: String = x.replace("line 9 of x", "line 9 of w");
+    write(&p, "a/f.txt", &x);
+    write(&p, "b/f.txt", &w);
+    commit_land(&mut ws, r.as_ref(), "x and w").await;
+    write(&p, "a/f.txt", &y);
+    commit_land(&mut ws, r.as_ref(), "y based on x").await;
+    write(&p, "b/f.txt", &x);
+    commit_land(&mut ws, r.as_ref(), "b becomes x").await;
+
+    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags).run(false).await.unwrap();
+    assert_eq!(stats.converted, 1, "{stats:?}");
+    assert_eq!(stats.skipped_pinned, 1, "{stats:?}");
+    let x_id = sapwood_core::Id::hash(sapwood_core::object::Kind::Blob as u8, x.as_bytes());
+    let x_payload = storage.raw_objects.get(&x_id).await.unwrap().unwrap();
+    assert!(!delta::is_delta(&x_payload), "pinned base must stay whole");
+    assert_eq!(browse::cat(r.as_ref(), "main", "a/f.txt").await.unwrap(), y.as_bytes());
+    assert_eq!(browse::cat(r.as_ref(), "main", "b/f.txt").await.unwrap(), x.as_bytes());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn compaction_preserves_every_version_and_shrinks_storage() {
     use sapwood_server::features::compact::{Compactor, LEASE_REF};
@@ -1059,9 +1271,11 @@ async fn compaction_preserves_every_version_and_shrinks_storage() {
     let url = format!("sqlite://{}", data.path().join("meta.db").display());
     let storage = config::open_storage(&url, "metadata").await.unwrap();
     let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
-    let (server, _stop) =
-        spawn(authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy)), Arc::new(AllowAll))
-            .await;
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
     let c = Cluster { server, _shutdown: vec![] };
     let r = remote(&c);
     let d = tempfile::tempdir().unwrap();
@@ -1129,68 +1343,4 @@ async fn compaction_preserves_every_version_and_shrinks_storage() {
         Arc::new(SpecFlags::parse("delta-storage=off").unwrap()),
     );
     assert!(off.run(false).await.unwrap_err().to_string().contains("delta-storage"));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn compaction_never_converts_a_base_that_others_depend_on() {
-    use sapwood_core::delta;
-    use sapwood_server::features::compact::Compactor;
-
-    // X is first a brand-new file at a/, then the base for Y at a/; later X reappears as
-    // the *new* version of b/ (a copy/revert). Converting X then would lengthen Y's chain.
-    let storage = config::open_storage("memory", "metadata").await.unwrap();
-    let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
-    let (server, _stop) =
-        spawn(authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy)), Arc::new(AllowAll))
-            .await;
-    let c = Cluster { server, _shutdown: vec![] };
-    let r = remote(&c);
-    let d = tempfile::tempdir().unwrap();
-    let p = d.path().join("w");
-    let mut ws = clone_into(&c, &p, &[]).await;
-    let x: String = (0..2000).map(|i| format!("line {i} of x\n")).collect();
-    let y = x.replace("line 7 of x", "line 7 of y");
-    let w: String = x.replace("line 9 of x", "line 9 of w");
-    write(&p, "a/f.txt", &x);
-    write(&p, "b/f.txt", &w);
-    commit_land(&mut ws, r.as_ref(), "x and w").await;
-    write(&p, "a/f.txt", &y);
-    commit_land(&mut ws, r.as_ref(), "y based on x").await;
-    write(&p, "b/f.txt", &x);
-    commit_land(&mut ws, r.as_ref(), "b becomes x").await;
-
-    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags).run(false).await.unwrap();
-    assert_eq!(stats.converted, 1, "{stats:?}");
-    assert_eq!(stats.skipped_pinned, 1, "{stats:?}");
-    let x_id = sapwood_core::Id::hash(sapwood_core::object::Kind::Blob as u8, x.as_bytes());
-    let x_payload = storage.raw_objects.get(&x_id).await.unwrap().unwrap();
-    assert!(!delta::is_delta(&x_payload), "pinned base must stay whole");
-    assert_eq!(browse::cat(r.as_ref(), "main", "a/f.txt").await.unwrap(), y.as_bytes());
-    assert_eq!(browse::cat(r.as_ref(), "main", "b/f.txt").await.unwrap(), x.as_bytes());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn compaction_leaves_chunked_large_files_intact() {
-    use sapwood_server::features::compact::Compactor;
-
-    let storage = config::open_storage("memory", "metadata").await.unwrap();
-    let flags_on: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
-    let (server, _stop) =
-        spawn(authority_routes(storage.repo.clone(), flags_on.clone(), Arc::new(AllowAllPolicy)), Arc::new(AllowAll))
-            .await;
-    let c = Cluster { server, _shutdown: vec![] };
-    let r = remote(&c);
-    let d = tempfile::tempdir().unwrap();
-    let p = d.path().join("w");
-    let mut ws = clone_into(&c, &p, &[]).await;
-    let v1 = noise(12 << 20, 5);
-    let mut v2 = v1.clone();
-    v2.extend_from_slice(b"tail");
-    std::fs::write(p.join("big.bin"), &v1).unwrap();
-    commit_land(&mut ws, r.as_ref(), "v1").await;
-    std::fs::write(p.join("big.bin"), &v2).unwrap();
-    let head = commit_land(&mut ws, r.as_ref(), "v2").await.landed;
-    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags_on).run(false).await.unwrap();
-    assert!(stats.skipped_chunked >= 1, "{stats:?}");
-    assert!(browse::cat(r.as_ref(), &head.to_hex(), "big.bin").await.unwrap() == v2);
 }

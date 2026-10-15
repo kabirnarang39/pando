@@ -148,3 +148,14 @@ deltas to 45 bytes (vs 6.9 KB for standalone zstd) at the same speed as plain le
 higher levels cost 50-500x more time for <10% gain. On git/git (82,443 commits) compaction
 converts 312k object versions (159k of them trees) in 15 minutes: storage 4.6 GB -> 369 MB
 (git's own pack: 333 MB), and all 24,380 mainline commits read back with identical content.
+
+## ADR-016: Pre-land checks as a fail-closed webhook, run before rebase
+
+**Decision.** Landing calls a `LandCheck` port once, after authorization and before the
+rebase/compare-and-swap loop. The shipped adapter POSTs the proposal to a URL; only a 2xx
+answer lands, and timeouts or errors refuse the land.
+**Why.** A webhook lets any CI system or review tool gate landing without Sapwood owning a
+review database. Checking before rebase keeps the hook off the contended retry path, and is
+sound because a server-side rebase only happens when no changed path conflicts, so the
+approved file changes are exactly what lands. Failing closed means an outage of the gate
+cannot let unreviewed code onto a protected branch.

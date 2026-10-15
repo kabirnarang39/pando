@@ -19,8 +19,25 @@ All notable changes to this project are documented here. The format follows
 - `sap refs` / the Refs API hide system refs (`_sapwood/...`).
 
 ### Compatibility
-- A store compacted by this version cannot be read by v1.7.x or older servers (they do not
+- A store compacted by this version cannot be read by v1.8.x or older servers (they do not
   understand delta payloads). Upgrade every server before running `sapwood compact`.
+
+### Fixed
+- Linux release binaries are built on Ubuntu 22.04 and need glibc 2.35 or newer (Debian 12,
+  Ubuntu 22.04, RHEL 10); they previously needed glibc 2.39.
+- The release container image is assembled from the release binaries instead of compiling
+  arm64 under emulation, which took over an hour and failed for v1.6.0. Images for earlier
+  tags can be rebuilt with the Release workflow's manual trigger.
+
+## [1.8.0] - 2026-10-15
+
+### Added
+- **Pre-land checks** (`sapwood server --land-hook URL [--land-hook-token T]
+  [--land-hook-timeout SECS]`, flag `land-checks`): every land is POSTed as JSON to a CI gate,
+  code review service or policy bot, and proceeds only on a 2xx answer. The response body is
+  shown to the author as the reason; timeouts and unreachable hooks refuse the land. The check
+  runs once before any server-side rebase, which happens only without path conflicts, so the
+  approved changes are exactly what lands. New `LandCheck` port for in-process checks.
 
 ## [1.7.0] - 2026-10-15
 
@@ -126,6 +143,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.8.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.8.0
 [1.7.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.7.0
 [1.6.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.6.0
 [1.5.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.5.0
