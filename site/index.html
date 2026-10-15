@@ -214,6 +214,8 @@ sap land</pre>
         <li><strong>Single sign-on</strong>Okta, Entra ID, Google, Auth0 or Keycloak tokens through OpenID Connect, next to tokens for CI.</li>
         <li><strong>Folder-level permissions</strong>Decide who can read and who can write each directory. People with partial access get a checkout, history and search that contain only what they may see.</li>
         <li><strong>Large files</strong>Files are split into content-defined chunks, so editing a large asset uploads only what changed. A 1 GiB file commits in under 200 MB of memory.</li>
+        <li><strong>Build machines start warm</strong>A node daemon can preload a branch and follow it as it moves. On git/git, the first checkout on a fresh machine went from 4.2 s to 0.35 s.</li>
+        <li><strong>Mount instead of clone</strong>On Linux, <code>sap mount</code> shows a whole revision as a read-only folder. Files download the first time something reads them, and only the parts that are read.</li>
       </ul>
     </div>
   </section>
