@@ -144,6 +144,20 @@ claude mcp add sapwood -- sap mcp          # or any MCP client: Codex, Cursor, .
 Tools: `sap_cat`, `sap_ls`, `sap_find`, `sap_log`, `sap_blame`, `sap_diff`, `sap_status`,
 `sap_commit`, `sap_land`, `sap_sync`. Agents read, commit and land without shelling out.
 
+## SDKs
+
+Read files, list directories, search and inspect history from your own tools, without a
+clone. Every client verifies content against its BLAKE3 id.
+
+| Language | Package | Example |
+|---|---|---|
+| Python | [`sdk/python`](sdk/python) (`sapwood`) | `Client(url).read_file("src/lib.rs")` |
+| Go | [`sdk/go`](sdk/go) | `c.ReadFile(ctx, "main", "src/lib.rs")` |
+| TypeScript / Node | [`sdk/typescript`](sdk/typescript) (`sapwood-client`) | `await new Client(url).readFile("src/lib.rs")` |
+
+Any other language: generate a client from [`proto/sapwood.proto`](proto/sapwood.proto); object
+encodings are published in [`proto/sapwood_objects.proto`](proto/sapwood_objects.proto).
+
 ## Architecture
 
 ```

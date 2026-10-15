@@ -2813,6 +2813,7 @@ name = "sapwood-proto"
 version = "1.4.0"
 dependencies = [
  "prost",
+ "sapwood-core",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",

@@ -10,4 +10,3 @@ Items are ordered by expected impact. v1.x releases are backward compatible with
 | Path-history derived index | `log -- path` currently walks first-parent history (bounded) | Derived per-path skip index |
 | Daemon warm-start snapshots | New nodes start with a hot cache | Periodic snapshot of hot objects |
 | Code review integration hooks | Pre-land checks, required approvals | Land-time policy port |
-| Language SDKs (Python, Go, TypeScript) | API-first tooling | Generated from `proto/sapwood.proto` |

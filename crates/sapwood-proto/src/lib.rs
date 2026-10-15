@@ -3,6 +3,11 @@
 pub mod v1 {
     tonic::include_proto!("sapwood.v1");
 }
+/// Canonical object encodings (`proto/sapwood_objects.proto`), published for SDKs and
+/// third-party tools. The core crate's own types must stay byte-compatible with these.
+pub mod objects {
+    tonic::include_proto!("sapwood.objects.v1");
+}
 pub use v1::*;
 
 /// Encoded descriptor set for gRPC server reflection (grpcurl, Postman, etc.).
