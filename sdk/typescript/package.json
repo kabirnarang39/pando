@@ -27,9 +27,10 @@
     "sapwood"
   ],
   "scripts": {
-    "proto": "mkdir -p proto && cp ../../proto/*.proto proto/",
+    "proto": "mkdir -p proto && cp ../../crates/sapwood-proto/proto/*.proto proto/",
     "build": "npm run proto && tsc -p .",
-    "test": "npm run proto && node --test 'test/*.test.ts'"
+    "test": "npm run proto && node --test 'test/*.test.ts'",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.6",

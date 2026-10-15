@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Regenerate gRPC/protobuf stubs from ../../proto (run after protocol changes).
+# Regenerate gRPC/protobuf stubs from ../../crates/sapwood-proto/proto (run after protocol changes).
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT=src/sapwood/_gen
-uv run --group dev python -m grpc_tools.protoc -I ../../proto \
+uv run --group dev python -m grpc_tools.protoc -I ../../crates/sapwood-proto/proto \
   --python_out=$OUT --grpc_python_out=$OUT --pyi_out=$OUT \
   sapwood.proto sapwood_objects.proto
 # grpc_tools emits absolute imports; make them package-relative.

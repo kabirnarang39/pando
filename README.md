@@ -13,6 +13,10 @@ Server-side commits · lock-free landing · tiered caches · API-first reads · 
 
 **[Website](https://kabirnarang39.github.io/sapwood/)** · **[Benchmarks](docs/comparisons/git-vs-sapwood.md)** · **[Architecture](docs/ARCHITECTURE.md)**
 
+<img src="docs/assets/demo.gif" alt="Terminal recording on git/git's 82,443-commit history: git clone takes about 24 seconds, sap clone under one second; then sap log and sap cat answer in about 9 ms without a clone." width="820">
+
+<sub>Live recording, both servers on one laptop. Reproduce with <a href="bench/run.sh"><code>bench/run.sh</code></a> and <a href="docs/assets/demo.tape"><code>docs/assets/demo.tape</code></a>.</sub>
+
 </div>
 
 ---
@@ -22,7 +26,7 @@ git's model starts to hurt: every CI job clones history it never reads, every pu
 global ref and loses, and every query needs a local copy of 100 GB of history. Anthropic
 described hitting exactly this wall and building an internal system, Scion, to get past it
 ([*Redesigning source control*](https://www.anthropic.com/engineering/redesigning-source-control)).
-Scion will not be released.
+Scion is internal to Anthropic.
 
 **Sapwood is an open-source, clean-room implementation of that architecture**, designed to
 run on infrastructure you already have: from a single binary with SQLite on a laptop, to
@@ -79,8 +83,9 @@ Full results, methodology and the cases where git wins: [docs/comparisons/git-vs
 ```sh
 # 1. Install (macOS, Linux; verifies the release checksum). Windows: download the .zip from Releases.
 curl -fsSL https://raw.githubusercontent.com/kabirnarang39/sapwood/main/install.sh | sh
+#    or: brew install kabirnarang39/tap/sapwood
 #    or: docker run -p 7420:7420 ghcr.io/kabirnarang39/sapwood:latest
-#    or: cargo install --git https://github.com/kabirnarang39/sapwood sap sapwood-server
+#    or: cargo install --git https://github.com/kabirnarang39/sapwood sapwood sapwood-server
 
 # 2. Run a server (SQLite by default)
 sapwood server --listen 127.0.0.1:7420 &
@@ -156,8 +161,8 @@ clone. Every client verifies content against its BLAKE3 id.
 | Go | [`sdk/go`](sdk/go) | `c.ReadFile(ctx, "main", "src/lib.rs")` |
 | TypeScript / Node | [`sdk/typescript`](sdk/typescript) (`sapwood-client`) | `await new Client(url).readFile("src/lib.rs")` |
 
-Any other language: generate a client from [`proto/sapwood.proto`](proto/sapwood.proto); object
-encodings are published in [`proto/sapwood_objects.proto`](proto/sapwood_objects.proto).
+Any other language: generate a client from [`sapwood.proto`](crates/sapwood-proto/proto/sapwood.proto); object
+encodings are published in [`sapwood_objects.proto`](crates/sapwood-proto/proto/sapwood_objects.proto).
 
 ## Architecture
 
