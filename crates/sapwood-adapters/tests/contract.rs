@@ -173,7 +173,7 @@ async fn tiered_read_through_write_through() {
     let tier = Tiered::new(local.clone(), upstream.clone());
     object_contract(&tier).await;
 
-    // Write-through reached the authority.
+    // Writes reach the authority (write-around: not the local tier).
     let (a, pa) = obj(1);
     assert_eq!(ObjectStore::get(upstream.as_ref(), &a).await.unwrap(), Some(pa));
 

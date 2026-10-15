@@ -16,6 +16,7 @@ prost.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 zstd.workspace = true
+fastcdc.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

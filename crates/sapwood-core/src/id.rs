@@ -19,6 +19,14 @@ impl Id {
         Id(*h.finalize().as_bytes())
     }
 
+    /// [`Id::hash`] over a stream, without holding the content in memory.
+    pub fn hash_reader(tag: u8, reader: impl std::io::Read) -> std::io::Result<Id> {
+        let mut h = blake3::Hasher::new();
+        h.update(&[tag]);
+        h.update_reader(reader)?;
+        Ok(Id(*h.finalize().as_bytes()))
+    }
+
     pub fn from_slice(b: &[u8]) -> Result<Id> {
         <[u8; 32]>::try_from(b).map(Id).map_err(|_| Error::invalid(format!("id must be 32 bytes, got {}", b.len())))
     }
@@ -74,5 +82,6 @@ mod tests {
         h.update(&[1]);
         h.update(&data);
         assert_eq!(Id::hash(1, &data).0, *h.finalize().as_bytes());
+        assert_eq!(Id::hash_reader(1, &data[..]).unwrap(), Id::hash(1, &data));
     }
 }

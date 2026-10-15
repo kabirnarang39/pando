@@ -155,6 +155,8 @@ sap (CLI/MCP) ──objects──▶ daemon (node) ──▶ cache (region) ─�
   each owns its use case, gRPC handler and **feature flag** (`SAPWOOD_FLAGS=land=off`).
 * **Ports and adapters**: every infrastructure detail is a trait; every adapter passes the
   same contract test suite.
+* **Large files**: content-defined chunking (FastCDC) with streaming upload and checkout;
+  a 1 GiB file commits in 195 MB of memory, and an edit re-uploads only the changed chunks.
 * **Security**: bearer tokens (constant-time), TLS, per-directory write ACLs, per-ref ACLs,
   hash verification at every tier, symlink-safe working-copy writes.
 * **Operations**: Prometheus metrics, JSON logs, gRPC health + reflection, graceful shutdown.
@@ -168,6 +170,7 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Decisions: [DECISIONS.md](
 | Metadata store | `--metadata` / `SAPWOOD_METADATA` | `sqlite://./sapwood-data/meta.db` (`memory`, `postgres://…`) |
 | Object store | `--objects` / `SAPWOOD_OBJECTS` | `metadata` (`file:///…`, `s3://…`, `gs://…`, `az://…`) |
 | Auth tokens | `--tokens` / `SAPWOOD_TOKENS` | none (dev mode); `alice:tok1,ci:tok2` |
+| SSO (OIDC) | `--oidc-issuer`, `--oidc-audience`, `--oidc-claim` | off; e.g. Okta, Entra ID, Google, Auth0, Keycloak |
 | Access rules | `--acl` / `SAPWOOD_ACL` | allow all; see [SECURITY.md](SECURITY.md) |
 | TLS | `--tls-cert`, `--tls-key` | off |
 | Metrics | `--metrics` / `SAPWOOD_METRICS` | off; e.g. `0.0.0.0:9420` |

@@ -19,8 +19,32 @@ All notable changes to this project are documented here. The format follows
 - `sap refs` / the Refs API hide system refs (`_sapwood/...`).
 
 ### Compatibility
-- A store compacted by this version cannot be read by v1.1.x or older servers (they do not
+- A store compacted by this version cannot be read by v1.3.x or older servers (they do not
   understand delta payloads). Upgrade every server before running `sapwood compact`.
+
+## [1.3.0] - 2026-10-15
+
+### Added
+- **Large files**: files of 8 MiB or more are stored as FastCDC chunks plus a manifest under
+  the file's own id, removing the 256 MiB file limit. Status hashing, commit upload, checkout
+  and sync all stream; chunks dedupe across files and versions; the server verifies uploaded
+  manifests against the file id and clients verify reassembled content end to end. Large git
+  blobs are chunked on `import-git` and on `git push` through the bridge.
+- `sap commit` reports how many new objects were uploaded.
+
+### Performance
+- Tiered storage is now write-around and forwards batched writes upstream intact (one
+  SQLite transaction per batch instead of per object): a 1 GiB commit went from 29 s to 14 s,
+  and large uploads no longer evict the server's hot read cache.
+
+## [1.2.0] - 2026-10-15
+
+### Added
+- **SSO via OpenID Connect** (`--oidc-issuer`, `--oidc-audience`, `--oidc-claim`, flag `oidc`):
+  JWT bearer tokens verified against the issuer's JWKS with discovery and automatic key
+  rotation. Asymmetric algorithms only, algorithm must match the key, `iss`/`aud`/`exp`
+  required. The principal claim feeds per-directory and per-ref permissions. Static tokens
+  and OIDC can be used together.
 
 ## [1.1.0] - 2026-10-15
 
@@ -63,6 +87,8 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.3.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.3.0
+[1.2.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.1.0
 [1.0.1]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.1
 [1.0.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.0

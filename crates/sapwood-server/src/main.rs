@@ -5,7 +5,9 @@ use clap::{Parser, Subcommand};
 use sapwood_adapters::acl::RulesPolicy;
 use sapwood_adapters::flags::SpecFlags;
 use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
+use sapwood_core::flags::{FeatureFlags, Flag};
 use sapwood_server::auth::{AllowAll, Authenticator, StaticTokens};
+use sapwood_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
 use sapwood_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
 
@@ -26,6 +28,15 @@ struct Cli {
     /// Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only).
     #[arg(long, global = true, env = "SAPWOOD_TOKENS", hide_env_values = true)]
     tokens: Option<String>,
+    /// OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens.
+    #[arg(long, global = true, env = "SAPWOOD_OIDC_ISSUER", requires = "oidc_audience")]
+    oidc_issuer: Option<String>,
+    /// Expected `aud` claim of OIDC tokens.
+    #[arg(long, global = true, env = "SAPWOOD_OIDC_AUDIENCE")]
+    oidc_audience: Option<String>,
+    /// Claim used as the principal for access rules (sub, email, preferred_username...).
+    #[arg(long, global = true, env = "SAPWOOD_OIDC_CLAIM", default_value = "sub")]
+    oidc_claim: String,
     /// PEM certificate and key for TLS.
     #[arg(long, global = true, env = "SAPWOOD_TLS_CERT", requires = "tls_key")]
     tls_cert: Option<std::path::PathBuf>,
@@ -112,12 +123,28 @@ async fn main() -> anyhow::Result<()> {
         telemetry::init_metrics(addr)?;
     }
     let flags = Arc::new(SpecFlags::from_env()?);
-    let auth: Arc<dyn Authenticator> = match &cli.tokens {
-        Some(t) => Arc::new(StaticTokens::new(t.split(',').map(|s| s.trim().to_owned()))),
-        None => {
-            tracing::warn!("no SAPWOOD_TOKENS set: authentication disabled");
-            Arc::new(AllowAll)
+    let mut authenticators: Vec<Arc<dyn Authenticator>> = Vec::new();
+    if let Some(t) = &cli.tokens {
+        authenticators.push(Arc::new(StaticTokens::new(t.split(',').map(|s| s.trim().to_owned()))));
+    }
+    if let (Some(issuer), Some(audience)) = (&cli.oidc_issuer, &cli.oidc_audience) {
+        if flags.enabled(Flag::Oidc) {
+            let cfg = OidcConfig {
+                issuer: issuer.clone(),
+                audience: audience.clone(),
+                principal_claim: cli.oidc_claim.clone(),
+            };
+            authenticators.push(Arc::new(OidcAuthenticator::discover(cfg).await?));
+            tracing::info!(%issuer, "OIDC authentication enabled");
+        } else {
+            tracing::warn!("--oidc-issuer ignored: feature `oidc` is disabled");
         }
+    }
+    let auth: Arc<dyn Authenticator> = if authenticators.is_empty() {
+        tracing::warn!("no SAPWOOD_TOKENS or OIDC issuer set: authentication disabled");
+        Arc::new(AllowAll)
+    } else {
+        Arc::new(FirstMatch(authenticators))
     };
     let tls = match (&cli.tls_cert, &cli.tls_key) {
         (Some(c), Some(k)) => {

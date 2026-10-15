@@ -24,7 +24,7 @@ Every row below is tagged:
 | Refs moved by CAS on a single row | `RefStore::compare_and_swap`; single-row conditional UPDATE on SQL backends |
 | Generic derived data, defined recursively from parents, eager or deferred | `Derivation` trait; `RootTree` and `Generation` (generation number + skew-binary jump pointers) derivations |
 | Skip lists for the commit graph | Skew-binary jump pointers: O(log n) first-parent ancestry with O(1) storage per changeset **[sapwood choice of structure]** |
-| Regional caches + per-node daemon, identical RPCs, strict tiers | `sapwood cache` / `sapwood daemon`, same `Objects` service; read-through/write-through `Tiered` store |
+| Regional caches + per-node daemon, identical RPCs, strict tiers | `sapwood cache` / `sapwood daemon`, same `Objects` service; read-through/write-around `Tiered` store |
 | Negotiation only over what the client *wants* | Clients request exact object ids level by level; every request is for an immutable object, so any tier can answer |
 | Removed the global merge-queue lock | Lock-free land loop (CAS + server rebase) |
 | Per-directory permissions | Per-directory **write** + per-ref ACLs via `AccessPolicy` port (read ACLs: roadmap) |

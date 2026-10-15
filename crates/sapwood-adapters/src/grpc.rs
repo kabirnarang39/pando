@@ -7,6 +7,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use sapwood_core::chunked::{is_manifest, parse_manifest};
 use sapwood_core::object::decode_object;
 use sapwood_core::ports::ObjectStore;
 use sapwood_core::{Error, Id, Result};
@@ -82,7 +83,13 @@ impl ObjectStore for GrpcObjects {
                 // Verify on a blocking thread: decompress + hash is CPU work.
                 let payload = Bytes::from(msg.payload);
                 let check = payload.clone();
-                tokio::task::spawn_blocking(move || decode_object(&id, &check)).await.map_err(storage_err)??;
+                if is_manifest(&check) {
+                    // A tier cannot hash a large file without its chunks; check structure here,
+                    // clients verify the reassembled content end to end.
+                    parse_manifest(&check)?;
+                } else {
+                    tokio::task::spawn_blocking(move || decode_object(&id, &check)).await.map_err(storage_err)??;
+                }
                 found.insert(id, payload);
             }
         }

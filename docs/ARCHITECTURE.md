@@ -89,7 +89,7 @@ sap               client slices + Remote port + CLI + MCP
 | `DerivedStore` | derived data cache | memory, SQLite, Postgres |
 | `FeatureFlags` | flags | `SpecFlags` (env) |
 | `AccessPolicy` | write/ref permissions | `RulesPolicy` (JSON), `AllowAllPolicy` |
-| `Authenticator` | identity | `StaticTokens`, `AllowAll` |
+| `Authenticator` | identity | `StaticTokens`, `OidcAuthenticator` (JWT/JWKS), `FirstMatch`, `AllowAll` |
 | `Remote` (client) | server access | `GrpcRemote` |
 
 Every adapter of a port passes the same contract test suite
@@ -135,6 +135,20 @@ the safety argument (base pinning, verification before replace, bounded chains).
 
 SQLite returns freed pages to the filesystem with `VACUUM`, which `compact` runs at the end
 and which temporarily needs free disk space roughly equal to the database size.
+## Large files
+
+Files of 8 MiB or more are split with FastCDC (content-defined, ~1 MiB average chunks) into
+ordinary blob objects and stored under the file's own id as a manifest
+(`0x03 | size | [(chunk id, length)]`). The file id is still BLAKE3 of the whole content, so
+trees, diffs and the git bridge are unaware of chunking. Editing part of a large file
+re-uploads only the chunks it touches, and identical chunks dedupe across files and versions.
+
+Nothing holds a whole large file in memory: `sap status` hashes files as streams, `sap commit`
+chunks on a worker thread and uploads through a bounded channel, and checkout reassembles
+into a temporary file (verifying every chunk and the whole-file id) before an atomic rename.
+The server verifies an uploaded manifest by streaming its chunks against the id; caches can
+only check structure, and clients verify end to end. Measured on a 1 GiB file: `sap commit`
+peaks at 195 MB, `sap clone` at 125 MB.
 
 ## Performance notes
 

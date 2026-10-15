@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use futures::future::BoxFuture;
 use prost::Message;
 
-use crate::object::{FileChange, Kind, Mode, Tree, TreeEntry, decode_object, encode_object};
+use crate::object::{FileChange, Kind, Mode, Tree, TreeEntry, encode_object};
 use crate::path::{components, components_or_root, validate_name};
 use crate::ports::ObjectStore;
 use crate::{Error, Id, Result};
@@ -20,7 +20,8 @@ pub async fn put_blob(store: &dyn ObjectStore, content: &[u8]) -> Result<Id> {
 
 pub async fn read_object(store: &dyn ObjectStore, id: &Id, expect: Kind) -> Result<Vec<u8>> {
     let payload = store.get(id).await?.ok_or_else(|| Error::not_found(format!("object {id}")))?;
-    let (kind, content) = decode_object(id, &payload)?;
+    // Large files are stored as chunk manifests; reassemble (bounded) transparently.
+    let (kind, content) = crate::chunked::read_content(store, id, &payload).await?;
     if kind != expect {
         return Err(Error::Corrupt(format!("{id}: expected {expect:?}, found {kind:?}")));
     }

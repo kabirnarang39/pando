@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use quick_cache::Weighter;
 use quick_cache::sync::Cache;
+use sapwood_core::chunked::is_manifest;
 use sapwood_core::delta::{self, MAX_DELTA_INPUT, MAX_DEPTH};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Kind, Mode, decode_object, payload_kind};
@@ -51,6 +52,7 @@ pub struct CompactStats {
     pub skipped_pinned: u64,
     pub skipped_small_gain: u64,
     pub skipped_large: u64,
+    pub skipped_chunked: u64,
     pub bytes_before: u64,
     pub bytes_after: u64,
 }
@@ -206,6 +208,12 @@ impl Compactor {
         };
         if delta::is_delta(&tp) {
             stats.already_delta += 1;
+            return Ok(());
+        }
+        // Large files are already stored as deduplicated chunks; their manifests are tiny
+        // and must stay readable as manifests. Never use one as a target or a base.
+        if is_manifest(&tp) || is_manifest(&bp) {
+            stats.skipped_chunked += 1;
             return Ok(());
         }
         if self.repo.derived.get(PIN_KIND, &target).await?.is_some() {
