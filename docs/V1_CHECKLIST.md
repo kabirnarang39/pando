@@ -34,6 +34,6 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG, LICENSE (Apache-2.0)
 - [x] Issue / PR templates, Dependabot
 - [x] CI and release workflows (5 targets + multi-arch GHCR image)
-- [ ] Public GitHub repository, CI green, v1.0.0 tag and release published
+- [x] Public GitHub repository, CI green, v1.0.0 tag and release published (5 platform binaries + checksums, multi-arch GHCR image); v1.0.1 patch released
 
 <!-- dogfood: this line was landed through sap itself -->
