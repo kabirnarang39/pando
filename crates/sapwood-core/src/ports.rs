@@ -68,3 +68,34 @@ pub trait DerivedStore: Send + Sync {
     async fn get(&self, kind: &str, id: &Id) -> Result<Option<Bytes>>;
     async fn put(&self, kind: &str, id: Id, value: Bytes) -> Result<()>;
 }
+
+/// A change about to be landed, as seen by pre-land checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LandProposal {
+    pub principal: String,
+    pub ref_name: String,
+    pub changeset: Id,
+    pub parent: Option<Id>,
+    pub author: String,
+    pub message: String,
+    pub paths: Vec<String>,
+}
+
+/// Pre-land checks: CI status, required reviews, policy bots. Runs once per land, before
+/// any rebase; a rebase only happens when no path conflicts, so what was checked is
+/// exactly what lands.
+#[async_trait]
+pub trait LandCheck: Send + Sync {
+    /// `Ok` lets the land proceed; `Err(Error::Rejected(reason))` refuses it.
+    async fn check(&self, proposal: &LandProposal) -> Result<()>;
+}
+
+/// No checks: every authorised land proceeds.
+pub struct NoChecks;
+
+#[async_trait]
+impl LandCheck for NoChecks {
+    async fn check(&self, _: &LandProposal) -> Result<()> {
+        Ok(())
+    }
+}

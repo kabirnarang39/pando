@@ -1,12 +1,15 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use sapwood_adapters::acl::RulesPolicy;
 use sapwood_adapters::flags::SpecFlags;
 use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
 use sapwood_core::flags::{FeatureFlags, Flag};
+use sapwood_core::ports::{LandCheck, NoChecks};
 use sapwood_server::auth::{AllowAll, Authenticator, StaticTokens};
+use sapwood_server::land_hook::WebhookCheck;
 use sapwood_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
 use sapwood_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
@@ -64,6 +67,15 @@ enum Role {
         /// JSON access rules (per-directory write and per-ref permissions). Unset = allow all.
         #[arg(long, env = "SAPWOOD_ACL")]
         acl: Option<std::path::PathBuf>,
+        /// Pre-land check: every land is POSTed here and proceeds only on a 2xx answer.
+        #[arg(long, env = "SAPWOOD_LAND_HOOK", hide_env_values = true)]
+        land_hook: Option<String>,
+        /// Bearer token sent to the land hook.
+        #[arg(long, env = "SAPWOOD_LAND_HOOK_TOKEN", hide_env_values = true, requires = "land_hook")]
+        land_hook_token: Option<String>,
+        /// Seconds to wait for the land hook before refusing the land.
+        #[arg(long, default_value_t = 10)]
+        land_hook_timeout: u64,
     },
     /// Regional cache: stateless, memory-bounded, read-through to an upstream tier.
     Cache {
@@ -152,14 +164,21 @@ async fn main() -> anyhow::Result<()> {
     let upstream_token = std::env::var("SAPWOOD_UPSTREAM_TOKEN").ok();
 
     let (listen, routes) = match cli.role {
-        Role::Server { listen, metadata, objects, acl } => {
+        Role::Server { listen, metadata, objects, acl, land_hook, land_hook_token, land_hook_timeout } => {
             let repo = config::open_repo(&metadata, &objects).await?;
             let policy: Arc<dyn AccessPolicy> = match &acl {
                 Some(path) => Arc::new(RulesPolicy::load(path)?),
                 None => Arc::new(AllowAllPolicy),
             };
             tracing::info!(%listen, metadata = %config::redact(&metadata), objects = %config::redact(&objects), acl = ?acl, "sapwood server");
-            (listen, authority_routes(repo, flags, policy))
+            let checks: Arc<dyn LandCheck> = match &land_hook {
+                Some(url) => {
+                    tracing::info!(hook = %config::redact(url), "pre-land checks enabled");
+                    Arc::new(WebhookCheck::new(url, land_hook_token, Duration::from_secs(land_hook_timeout))?)
+                }
+                None => Arc::new(NoChecks),
+            };
+            (listen, authority_routes(repo, flags, policy, checks))
         }
         Role::Cache { listen, upstream, capacity_mb } => {
             let store = config::cache_store(&upstream, upstream_token.as_deref(), capacity_mb << 20)?;

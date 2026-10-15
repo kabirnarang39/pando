@@ -125,6 +125,25 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Land checks
+
+`--land-hook URL` makes the server POST every land to a hook before moving the ref, so CI
+results and required reviews gate `main` without a merge queue:
+
+```json
+{"ref": "main", "changeset": "<hex id>", "parent": "<hex id or null>",
+ "principal": "alice", "author": "Alice <alice@example.com>", "message": "...",
+ "paths": ["src/lib.rs"], "paths_truncated": false}
+```
+
+A 2xx answer lands the change. Any other answer refuses it, with the response body (first 500
+characters) shown to the author; a timeout or unreachable hook also refuses (fail closed).
+`--land-hook-token` is sent as `Authorization: Bearer …`. Approve by changeset id: the id
+covers the parents and every changed path, so an approval cannot be reused for different
+content. The hook runs once per land, before any server-side rebase, and a rebase only
+happens when no path conflicts, so what was approved is what lands. Other integrations
+implement the `LandCheck` port.
+
 ## Virtual checkouts
 
 `sap mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The

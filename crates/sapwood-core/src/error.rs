@@ -12,6 +12,9 @@ pub enum Error {
     Corrupt(String),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    /// A pre-land check refused the change.
+    #[error("rejected: {0}")]
+    Rejected(String),
     #[error("feature `{0}` is disabled")]
     Disabled(&'static str),
     #[error("storage: {0}")]
