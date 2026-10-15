@@ -14,9 +14,16 @@ All notable changes to this project are documented here. The format follows
   cycles), verification before every replace, hash-verified reconstruction on every read.
   Wire protocol unchanged.
 - `ObjectStore::replace` on memory, SQLite, Postgres and `object_store` backends (contract-tested).
+- Install with Homebrew: `brew install kabirnarang39/tap/sapwood`.
+- Release workflow publishes to crates.io (`sapwood`, `sapwood-server` and the library
+  crates), PyPI (`sapwood`), npm (`sapwood-client`) and the Homebrew tap, each enabled by a
+  repository variable. CI builds every crate from its packaged tarball.
 
 ### Changed
 - `sap refs` / the Refs API hide system refs (`_sapwood/...`).
+- The client crate is now named `sapwood` (binaries `sap` and `git-remote-sapwood` are
+  unchanged): `cargo install sapwood`. The protocol files moved to
+  `crates/sapwood-proto/proto/` so the crate can be published.
 
 ### Compatibility
 - A store compacted by this version cannot be read by v1.8.x or older servers (they do not

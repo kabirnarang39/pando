@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start a throwaway Sapwood server with a known repository for SDK tests.
 #   eval "$(sdk/test-server.sh)"   # exports SAPWOOD_URL and SAPWOOD_TEST_PID
-# Needs release binaries (cargo build --release -p sapwood-server -p sap).
+# Needs release binaries (cargo build --release -p sapwood-server -p sapwood).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${SAPWOOD_BIN:-$ROOT/target/release}"

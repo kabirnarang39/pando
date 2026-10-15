@@ -28,7 +28,7 @@ SAPWOOD_TEST_POSTGRES_URL=postgres://postgres:sapwood@localhost:55432/sapwood \
   owning its use case, gRPC handler and feature flag (`sapwood_core::flags::Flag`).
 * **A client feature** → `crates/sap/src/features/<name>.rs`, returning data; printing
   belongs in `main.rs`.
-* **Protocol changes** → `proto/sapwood.proto`. v1 is stable: add fields and RPCs, never
+* **Protocol changes** → `crates/sapwood-proto/proto/sapwood.proto`. v1 is stable: add fields and RPCs, never
   renumber or change the meaning of existing ones.
 
 ## Before opening a PR
