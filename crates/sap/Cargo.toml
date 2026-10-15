@@ -29,10 +29,14 @@ serde.workspace = true
 serde_json.workspace = true
 similar.workspace = true
 prost.workspace = true
+quick_cache.workspace = true
 rmcp.workspace = true
 schemars.workspace = true
 tokio.workspace = true
 tonic.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser.workspace = true
 
 [dev-dependencies]
 jsonwebtoken = { workspace = true, features = ["use_pem"] }

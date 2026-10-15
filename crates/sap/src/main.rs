@@ -127,6 +127,20 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Mount a revision read-only; files are fetched on first read (Linux, FUSE).
+    Mount {
+        dir: PathBuf,
+        #[arg(long)]
+        server: Option<String>,
+        /// Daemon or cache serving objects.
+        #[arg(long)]
+        objects: Option<String>,
+        #[arg(long, default_value = "main")]
+        rev: String,
+        /// In-memory cache for file contents.
+        #[arg(long, default_value_t = 256)]
+        cache_mb: u64,
+    },
     /// Serve Sapwood as MCP tools over stdio for AI agents (Claude Code, Codex, Cursor...).
     Mcp {
         #[arg(long)]
@@ -389,6 +403,29 @@ async fn run() -> Result<()> {
                     String::new()
                 }
             );
+        }
+        Cmd::Mount { dir, server, objects, rev, cache_mb } => {
+            sapwood_core::flags::require(&flags, sapwood_core::flags::Flag::VirtualCheckout)?;
+            let remote = connect(&server_for(server)?, objects.as_deref(), token)?;
+            let cs = remote.changeset(&rev).await?;
+            #[cfg(target_os = "linux")]
+            {
+                let tree = Arc::new(sap::mount::VirtualTree::new(
+                    remote.objects(),
+                    tokio::runtime::Handle::current(),
+                    cs.root_tree,
+                    cache_mb << 20,
+                ));
+                let session = sap::mount::fuse::mount(tree, &dir)?;
+                eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
+                tokio::signal::ctrl_c().await?;
+                session.umount_and_join()?;
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = (dir, cs, cache_mb);
+                anyhow::bail!("`sap mount` needs FUSE on Linux; use `sap clone --path` for a sparse checkout");
+            }
         }
         Cmd::Mcp { server } => {
             let ws = workspace().ok();

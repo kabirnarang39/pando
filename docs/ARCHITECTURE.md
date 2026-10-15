@@ -125,6 +125,14 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Virtual checkouts
+
+`sap mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The
+platform-independent `VirtualTree` maps inodes to tree entries and loads each directory on first
+access; the FUSE adapter only translates kernel requests. A file's size comes from its zstd frame
+header or large-file manifest, so `ls -l` downloads no content, and a read of a chunked file
+fetches only the chunks it overlaps. Pointing `--objects` at a node daemon makes first reads local.
+
 ## Warm build nodes
 
 A node daemon can prefetch a revision at startup and on an interval
