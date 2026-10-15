@@ -169,8 +169,8 @@ along the changeset's own paths.
 **Why.** The original loop (read head, rebase, compare-and-swap, retry on loss) is
 lock-free but does quadratic work under contention: with N landers, N-1 lose each swap and
 rebase again. Measured on one machine it fell from 105 lands/s at 16 agents to 10 lands/s
-with 237 "too contended" errors at 200 agents. Batched, the same machine sustains 520-580
-lands/s at 16-200 agents and 387 at 1,000, with no errors. The compare-and-swap stays as
+with 237 "too contended" errors at 200 agents. Batched, the same machine sustains 758-1,012
+lands/s at 16-200 agents and 504 at 1,000, with no errors. The compare-and-swap stays as
 the arbiter between replicas, so correctness does not depend on the queue, and a
 conflicting change fails without affecting the rest of its batch. A randomized test checks
 the path-scoped conflict check against the previous full-diff rule.

@@ -68,13 +68,15 @@ own directory; 30 s window, fresh store per run, same laptop):
 
 | Agents | git push (fetch + rebase + retry) | pando land | pando p99 latency | pando errors |
 |---:|---:|---:|---:|---:|
-| 16 | 1.9 lands/s | **520 lands/s** | 0.12 s | 0 |
-| 200 | 0.6 lands/s | **581 lands/s** | 1.3 s | 0 |
-| 1,000 | 0.1 lands/s (4 in 30 s) | **387 lands/s** | 2.9 s | 0 |
-| 5,000 | not run | **167 lands/s** | 16 s | 0 |
+| 16 | 2.0 lands/s | **758 lands/s** | 55 ms | 0 |
+| 200 | 0.5 lands/s | **1,012 lands/s** | 0.30 s | 0 |
+| 1,000 | 0.2 lands/s (5 in 30 s) | **504 lands/s** (907 across 64 directories) | 2.7 s | 0 |
+| 5,000 | not run | **172 lands/s** (531 across 64 directories) | 16 s | 0 |
 
-One `pandod` on SQLite. Reproduce with [`examples/land_load.rs`](crates/pando/examples/land_load.rs)
-and [`bench/git_push_load.py`](bench/git_push_load.py).
+One `pandod` on SQLite. For scale: Anthropic reported over 30,000 merges per day in
+September 2026 and Google about 40,000 commits per workday in 2015, both under one per second on average.
+Reproduce with [`examples/land_load.rs`](crates/pando/examples/land_load.rs) and
+[`bench/git_push_load.py`](bench/git_push_load.py).
 
 Full results, methodology and the cases where git wins: [docs/comparisons/git-vs-pando.md](docs/comparisons/git-vs-pando.md).
 

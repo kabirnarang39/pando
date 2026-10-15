@@ -19,8 +19,8 @@ All notable changes to this project are documented here. The format follows
 ### Performance
 - Concurrent lands to the same branch are batched: the server rebases everything queued as
   one chain and moves the branch with one compare-and-swap. With 200 agents landing at once
-  on one machine, throughput went from 10 lands/s with 237 "too contended" errors to 581
-  lands/s with none; 1,000 agents sustain 387 lands/s (git: 0.1/s). A conflicting change
+  on one machine, throughput went from 10 lands/s with 237 "too contended" errors to 1,012
+  lands/s with none; 1,000 agents sustain 504 lands/s (git: 0.2/s). A conflicting change
   fails without affecting the rest of its batch.
 - The rebase conflict check walks only the changeset's own paths instead of diffing
   everything that landed since its base.

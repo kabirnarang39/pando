@@ -45,27 +45,39 @@ in its own directory, create a changeset on that head, land it. All changes are
 non-conflicting, so every lost race is resolved by the server (Pando) or by the client's
 fetch-rebase-push loop (git). Lands that finish after the 30 s window are not counted.
 
-| Agents | git lands/s | git p99 | Pando lands/s | Pando p50 | Pando p99 | Pando errors |
-|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 1.9 | 23.6 s | 520 | 23 ms | 118 ms | 0 |
-| 200 | 0.6 | 28.5 s | 581 | 335 ms | 1.26 s | 0 |
-| 1,000 | 0.1 (4 lands) | 33.3 s | 387 | 2.74 s | 2.93 s | 0 |
-| 2,000 | not run | | 232 | 7.6 s | 11.0 s | 0 |
-| 5,000 | not run | | 167 | 16.2 s | 16.3 s | 0 |
+| Agents | Layout | git lands/s | git p99 | Pando lands/s | Pando p50 | Pando p99 | Pando errors |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 16 | one directory | 2.0 | 22.7 s | 758 | 18 ms | 55 ms | 0 |
+| 200 | one directory | 0.5 | 25.2 s | 1,012 | 203 ms | 302 ms | 0 |
+| 1,000 | one directory | 0.2 (5 lands) | 52.0 s | 504 | 2.10 s | 2.66 s | 0 |
+| 1,000 | 64 directories | | | 907 | 1.17 s | 1.30 s | 0 |
+| 2,000 | one directory | not run | | 333 | 6.27 s | 6.80 s | 0 |
+| 5,000 | one directory | not run | | 172 | 3.36 s | 15.8 s | 0 |
+| 5,000 | 64 directories | | | 531 | 9.26 s | 10.3 s | 0 |
+
+"One directory" puts every agent's directory side by side in one parent, which every land
+rewrites (5,000 entries at the largest; the Linux kernel's largest directory,
+`include/linux`, has 1,521). "64 directories" spreads them over 64 parents, closer to agents
+working across a monorepo.
 
 * Setup: Apple M4 (10 cores), macOS 26.6, release build, one `pandod` on SQLite, a fresh
   store per run. git pushes to a local bare repository over `file://`, its best case: no
-  network and no server-side hooks. Agents and server share the machine.
-* Pando: `cargo run --release --example land_load -- --agents N --secs 30` against
+  network and no server-side hooks. Agents and server share the machine. Measured with the
+  machine otherwise idle (an earlier run with a busy background VM gave about 30% less).
+* Pando: `cargo run --release --example land_load -- --agents N --fanout F --secs 30` against
   `pandod server`. git: `python3 bench/git_push_load.py --agents N --secs 30 --work DIR`.
 * Before batching (ADR-017), the same Pando build managed 105 lands/s at 16 agents and
   10 lands/s with 237 "too contended" errors at 200.
 * Limits: past 1,000 agents throughput falls because the same process also serves every
   agent's uploads and changeset creation, and each agent's directory adds an entry to one
-  shared directory that every land rewrites. At 5,000 agents almost every agent landed once
-  in the window, so that row mostly measures the first round. A multi-replica deployment
+  shared directory that every land rewrites. At 5,000 agents in one directory almost every
+  agent landed once in the window, so that row mostly measures the first round.
+* Context: [Anthropic reported](https://www.anthropic.com/engineering/redesigning-source-control) over 30,000 merges per day by September 2026 (about
+  0.35/s), [Google](https://cacm.acm.org/research/why-google-stores-billions-of-lines-of-code-in-a-single-repository/) about 40,000 commits per workday in 2015. Landing throughput of one server is
+  not the constraint at those volumes; real lands also carry CI, review and larger changes,
+  which this benchmark leaves out. A multi-replica deployment
   on Postgres has not been measured yet.
-* git at 2,000 and 5,000 agents was not run: at 1,000 it landed 4 changes in 30 s.
+* git at 2,000 and 5,000 agents was not run: at 1,000 it landed 5 changes in 30 s.
 
 
 ### Methodology

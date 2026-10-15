@@ -33,6 +33,10 @@ struct Args {
     /// Directory the agents write under (one subdirectory per agent).
     #[arg(long, default_value = "bench-load")]
     dir: String,
+    /// Spread agent directories over this many subdirectories (1 = all agents side by side
+    /// in one directory, which every land then rewrites).
+    #[arg(long, default_value_t = 1)]
+    fanout: usize,
 }
 
 #[derive(Default)]
@@ -69,7 +73,13 @@ async fn main() -> Result<()> {
     for (i, remote) in remotes.into_iter().enumerate() {
         let (stats, latencies, stop, first_error) =
             (stats.clone(), latencies.clone(), stop.clone(), first_error.clone());
-        let (ref_name, dir) = (a.ref_name.clone(), a.dir.clone());
+        let (ref_name, dir) = (
+            a.ref_name.clone(),
+            match a.fanout {
+                0 | 1 => a.dir.clone(),
+                n => format!("{}/g{:03}", a.dir, i % n),
+            },
+        );
         tasks.push(tokio::spawn(async move {
             let mut mine = Vec::new();
             let mut j = 0u64;
@@ -109,7 +119,7 @@ async fn main() -> Result<()> {
             .map_or(0.0, |&us| us as f64 / 1000.0)
     };
     let landed = stats.landed.load(Ordering::Relaxed);
-    println!("agents {}  window {} s  ref {}", a.agents, a.secs, a.ref_name);
+    println!("agents {}  window {} s  ref {}  fanout {}", a.agents, a.secs, a.ref_name, a.fanout.max(1));
     println!("landed {landed}  ({:.1} lands/s)", landed as f64 / a.secs as f64);
     println!(
         "server rebases {}  errors {}",
