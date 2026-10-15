@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Delta storage** (`sapwood compact`, flag `delta-storage`): blob and tree versions are
+  stored as zstd patch-from deltas against the previous version of the same path. On
+  git/git (82k commits) server storage drops from 4.6 GB to 369 MB (git's pack: 333 MB).
+  Single-writer compaction behind a lease, base pinning (chains never change after use, no
+  cycles), verification before every replace, hash-verified reconstruction on every read.
+  Wire protocol unchanged.
+- `ObjectStore::replace` on memory, SQLite, Postgres and `object_store` backends (contract-tested).
+
+### Changed
+- `sap refs` / the Refs API hide system refs (`_sapwood/...`).
+
+### Compatibility
+- A store compacted by this version cannot be read by v1.0.x servers (they do not understand
+  delta payloads). Upgrade every server before running `sapwood compact`.
+
 ## [1.0.1] - 2026-10-15
 
 ### Fixed
