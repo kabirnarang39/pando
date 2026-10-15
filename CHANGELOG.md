@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] - 2026-10-15
 
 ### Changed (breaking)
 - **Sapwood is now Pando.** Named after the Pando aspen grove: some 47,000 trunks that share
@@ -172,6 +172,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.0.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.0.0
 [1.9.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.9.0
 [1.8.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.8.0
 [1.7.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.7.0
