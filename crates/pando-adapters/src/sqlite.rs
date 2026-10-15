@@ -32,6 +32,11 @@ pub struct SqliteStore {
 fn tune(c: &Connection) -> rusqlite::Result<()> {
     // NORMAL is durable across application crashes in WAL mode; only an OS crash or
     // power loss can drop the last transactions, never corrupt the database.
+    // No mmap: SQLite remaps the file on every read transaction after the file grows, which
+    // dominated reads under concurrent writes (measured: compaction 1.4-2x faster without
+    // it, clones unchanged). ponytail: 64 MB page cache per connection, so at most ~1.1 GB
+    // across 16 readers and the writer on a busy, large store; make it configurable if
+    // small hosts need less.
     c.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;
          PRAGMA cache_size=-65536; PRAGMA mmap_size=0; PRAGMA temp_store=MEMORY;",

@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format follows
   only what landed since, instead of rescanning all history.
 - Compaction looks up paths in a cache of parsed trees instead of re-reading and re-parsing
   every directory level from storage for each changed file.
+- Compaction caches delta chains instead of re-reading a base's whole chain from storage
+  for every pair.
+- SQLite runs without memory-mapped I/O and with a 64 MB page cache per connection: under
+  concurrent writes SQLite remapped the file on every read transaction. On the Linux
+  kernel's history, compaction went from 34-47 to 68 changesets/s and import from 78 to 89
+  commits/s; clone and log times are unchanged.
 
 ## [2.0.0] - 2026-10-15
 
