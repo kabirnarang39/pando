@@ -132,6 +132,7 @@ Teams can adopt Sapwood one person at a time: git users and `sap` users share th
 | `git blame f` | `sap blame f` | |
 | `git show REV:path` | `sap cat REV path` | works without a clone |
 | `git ls-tree` | `sap ls REV [dir]` | works without a clone |
+| (no equivalent) | `sap mount DIR --rev main` | Linux: read-only view, files fetched on first read |
 | `git branch` | `sap refs` | alias `branch` |
 | `git merge-base A B` | `sap merge-base A B` | |
 
@@ -144,6 +145,20 @@ claude mcp add sapwood -- sap mcp          # or any MCP client: Codex, Cursor, .
 Tools: `sap_cat`, `sap_ls`, `sap_find`, `sap_log`, `sap_blame`, `sap_diff`, `sap_status`,
 `sap_commit`, `sap_land`, `sap_sync`. Agents read, commit and land without shelling out.
 
+## SDKs
+
+Read files, list directories, search and inspect history from your own tools, without a
+clone. Every client verifies content against its BLAKE3 id.
+
+| Language | Package | Example |
+|---|---|---|
+| Python | [`sdk/python`](sdk/python) (`sapwood`) | `Client(url).read_file("src/lib.rs")` |
+| Go | [`sdk/go`](sdk/go) | `c.ReadFile(ctx, "main", "src/lib.rs")` |
+| TypeScript / Node | [`sdk/typescript`](sdk/typescript) (`sapwood-client`) | `await new Client(url).readFile("src/lib.rs")` |
+
+Any other language: generate a client from [`proto/sapwood.proto`](proto/sapwood.proto); object
+encodings are published in [`proto/sapwood_objects.proto`](proto/sapwood_objects.proto).
+
 ## Architecture
 
 ```
@@ -155,6 +170,9 @@ sap (CLI/MCP) ──objects──▶ daemon (node) ──▶ cache (region) ─�
   each owns its use case, gRPC handler and **feature flag** (`SAPWOOD_FLAGS=land=off`).
 * **Ports and adapters**: every infrastructure detail is a trait; every adapter passes the
   same contract test suite.
+* **Plain git works**: `git clone sapwood::URL`, push and pull via the built-in remote helper.
+* **SSO and permissions**: OpenID Connect login; per-directory **read** and write permissions
+  with path-scoped checkout, search and redacted history for partial readers.
 * **Large files**: content-defined chunking (FastCDC) with streaming upload and checkout;
   a 1 GiB file commits in 195 MB of memory, and an edit re-uploads only the changed chunks.
 * **Security**: bearer tokens (constant-time), TLS, per-directory write ACLs, per-ref ACLs,

@@ -99,6 +99,18 @@ enum Role {
         dir: String,
         #[arg(long, default_value_t = 512)]
         memory_mb: u64,
+        /// Authoritative server, used to resolve `--prefetch` revisions.
+        #[arg(long, env = "SAPWOOD_SERVER", hide_env_values = true, requires = "prefetch")]
+        server: Option<String>,
+        /// Warm the cache with this revision (e.g. `main`) at startup.
+        #[arg(long, requires = "server")]
+        prefetch: Option<String>,
+        /// Limit prefetch to these paths (repeatable).
+        #[arg(long = "prefetch-path")]
+        prefetch_paths: Vec<String>,
+        /// Re-prefetch periodically (seconds) to follow a moving branch.
+        #[arg(long, requires = "prefetch")]
+        prefetch_interval: Option<u64>,
     },
 }
 
@@ -190,9 +202,19 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(%listen, upstream = %config::redact(&upstream), capacity_mb, "sapwood cache");
             (listen, tier_routes(store, flags))
         }
-        Role::Daemon { listen, upstream, dir, memory_mb } => {
+        Role::Daemon { listen, upstream, dir, memory_mb, server, prefetch, prefetch_paths, prefetch_interval } => {
             let store = config::daemon_store(&upstream, upstream_token.as_deref(), &dir, memory_mb << 20)?;
             tracing::info!(%listen, upstream = %config::redact(&upstream), %dir, "sapwood daemon");
+            if let (Some(server), Some(rev)) = (server, prefetch) {
+                let p = sapwood_server::features::prefetch::Prefetcher::new(
+                    &server,
+                    upstream_token.as_deref(),
+                    store.clone(),
+                    flags.clone(),
+                )?;
+                // Warm in the background: the daemon serves (and fetches on demand) meanwhile.
+                tokio::spawn(p.run(rev, prefetch_paths, prefetch_interval.map(std::time::Duration::from_secs)));
+            }
             (listen, tier_routes(store, flags))
         }
     };

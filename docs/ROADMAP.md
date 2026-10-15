@@ -5,8 +5,6 @@ Items are ordered by expected impact. v1.x releases are backward compatible with
 
 | Item | Why | Notes |
 |---|---|---|
-| Virtualized checkouts (FUSE / ProjFS / FSKit) | Materialise files on first read, as Scion does | Per-OS kernel integration |
+| Virtualized checkouts on Windows and macOS (ProjFS / FSKit) | Linux has `sap mount` (FUSE) since v1.7; writable overlays would follow | Per-OS kernel integration |
 | Path-history derived index | `log -- path` currently walks first-parent history (bounded) | Derived per-path skip index |
-| Daemon warm-start snapshots | New nodes start with a hot cache | Periodic snapshot of hot objects |
 | Code review integration hooks | Pre-land checks, required approvals | Land-time policy port |
-| Language SDKs (Python, Go, TypeScript) | API-first tooling | Generated from `proto/sapwood.proto` |

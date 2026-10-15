@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.4.0"
+version = "1.7.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/kabirnarang39/sapwood"
@@ -27,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "sync", "time", "io-util", "process"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "sync", "time", "io-util", "process", "signal"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { version = "0.14", features = ["tls-ring", "tls-native-roots"] }
 tonic-prost = "0.14"
@@ -50,6 +50,7 @@ ignore = "0.4"
 url = "2"
 similar = "3"
 fastcdc = "5"
+fuser = "0.18"
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

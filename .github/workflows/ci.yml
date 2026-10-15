@@ -44,6 +44,11 @@ jobs:
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: Swatinem/rust-cache@v2
       - run: git config --global user.name ci && git config --global user.email ci@example.com
+      - name: Enable the FUSE mount test
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y -qq fuse3
+          echo "SAPWOOD_FUSE_TEST=1" >> "$GITHUB_ENV"
       - run: cargo test --workspace --locked
 
   databases:
@@ -96,6 +101,35 @@ jobs:
           AWS_ENDPOINT: http://localhost:8333
           AWS_ALLOW_HTTP: "true"
         run: cargo test -p sapwood-adapters --test contract --locked s3 -- --nocapture
+
+  sdks:
+    # Python, Go and TypeScript clients against a live, seeded server.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25", cache-dependency-path: sdk/go/go.sum }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: cargo build --release --locked -p sapwood-server -p sap
+      - name: Start seeded server
+        run: |
+          eval "$(sdk/test-server.sh)"
+          echo "SAPWOOD_URL=$SAPWOOD_URL" >> "$GITHUB_ENV"
+      - name: Python
+        working-directory: sdk/python
+        run: uv run --group dev pytest -q
+      - name: Go
+        working-directory: sdk/go
+        run: go vet ./... && go test ./...
+      - name: TypeScript
+        working-directory: sdk/typescript
+        run: npm ci && npm run build && npm test
 
   audit:
     runs-on: ubuntu-latest

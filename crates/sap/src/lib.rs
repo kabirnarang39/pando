@@ -4,6 +4,7 @@ pub mod bridge;
 pub mod features;
 pub mod gitfe;
 pub mod mcp;
+pub mod mount;
 pub mod remote;
 pub mod workspace;
 

@@ -19,8 +19,38 @@ All notable changes to this project are documented here. The format follows
 - `sap refs` / the Refs API hide system refs (`_sapwood/...`).
 
 ### Compatibility
-- A store compacted by this version cannot be read by v1.4.x or older servers (they do not
+- A store compacted by this version cannot be read by v1.7.x or older servers (they do not
   understand delta payloads). Upgrade every server before running `sapwood compact`.
+
+## [1.7.0] - 2026-10-15
+
+### Added
+- **Virtual checkouts on Linux** (`sap mount DIR [--rev main] [--objects URL]`, flag
+  `virtual-checkout`): mounts a revision read-only through FUSE. Directories load when first
+  listed, file sizes come from object headers without downloading content, and reads of a
+  large file fetch only the chunks covering the requested range. Every object is hash-verified.
+
+### Changed
+- New objects record their uncompressed size in the zstd frame header, so a file's size is
+  known without decompressing it. Ids and the storage format are unchanged; older objects are
+  still read (and sized by decompressing).
+
+## [1.6.0] - 2026-10-15
+
+### Added
+- **Daemon prefetch** (`sapwood daemon --server URL --prefetch main [--prefetch-path P]
+  [--prefetch-interval SECS]`, flag `daemon-prefetch`): warms a node's cache with a revision
+  in the background and keeps it warm as the branch moves; already-cached objects cost
+  nothing. On git/git, a new node's first full checkout went from 4.2 s to 0.35 s.
+
+## [1.5.0] - 2026-10-15
+
+### Added
+- **SDKs for Python, Go and TypeScript** (`sdk/`): read files, list directories, search, log,
+  diff, blame, refs and merge-base without a clone, with BLAKE3 verification of changesets and
+  file contents. Tested in CI against a live server.
+- `proto/sapwood_objects.proto`: the canonical object encodings, published for third-party
+  tools; a test proves it is byte-identical to the core's encoding.
 
 ## [1.4.0] - 2026-10-15
 
@@ -96,6 +126,9 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.7.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.7.0
+[1.6.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.6.0
+[1.5.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.5.0
 [1.4.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.4.0
 [1.3.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.3.0
 [1.2.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.2.0

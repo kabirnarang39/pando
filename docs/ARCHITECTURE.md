@@ -125,6 +125,22 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Virtual checkouts
+
+`sap mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The
+platform-independent `VirtualTree` maps inodes to tree entries and loads each directory on first
+access; the FUSE adapter only translates kernel requests. A file's size comes from its zstd frame
+header or large-file manifest, so `ls -l` downloads no content, and a read of a chunked file
+fetches only the chunks it overlaps. Pointing `--objects` at a node daemon makes first reads local.
+
+## Warm build nodes
+
+A node daemon can prefetch a revision at startup and on an interval
+(`--prefetch main --prefetch-interval 300`), walking the tree through its own tiered store so
+every tree, file and chunk lands on local disk. Objects already cached are not refetched, so
+following a moving branch costs only what changed. The prefetched content keeps serving even
+if the upstream cache is unreachable.
+
 ## Delta storage
 
 `sapwood compact` re-stores each blob version as a zstd delta against the previous version
@@ -135,6 +151,7 @@ the safety argument (base pinning, verification before replace, bounded chains).
 
 SQLite returns freed pages to the filesystem with `VACUUM`, which `compact` runs at the end
 and which temporarily needs free disk space roughly equal to the database size.
+
 ## Large files
 
 Files of 8 MiB or more are split with FastCDC (content-defined, ~1 MiB average chunks) into

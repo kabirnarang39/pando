@@ -939,6 +939,119 @@ async fn path_scoped_read_permissions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn daemon_prefetch_serves_without_upstream() {
+    use sapwood_server::features::prefetch::Prefetcher;
+
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    for i in 0..20 {
+        write(&p, &format!("services/api/f{i}.rs"), &format!("api {i}\n"));
+        write(&p, &format!("services/web/f{i}.ts"), &format!("web {i}\n"));
+    }
+    std::fs::write(p.join("services/api/model.bin"), noise(10 << 20, 9)).unwrap(); // chunked
+    commit_land(&mut ws, r.as_ref(), "seed").await;
+
+    let tier_flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (cache_url, stop_cache) = spawn(
+        tier_routes(config::cache_store(&c.server, None, 64 << 20).unwrap(), tier_flags.clone()),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let ddir = tempfile::tempdir().unwrap();
+    let daemon = config::daemon_store(&cache_url, None, ddir.path().to_str().unwrap(), 16 << 20).unwrap();
+    let prefetcher = Prefetcher::new(&c.server, None, daemon.clone(), tier_flags.clone()).unwrap();
+    let stats = prefetcher.run_once("main", &["services/api".into()]).await.unwrap();
+    assert_eq!(stats.files, 21, "{stats:?}");
+    assert!(stats.objects > 21 + 3, "trees, files and large-file chunks: {stats:?}");
+
+    // Cut the daemon off from its upstream: prefetched content is served from its disk.
+    let _ = stop_cache.send(());
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let (daemon_url, _d) = spawn(tier_routes(daemon, tier_flags.clone()), Arc::new(AllowAll)).await;
+    let via: Arc<dyn Remote> = Arc::new(GrpcRemote::connect(&c.server, Some(&daemon_url), None).unwrap());
+    let cfg = Config {
+        server: c.server.clone(),
+        objects: Some(daemon_url.clone()),
+        ref_name: "main".into(),
+        sparse: vec!["services/api".into()],
+    };
+    let d2 = tempfile::tempdir().unwrap();
+    let ws2 = clone::run(via.as_ref(), &flags(), &d2.path().join("w"), cfg).await.unwrap();
+    assert_eq!(ws2.index.len(), 21);
+    assert!(std::fs::read(d2.path().join("w/services/api/model.bin")).unwrap() == noise(10 << 20, 9));
+    // Paths outside the prefetch were never fetched, so they are unavailable offline.
+    let web_cfg = Config { sparse: vec!["services/web".into()], ..ws2.config.clone() };
+    let d3 = tempfile::tempdir().unwrap();
+    assert!(clone::run(via.as_ref(), &flags(), &d3.path().join("w"), web_cfg).await.is_err());
+
+    // Flag off: prefetch refuses.
+    let off = Prefetcher::new(
+        &c.server,
+        None,
+        Arc::new(sapwood_adapters::memory::MemoryStore::new()),
+        Arc::new(SpecFlags::parse("daemon-prefetch=off").unwrap()),
+    )
+    .unwrap();
+    assert!(off.run_once("main", &[]).await.unwrap_err().to_string().contains("daemon-prefetch"));
+}
+
+/// Needs /dev/fuse and fusermount3 (or root); CI sets SAPWOOD_FUSE_TEST=1 on Linux.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn mounted_revision_reads_lazily() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if std::env::var_os("SAPWOOD_FUSE_TEST").is_none() {
+        eprintln!("skipping: set SAPWOOD_FUSE_TEST=1 to run the FUSE test");
+        return;
+    }
+    let c = start().await;
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    write(&p, "src/lib.rs", "pub fn answer() -> u32 { 42 }\n");
+    write(&p, "tools/run.sh", "#!/bin/sh\necho hi\n");
+    std::fs::set_permissions(p.join("tools/run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink("../src/lib.rs", p.join("tools/lib")).unwrap();
+    let big = noise(20 << 20, 4);
+    std::fs::create_dir_all(p.join("assets")).unwrap();
+    std::fs::write(p.join("assets/model.bin"), &big).unwrap();
+    commit_land(&mut ws, r.as_ref(), "seed").await;
+
+    let root = r.changeset("main").await.unwrap().root_tree;
+    let tree = Arc::new(sap::mount::VirtualTree::new(r.objects(), tokio::runtime::Handle::current(), root, 64 << 20));
+    let mnt = tempfile::tempdir().unwrap();
+    let session = sap::mount::fuse::mount(tree, mnt.path()).unwrap();
+    let m = mnt.path().to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut top: Vec<_> = std::fs::read_dir(&m).unwrap().map(|e| e.unwrap().file_name()).collect();
+        top.sort();
+        assert_eq!(top, ["assets", "src", "tools"]);
+        assert_eq!(std::fs::read_to_string(m.join("src/lib.rs")).unwrap(), "pub fn answer() -> u32 { 42 }\n");
+        assert_eq!(std::fs::metadata(m.join("tools/run.sh")).unwrap().permissions().mode() & 0o111, 0o111);
+        assert_eq!(std::fs::read_link(m.join("tools/lib")).unwrap(), std::path::Path::new("../src/lib.rs"));
+        assert_eq!(std::fs::read_to_string(m.join("tools/lib")).unwrap(), "pub fn answer() -> u32 { 42 }\n");
+        assert_eq!(std::fs::metadata(m.join("assets/model.bin")).unwrap().len(), big.len() as u64);
+        let mut f = std::fs::File::open(m.join("assets/model.bin")).unwrap();
+        f.seek(SeekFrom::Start(13_000_000)).unwrap();
+        let mut buf = vec![0u8; 100_000];
+        f.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, &big[13_000_000..13_100_000]);
+        assert_eq!(std::fs::read(m.join("assets/model.bin")).unwrap(), big);
+        assert!(std::fs::write(m.join("src/new.rs"), "x").is_err(), "mount is read-only");
+        assert!(std::fs::metadata(m.join("missing")).is_err());
+    })
+    .await
+    .unwrap();
+    session.umount_and_join().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn compaction_preserves_every_version_and_shrinks_storage() {
     use sapwood_server::features::compact::{Compactor, LEASE_REF};
 
