@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use sapwood_core::acl::{AccessPolicy, Principal, require_write};
+use sapwood_core::acl::{AccessPolicy, Principal, effective_scope, require_write};
 use sapwood_core::flags::{FeatureFlags, Flag, require};
 use sapwood_core::object::{Changeset, FileChange};
 use sapwood_core::{Id, Repo, Result};
@@ -35,9 +35,10 @@ impl Changesets {
         self.repo.create_changeset(cs).await
     }
 
-    pub async fn get(&self, rev: &str) -> Result<ChangesetInfo> {
+    pub async fn get(&self, who: &Principal, rev: &str) -> Result<ChangesetInfo> {
         require(self.flags.as_ref(), Flag::Changesets)?;
-        changeset_info(&self.repo, self.repo.resolve(rev).await?).await
+        let scope = effective_scope(self.flags.as_ref(), self.policy.as_ref(), who);
+        changeset_info(&self.repo, self.repo.resolve(rev).await?, &scope).await
     }
 }
 
@@ -58,10 +59,12 @@ impl changesets_server::Changesets for Changesets {
             timestamp_ms: r.timestamp_ms,
         };
         let id = Changesets::create(self, &who, cs).await.map_err(to_status)?;
-        Ok(Response::new(changeset_info(&self.repo, id).await.map_err(to_status)?))
+        let scope = effective_scope(self.flags.as_ref(), self.policy.as_ref(), &who);
+        Ok(Response::new(changeset_info(&self.repo, id, &scope).await.map_err(to_status)?))
     }
 
     async fn get(&self, req: Request<ResolveRequest>) -> RpcResult<ChangesetInfo> {
-        Ok(Response::new(Changesets::get(self, &req.get_ref().rev).await.map_err(to_status)?))
+        let who = principal(&req);
+        Ok(Response::new(Changesets::get(self, &who, &req.get_ref().rev).await.map_err(to_status)?))
     }
 }

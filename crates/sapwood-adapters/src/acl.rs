@@ -9,18 +9,22 @@
 //!   }
 //! }
 //! ```
-//! A principal's grants are the union of `default` and its own entry. Write grants are
-//! path prefixes (`*` = everything); ref grants are exact names or `prefix/*`.
+//! A principal's grants are the union of `default` and its own entry. Read and write
+//! grants are path prefixes (`*` = everything); ref grants are exact names or `prefix/*`.
+//! When no entry mentions `read`, everyone may read everything (the pre-1.4 behaviour).
 
 use std::collections::HashMap;
 
-use sapwood_core::acl::{AccessPolicy, Principal};
+use sapwood_core::acl::{AccessPolicy, Principal, ReadScope};
 use sapwood_core::{Error, Result};
 use serde::Deserialize;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Grants {
+    /// Path prefixes this principal may read. Absent everywhere = everyone reads everything.
+    #[serde(default)]
+    read: Option<Vec<String>>,
     #[serde(default)]
     write: Vec<String>,
     #[serde(default)]
@@ -67,6 +71,17 @@ impl RulesPolicy {
 }
 
 impl AccessPolicy for RulesPolicy {
+    fn read_scope(&self, who: &Principal) -> ReadScope {
+        let configured: Vec<&Vec<String>> = self.grants(who).filter_map(|g| g.read.as_ref()).collect();
+        let any_rules = self.default.read.is_some() || self.principals.values().any(|g| g.read.is_some());
+        if !any_rules {
+            return ReadScope::All;
+        }
+        let prefixes: Vec<String> =
+            configured.into_iter().flatten().map(|p| p.trim_end_matches('/').to_owned()).collect();
+        if prefixes.iter().any(|p| p == "*" || p.is_empty()) { ReadScope::All } else { ReadScope::Prefixes(prefixes) }
+    }
+
     fn can_write(&self, who: &Principal, path: &str) -> bool {
         self.grants(who).any(|g| g.write.iter().any(|w| path_matches(w, path)))
     }
@@ -101,5 +116,13 @@ mod tests {
         assert!(!p.can_update_ref(&anon, "main"));
         assert!(!p.can_update_ref(&api, "release/1"));
         assert!(RulesPolicy::parse(r#"{"defualt":{}}"#).is_err(), "typos rejected");
+        assert_eq!(p.read_scope(&api), ReadScope::All, "no read rules anywhere: full read");
+        let r = RulesPolicy::parse(
+            r#"{"default":{"read":["docs/"]},"principals":{"api":{"read":["services/api"]},"admin":{"read":["*"]}}}"#,
+        )
+        .unwrap();
+        assert_eq!(r.read_scope(&api), ReadScope::Prefixes(vec!["docs".into(), "services/api".into()]));
+        assert_eq!(r.read_scope(&admin), ReadScope::All);
+        assert_eq!(r.read_scope(&anon), ReadScope::Prefixes(vec!["docs".into()]));
     }
 }

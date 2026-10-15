@@ -95,6 +95,20 @@ deploy; new features can ship dark.
 **Why.** Agent-agnostic integration: any MCP client can drive Sapwood without bespoke
 glue. The official SDK tracks the protocol specification.
 
+## ADR-015: Path-scoped reads without object-level ACLs
+
+**Decision.** A principal with restricted read access may not read objects by id at all.
+The server serves them path-filtered views: a streaming `Checkout`, filtered `ListDir`/`Find`,
+diffs limited to readable paths, and redacted changesets (marked `redacted`, so clients
+know they cannot hash-verify them). `sap` detects the scope via `WhoAmI` and switches to
+these APIs automatically.
+**Alternatives.** Per-object ACLs (an object can be reachable from many paths and
+revisions, so every read would need a reverse index); per-principal projected trees (new
+tree ids per principal break content addressing and caching).
+**Why.** Nothing a restricted reader receives names content they cannot read (unreadable
+directory ids are blanked in listings), the content-addressed core stays untouched, and
+full-read principals keep the fast object paths.
+
 ## ADR-013: v1 permissions scope
 
 **Decision.** v1 enforces per-directory **write** permissions and per-ref permissions.

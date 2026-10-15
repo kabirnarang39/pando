@@ -25,19 +25,22 @@ use crate::features::*;
 /// All slices, served by the authoritative server.
 pub fn authority_routes(repo: Repo, flags: Arc<dyn FeatureFlags>, policy: Arc<dyn AccessPolicy>) -> Routes {
     let f = || flags.clone();
-    Routes::new(objects::service(objects::Objects::new(repo.objects.clone(), f())))
+    Routes::new(objects::service(objects::Objects::new(repo.objects.clone(), f(), policy.clone())))
+        .add_service(access::service(access::Access::new(f(), policy.clone())))
         .add_service(changesets::service(changesets::Changesets::new(repo.clone(), f(), policy.clone())))
         .add_service(refs::service(refs::Refs::new(repo.clone(), f(), policy.clone())))
-        .add_service(land::service(land::Land::new(repo.clone(), f(), policy)))
-        .add_service(history::service(history::History::new(repo.clone(), f())))
-        .add_service(diff::service(diff::Diff::new(repo.clone(), f())))
+        .add_service(land::service(land::Land::new(repo.clone(), f(), policy.clone())))
+        .add_service(history::service(history::History::new(repo.clone(), f(), policy.clone())))
+        .add_service(diff::service(diff::Diff::new(repo.clone(), f(), policy.clone())))
         .add_service(merge_base::service(merge_base::MergeBase::new(repo.clone(), f())))
-        .add_service(browse::service(browse::Browse::new(repo, f())))
+        .add_service(browse::service(browse::Browse::new(repo, f(), policy)))
 }
 
-/// Objects slice only, served by caches and daemons over a tiered store.
+/// Objects slice only, served by caches and daemons over a tiered store. Tiers serve
+/// objects by id and know no access policy: expose them only to principals with full read
+/// access (e.g. build machines), never to path-restricted users.
 pub fn tier_routes(store: Arc<dyn ObjectStore>, flags: Arc<dyn FeatureFlags>) -> Routes {
-    Routes::new(objects::service(objects::Objects::new(store, flags)))
+    Routes::new(objects::service(objects::Objects::new(store, flags, Arc::new(sapwood_core::acl::AllowAllPolicy))))
 }
 
 /// Serve `routes` with auth, health checks, reflection, metrics and graceful shutdown.

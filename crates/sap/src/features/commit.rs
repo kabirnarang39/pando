@@ -123,7 +123,13 @@ pub async fn upload(remote: &dyn Remote, objects: &[(Id, Bytes)]) -> Result<usiz
     }
     let store = remote.objects();
     let ids: Vec<Id> = objects.iter().map(|(i, _)| *i).collect();
-    let missing: std::collections::HashSet<Id> = store.missing(&ids).await?.into_iter().collect();
+    // Principals with path-scoped read access may not probe object existence; they upload
+    // everything and the server deduplicates.
+    let missing: std::collections::HashSet<Id> = match store.missing(&ids).await {
+        Ok(m) => m.into_iter().collect(),
+        Err(sapwood_core::Error::PermissionDenied(_)) => ids.iter().copied().collect(),
+        Err(e) => return Err(e.into()),
+    };
     let mut batch = Vec::new();
     let (mut size, mut sent) = (0, 0);
     for (id, payload) in objects.iter().filter(|(i, _)| missing.contains(i)) {
