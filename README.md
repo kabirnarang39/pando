@@ -23,17 +23,14 @@ Server-side commits · lock-free landing · tiered caches · API-first reads · 
 
 When humans and AI agents merge **tens of thousands of changes a day** into one repository,
 git's model starts to hurt: every CI job clones history it never reads, every push races a
-global ref and loses, and every query needs a local copy of 100 GB of history. Anthropic
-described hitting exactly this wall and building an internal system, Scion, to get past it
-([*Redesigning source control*](https://www.anthropic.com/engineering/redesigning-source-control)).
-Scion is internal to Anthropic.
+global ref and loses, and every query needs a local copy of 100 GB of history. The largest
+engineering organisations solved this with in-house systems that move history and commit
+creation to the server.
 
-**Sapwood is an open-source, clean-room implementation of that architecture**, designed to
-run on infrastructure you already have: from a single binary with SQLite on a laptop, to
-stateless replicas on Postgres/CockroachDB + S3 behind regional caches.
-
-> Sapwood is independent and not affiliated with or endorsed by Anthropic.
-> See [Scion vs Sapwood](docs/comparisons/scion-vs-sapwood.md) for what comes from the post and what is ours.
+**Sapwood is an open-source source control system built on that model**, designed to run on
+infrastructure you already have: from a single binary with SQLite on a laptop, to stateless
+replicas on Postgres/CockroachDB + S3 behind regional caches. See [Prior art](docs/PRIOR_ART.md)
+for the public work it builds on and how it compares.
 
 ## Benchmarks: git vs Sapwood
 
