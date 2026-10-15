@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] - 2026-10-15
 
 ### Added
 - **Large files**: files of 8 MiB or more are stored as FastCDC chunks plus a manifest under
@@ -69,6 +69,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.3.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.3.0
 [1.2.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.1.0
 [1.0.1]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.0.1
