@@ -619,7 +619,11 @@ fn git_bridge(dir: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, Strin
         .env("GIT_AUTHOR_NAME", "g")
         .env("GIT_AUTHOR_EMAIL", "g@example.com")
         .env("GIT_COMMITTER_NAME", "g")
-        .env("GIT_COMMITTER_EMAIL", "g@example.com");
+        .env("GIT_COMMITTER_EMAIL", "g@example.com")
+        // Byte-exact checkouts on every OS (Windows runners default to autocrlf=true).
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.autocrlf")
+        .env("GIT_CONFIG_VALUE_0", "false");
     for (k, v) in extra {
         cmd.env(k, v);
     }
