@@ -135,6 +135,17 @@ async fn sqlite_store() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn sqlite_vacuum_leaves_no_wal_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = SqliteStore::open(dir.path().join("db.sqlite")).unwrap();
+    let big: Vec<_> = (0..200u32).map(|i| encode_object(Kind::Blob, &i.to_le_bytes().repeat(4096))).collect();
+    s.put_many(big).await.unwrap();
+    s.vacuum().await.unwrap();
+    let wal = std::fs::metadata(dir.path().join("db.sqlite-wal")).map_or(0, |m| m.len());
+    assert_eq!(wal, 0, "VACUUM must not leave its pages in the write-ahead log");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn sqlite_persists_across_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.sqlite");
