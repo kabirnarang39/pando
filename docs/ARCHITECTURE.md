@@ -160,6 +160,17 @@ every tree, file and chunk lands on local disk. Objects already cached are not r
 following a moving branch costs only what changed. The prefetched content keeps serving even
 if the upstream cache is unreachable.
 
+## Delta storage
+
+`sapwood compact` re-stores each blob version as a zstd delta against the previous version
+of the same path (single writer, lease-protected, safe to run while serving). Reads go
+through `DeltaObjects`, which reconstructs chains on the blocking pool and verifies the
+result's BLAKE3 id, so nothing above the storage layer ever sees a delta. See ADR-014 for
+the safety argument (base pinning, verification before replace, bounded chains).
+
+SQLite returns freed pages to the filesystem with `VACUUM`, which `compact` runs at the end
+and which temporarily needs free disk space roughly equal to the database size.
+
 ## Large files
 
 Files of 8 MiB or more are split with FastCDC (content-defined, ~1 MiB average chunks) into

@@ -79,6 +79,16 @@ impl ObjectStore for CloudObjects {
         }
     }
 
+    /// Object PUTs are atomic on every `object_store` backend, so readers see either the
+    /// old or the new representation, never a torn write.
+    async fn replace(&self, id: Id, payload: Bytes) -> Result<bool> {
+        if !self.has(&id).await? {
+            return Ok(false);
+        }
+        self.backend.put(&self.path(&id), PutPayload::from_bytes(payload)).await.map_err(storage_err)?;
+        Ok(true)
+    }
+
     async fn get_many(&self, ids: &[Id]) -> Result<Vec<Option<Bytes>>> {
         stream::iter(ids.iter().copied())
             .map(|id| async move { self.get(&id).await })

@@ -77,6 +77,21 @@ enum Role {
         #[arg(long, default_value_t = 10)]
         land_hook_timeout: u64,
     },
+    /// Delta-compress stored blob versions (single writer; safe to run while serving).
+    Compact {
+        #[arg(
+            long,
+            env = "SAPWOOD_METADATA",
+            hide_env_values = true,
+            default_value = "sqlite://./sapwood-data/meta.db"
+        )]
+        metadata: String,
+        #[arg(long, env = "SAPWOOD_OBJECTS", hide_env_values = true, default_value = "metadata")]
+        objects: String,
+        /// Take over the lease of a compaction that crashed.
+        #[arg(long)]
+        force_unlock: bool,
+    },
     /// Regional cache: stateless, memory-bounded, read-through to an upstream tier.
     Cache {
         #[arg(long, default_value = "0.0.0.0:7421")]
@@ -179,6 +194,27 @@ async fn main() -> anyhow::Result<()> {
                 None => Arc::new(NoChecks),
             };
             (listen, authority_routes(repo, flags, policy, checks))
+        }
+        Role::Compact { metadata, objects, force_unlock } => {
+            let storage = config::open_storage(&metadata, &objects).await?;
+            let started = std::time::Instant::now();
+            let compactor = sapwood_server::features::compact::Compactor::new(storage.repo, storage.raw_objects, flags);
+            let s = compactor.run(force_unlock).await?;
+            if let Some(db) = storage.sqlite {
+                db.vacuum().await?;
+            }
+            println!(
+                "compacted {} of {} object versions ({} trees) in {:.1}s: {} -> {} bytes ({:.1}x); {} changesets scanned",
+                s.converted,
+                s.pairs,
+                s.trees_converted,
+                started.elapsed().as_secs_f64(),
+                s.bytes_before,
+                s.bytes_after,
+                s.bytes_before as f64 / s.bytes_after.max(1) as f64,
+                s.changesets
+            );
+            return Ok(());
         }
         Role::Cache { listen, upstream, capacity_mb } => {
             let store = config::cache_store(&upstream, upstream_token.as_deref(), capacity_mb << 20)?;

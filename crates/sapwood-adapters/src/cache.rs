@@ -105,6 +105,9 @@ impl ObjectStore for Tiered {
         self.upstream.put_many(items).await
     }
 
+    // `replace` deliberately keeps the default (unsupported): a cached copy would keep the
+    // old representation. Maintenance jobs (compaction) write to the durable store directly.
+
     async fn has(&self, id: &Id) -> Result<bool> {
         Ok(self.local.has(id).await? || self.upstream.has(id).await?)
     }

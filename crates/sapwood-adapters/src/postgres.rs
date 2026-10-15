@@ -71,6 +71,16 @@ impl ObjectStore for PostgresStore {
         Ok(self.missing(std::slice::from_ref(id)).await?.is_empty())
     }
 
+    async fn replace(&self, id: Id, payload: Bytes) -> Result<bool> {
+        let r = sqlx::query("UPDATE sapwood_objects SET payload = $1 WHERE id = $2")
+            .bind(&payload[..])
+            .bind(&id.0[..])
+            .execute(&self.pool)
+            .await
+            .map_err(storage_err)?;
+        Ok(r.rows_affected() == 1)
+    }
+
     async fn get_many(&self, ids: &[Id]) -> Result<Vec<Option<Bytes>>> {
         let keys: Vec<Vec<u8>> = ids.iter().map(|i| i.0.to_vec()).collect();
         let rows = sqlx::query("SELECT id, payload FROM sapwood_objects WHERE id = ANY($1)")

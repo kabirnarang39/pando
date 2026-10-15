@@ -43,9 +43,12 @@ impl Refs {
         self.repo.refs.compare_and_swap(name, expected, new).await
     }
 
+    /// User refs only; system refs (leases, checkpoints) are internal.
     pub async fn list(&self) -> Result<Vec<(String, Id)>> {
         require(self.flags.as_ref(), Flag::Refs)?;
-        self.repo.refs.list().await
+        let mut refs = self.repo.refs.list().await?;
+        refs.retain(|(name, _)| !name.starts_with(sapwood_core::SYSTEM_REF_PREFIX));
+        Ok(refs)
     }
 }
 

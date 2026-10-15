@@ -60,8 +60,8 @@ Measured on **git/git** (82,443 commits, 4,857 files), Apple M4, release builds,
 | Client retries | 456 | **0** (server rebased 79) |
 
 Client metadata after a full clone: **380 KB** (`.sap`) vs **334 MB** (`.git`).
-Where git still wins: offline work, and server storage (no delta compression yet:
-4.6 GB vs a 333 MB pack; on the [roadmap](docs/ROADMAP.md)).
+Server storage after `sapwood compact` (delta storage): **369 MB vs git's 333 MB pack**
+(1.1x; 4.6 GB before compaction). Where git still wins: offline work.
 <!-- BENCH:END -->
 
 Full results, methodology and the cases where git wins: [docs/comparisons/git-vs-sapwood.md](docs/comparisons/git-vs-sapwood.md).

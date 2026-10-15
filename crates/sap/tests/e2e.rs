@@ -8,6 +8,7 @@ use sap::features::{browse, clone, commit, git, land, sync};
 use sap::remote::{GrpcRemote, Remote};
 use sap::workspace::{ChangeKind, Config, Workspace};
 use sapwood_adapters::flags::SpecFlags;
+use sapwood_core::Id;
 use sapwood_core::acl::{AccessPolicy, AllowAllPolicy};
 use sapwood_core::flags::FeatureFlags;
 use sapwood_core::ports::{LandCheck, NoChecks};
@@ -1192,4 +1193,154 @@ async fn land_hook_skipped_when_flag_off() {
     write(&p, "a.txt", "a\n");
     commit_land(&mut ws, r.as_ref(), "unchecked").await;
     assert!(hook.seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_leaves_chunked_large_files_intact() {
+    use sapwood_server::features::compact::Compactor;
+
+    let storage = config::open_storage("memory", "metadata").await.unwrap();
+    let flags_on: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags_on.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let c = Cluster { server, _shutdown: vec![] };
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    let v1 = noise(12 << 20, 5);
+    let mut v2 = v1.clone();
+    v2.extend_from_slice(b"tail");
+    std::fs::write(p.join("big.bin"), &v1).unwrap();
+    commit_land(&mut ws, r.as_ref(), "v1").await;
+    std::fs::write(p.join("big.bin"), &v2).unwrap();
+    let head = commit_land(&mut ws, r.as_ref(), "v2").await.landed;
+    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags_on).run(false).await.unwrap();
+    assert!(stats.skipped_chunked >= 1, "{stats:?}");
+    assert!(browse::cat(r.as_ref(), &head.to_hex(), "big.bin").await.unwrap() == v2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_never_converts_a_base_that_others_depend_on() {
+    use sapwood_core::delta;
+    use sapwood_server::features::compact::Compactor;
+
+    // X is first a brand-new file at a/, then the base for Y at a/; later X reappears as
+    // the *new* version of b/ (a copy/revert). Converting X then would lengthen Y's chain.
+    let storage = config::open_storage("memory", "metadata").await.unwrap();
+    let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let c = Cluster { server, _shutdown: vec![] };
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+    let x: String = (0..2000).map(|i| format!("line {i} of x\n")).collect();
+    let y = x.replace("line 7 of x", "line 7 of y");
+    let w: String = x.replace("line 9 of x", "line 9 of w");
+    write(&p, "a/f.txt", &x);
+    write(&p, "b/f.txt", &w);
+    commit_land(&mut ws, r.as_ref(), "x and w").await;
+    write(&p, "a/f.txt", &y);
+    commit_land(&mut ws, r.as_ref(), "y based on x").await;
+    write(&p, "b/f.txt", &x);
+    commit_land(&mut ws, r.as_ref(), "b becomes x").await;
+
+    let stats = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags).run(false).await.unwrap();
+    assert_eq!(stats.converted, 1, "{stats:?}");
+    assert_eq!(stats.skipped_pinned, 1, "{stats:?}");
+    let x_id = sapwood_core::Id::hash(sapwood_core::object::Kind::Blob as u8, x.as_bytes());
+    let x_payload = storage.raw_objects.get(&x_id).await.unwrap().unwrap();
+    assert!(!delta::is_delta(&x_payload), "pinned base must stay whole");
+    assert_eq!(browse::cat(r.as_ref(), "main", "a/f.txt").await.unwrap(), y.as_bytes());
+    assert_eq!(browse::cat(r.as_ref(), "main", "b/f.txt").await.unwrap(), x.as_bytes());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_preserves_every_version_and_shrinks_storage() {
+    use sapwood_server::features::compact::{Compactor, LEASE_REF};
+
+    let data = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", data.path().join("meta.db").display());
+    let storage = config::open_storage(&url, "metadata").await.unwrap();
+    let flags: Arc<dyn FeatureFlags> = Arc::new(SpecFlags::all_on());
+    let (server, _stop) = spawn(
+        authority_routes(storage.repo.clone(), flags.clone(), Arc::new(AllowAllPolicy), Arc::new(NoChecks)),
+        Arc::new(AllowAll),
+    )
+    .await;
+    let c = Cluster { server, _shutdown: vec![] };
+    let r = remote(&c);
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let mut ws = clone_into(&c, &p, &[]).await;
+
+    // Realistic directory sizes so tree objects are worth delta-encoding.
+    for i in 0..300 {
+        write(&p, &format!("src/module_{i:03}.rs"), &format!("pub fn f{i}() {{}}\n"));
+        write(&p, &format!("top_level_{i:03}.md"), &format!("doc {i}\n"));
+    }
+    // 60 versions (more than the chain cap of 50) of a ~60 KB source file, each a small
+    // edit; then a revert to v1 and a
+    // file -> directory flip, to exercise the cycle and replacement edge cases.
+    let base_text: String = (0..1500).map(|i| format!("fn function_{i}(x: u64) -> u64 {{ x * {i} }}\n")).collect();
+    let mut expected = Vec::new();
+    for v in 0..60 {
+        let text = base_text.replacen(&format!("function_{v}("), &format!("renamed_{v}("), 1) + &format!("// v{v}\n");
+        write(&p, "src/big.rs", &text);
+        let id = commit_land(&mut ws, r.as_ref(), &format!("v{v}")).await.landed;
+        expected.push((id, "src/big.rs".to_owned(), text));
+    }
+    let v1 = expected[1].2.clone();
+    write(&p, "src/big.rs", &v1);
+    let id = commit_land(&mut ws, r.as_ref(), "revert to v1").await.landed;
+    expected.push((id, "src/big.rs".into(), v1.clone()));
+    std::fs::remove_file(p.join("src/big.rs")).unwrap();
+    write(&p, "src/big.rs/inner.rs", &v1);
+    let id = commit_land(&mut ws, r.as_ref(), "file becomes dir").await.landed;
+    expected.push((id, "src/big.rs/inner.rs".into(), v1.clone()));
+
+    let compactor = Compactor::new(storage.repo.clone(), storage.raw_objects.clone(), flags.clone());
+    // A held lease blocks a second compactor.
+    let lease = Id::hash(0xEE, b"someone else");
+    assert!(storage.repo.refs.compare_and_swap(LEASE_REF, None, lease).await.unwrap());
+    assert!(compactor.run(false).await.unwrap_err().to_string().contains("lease"));
+    // System refs are invisible to users.
+    assert!(r.list_refs().await.unwrap().iter().all(|(n, _)| n == "main"));
+
+    let stats = compactor.run(true).await.unwrap(); // take over the stale lease
+    assert!(stats.converted >= 55, "{stats:?}");
+    assert!(stats.trees_converted >= 30, "root and src/ trees are delta-encoded too: {stats:?}");
+    assert!(stats.bytes_after * 20 < stats.bytes_before, "expected >20x: {stats:?}");
+    assert!(stats.skipped_depth >= 1, "chains are capped: {stats:?}");
+
+    // Every historical version reads back byte-identical, through the live server.
+    for (rev, path, text) in &expected {
+        let got = browse::cat(r.as_ref(), &rev.to_hex(), path).await.unwrap();
+        assert_eq!(&got, text.as_bytes(), "{path} at {}", rev.short());
+    }
+    // Fresh clone and blame after compaction.
+    let d2 = tempfile::tempdir().unwrap();
+    let ws2 = clone_into(&c, &d2.path().join("w"), &[]).await;
+    assert_eq!(ws2.index.len(), 601);
+    assert_eq!(r.blame("main", "src/big.rs/inner.rs").await.unwrap().len(), 1501);
+
+    // Idempotent; lease released.
+    let again = compactor.run(false).await.unwrap();
+    assert_eq!(again.converted, 0, "{again:?}");
+
+    // Flag off => compaction refused.
+    let off = Compactor::new(
+        storage.repo.clone(),
+        storage.raw_objects.clone(),
+        Arc::new(SpecFlags::parse("delta-storage=off").unwrap()),
+    );
+    assert!(off.run(false).await.unwrap_err().to_string().contains("delta-storage"));
 }

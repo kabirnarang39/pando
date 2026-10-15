@@ -30,9 +30,20 @@ async fn object_contract(s: &dyn ObjectStore) {
     s.put_many(Vec::new()).await.unwrap();
     assert_eq!(s.get(&a).await.unwrap(), Some(pa.clone()));
     assert!(s.has(&b).await.unwrap());
-    assert_eq!(s.get_many(&[c, a, b, a]).await.unwrap(), vec![None, Some(pa.clone()), Some(pb), Some(pa)]);
+    assert_eq!(s.get_many(&[c, a, b, a]).await.unwrap(), vec![None, Some(pa.clone()), Some(pb), Some(pa.clone())]);
     assert_eq!(s.missing(&[a, c, b]).await.unwrap(), vec![c]);
     assert_eq!(s.missing(&[]).await.unwrap(), Vec::<Id>::new());
+
+    // replace: in-place representation change of an existing object, or `false` when the
+    // backend does not support it. Never creates objects.
+    let alt = Bytes::from_static(b"alternate-representation");
+    if s.replace(a, alt.clone()).await.unwrap() {
+        assert_eq!(s.get(&a).await.unwrap(), Some(alt));
+        assert!(s.replace(a, pa.clone()).await.unwrap());
+    }
+    assert!(!s.replace(c, pa.clone()).await.unwrap(), "replace must not create");
+    assert_eq!(s.get(&c).await.unwrap(), None);
+    assert_eq!(s.get(&a).await.unwrap(), Some(pa.clone()));
 
     // Bulk: many objects in one batch round-trip intact.
     let many: Vec<(Id, Bytes)> = (100..1100).map(obj).collect();
@@ -221,4 +232,46 @@ async fn cached_metadata_decorators() {
     let id = Id::hash(3, b"cs");
     assert!(ChangesetLog::get(inner.as_ref(), &id).await.unwrap().is_some());
     assert!(DerivedStore::get(inner.as_ref(), "k.v1", &Id([9; 32])).await.unwrap().is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn delta_reading_decorator() {
+    use sapwood_adapters::delta::DeltaObjects;
+    use sapwood_core::delta;
+
+    let inner = Arc::new(MemoryStore::new());
+    let d = DeltaObjects::new(inner.clone());
+    object_contract(&d).await;
+
+    // A two-level delta chain reads back as ordinary, verified payloads.
+    let v1 = b"line one\nline two\nline three\n".repeat(200);
+    let mut v2 = v1.clone();
+    v2.extend_from_slice(b"added in v2\n");
+    let mut v3 = v2.clone();
+    v3.extend_from_slice(b"added in v3\n");
+    let (i1, p1) = encode_object(Kind::Blob, &v1);
+    let (i2, p2) = encode_object(Kind::Blob, &v2);
+    let (i3, p3) = encode_object(Kind::Blob, &v3);
+    ObjectStore::put_many(&d, vec![(i1, p1.clone()), (i2, p2.clone()), (i3, p3.clone())]).await.unwrap();
+    assert!(d.replace(i2, delta::encode(i1, 1, &v1, &v2).unwrap().into()).await.unwrap());
+    assert!(d.replace(i3, delta::encode(i2, 2, &v2, &v3).unwrap().into()).await.unwrap());
+    assert!(delta::is_delta(&ObjectStore::get(inner.as_ref(), &i3).await.unwrap().unwrap()));
+    let got = d.get_many(&[i3, i1, i2]).await.unwrap();
+    let decoded: Vec<Vec<u8>> = got
+        .iter()
+        .zip([i3, i1, i2])
+        .map(|(p, id)| sapwood_core::object::decode_object(&id, p.as_ref().unwrap()).unwrap().1)
+        .collect();
+    assert_eq!(decoded, vec![v3.clone(), v1.clone(), v2.clone()]);
+
+    // Corruption is detected, never served: point i3's delta at the wrong base.
+    assert!(d.replace(i3, delta::encode(i1, 1, &v1, &v3).unwrap().into()).await.unwrap());
+    assert!(d.get(&i3).await.is_ok(), "valid alternate base still reconstructs v3");
+    assert!(d.replace(i3, delta::encode(i2, 1, &v1, &v3).unwrap().into()).await.unwrap());
+    assert!(d.get(&i3).await.is_err(), "frame built against v1 but labelled base v2 must fail verification");
+    // Cycles are detected rather than looping forever.
+    assert!(d.replace(i1, delta::encode(i3, 1, &v3, &v1).unwrap().into()).await.unwrap());
+    assert!(d.replace(i3, delta::encode(i1, 1, &v1, &v3).unwrap().into()).await.unwrap());
+    let err = d.get(&i3).await.unwrap_err().to_string();
+    assert!(err.contains("cycle"), "{err}");
 }

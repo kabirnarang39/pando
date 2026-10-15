@@ -5,6 +5,7 @@
 
 pub mod acl;
 pub mod chunked;
+pub mod delta;
 mod derived;
 mod error;
 pub mod flags;
@@ -19,4 +20,4 @@ pub use derived::GraphInfo;
 pub use derived::{Derivation, Generation, RootTree};
 pub use error::{Error, Result};
 pub use id::Id;
-pub use repo::{Repo, paths_overlap, validate_ref_name};
+pub use repo::{Repo, SYSTEM_REF_PREFIX, paths_overlap, validate_ref_name};

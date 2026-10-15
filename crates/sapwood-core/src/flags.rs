@@ -19,6 +19,7 @@ pub enum Flag {
     Blame,
     Search,
     Permissions,
+    DeltaStorage,
     GitBridge,
     Oidc,
     DaemonPrefetch,
@@ -27,7 +28,7 @@ pub enum Flag {
 }
 
 impl Flag {
-    pub const ALL: [Flag; 19] = [
+    pub const ALL: [Flag; 20] = [
         Flag::Objects,
         Flag::Changesets,
         Flag::Refs,
@@ -42,6 +43,7 @@ impl Flag {
         Flag::Blame,
         Flag::Search,
         Flag::Permissions,
+        Flag::DeltaStorage,
         Flag::GitBridge,
         Flag::Oidc,
         Flag::DaemonPrefetch,
@@ -65,6 +67,7 @@ impl Flag {
             Flag::Blame => "blame",
             Flag::Search => "search",
             Flag::Permissions => "permissions",
+            Flag::DeltaStorage => "delta-storage",
             Flag::GitBridge => "git-bridge",
             Flag::Oidc => "oidc",
             Flag::DaemonPrefetch => "daemon-prefetch",

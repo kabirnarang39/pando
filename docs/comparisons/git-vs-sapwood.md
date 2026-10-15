@@ -64,8 +64,9 @@ uploads nothing.
 
 * **Offline work**: git has everything locally. Sapwood needs the server for history,
   commits and landing (by design).
-* **Server storage**: git's delta-compressed packs are several times smaller than
-  Sapwood's per-object zstd storage (see footprint table). Delta storage is on the roadmap.
+* **Server storage (before compaction)**: uncompacted, Sapwood stores every object version
+  whole (4.6 GB for git/git vs a 333 MB pack). After `sapwood compact` (delta storage) the
+  same store is **369 MB, 1.1x git's pack**.
 * **Cold path-filtered history**: Sapwood's `log -- path` and `blame` are fast once the
   server's immutable metadata cache is warm (measured above); on a cold server they walk
   first-parent history from storage. A derived per-path index is on the roadmap.

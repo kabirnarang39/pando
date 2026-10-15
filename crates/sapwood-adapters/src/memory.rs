@@ -35,6 +35,9 @@ impl ObjectStore for MemoryStore {
     async fn has(&self, id: &Id) -> Result<bool> {
         Ok(self.objects.read().unwrap().contains_key(id))
     }
+    async fn replace(&self, id: Id, payload: Bytes) -> Result<bool> {
+        Ok(self.objects.write().unwrap().get_mut(&id).map(|p| *p = payload).is_some())
+    }
     async fn get_many(&self, ids: &[Id]) -> Result<Vec<Option<Bytes>>> {
         let map = self.objects.read().unwrap();
         Ok(ids.iter().map(|id| map.get(id).cloned()).collect())
