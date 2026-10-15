@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sapwood: source control for monorepos at agent scale</title>
+<meta name="description" content="Open-source source control where commits, rebases and history run on the server. Clones in milliseconds, CI without checkouts, and concurrent landing without a merge queue. Written in Rust.">
+<meta property="og:title" content="Sapwood">
+<meta property="og:description" content="Source control for monorepos at agent scale. 41x faster clones than git on git's own history, 12x more concurrent merges, built-in MCP for AI agents.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kabirnarang39.github.io/sapwood/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23EADBB2'/%3E%3Ccircle cx='16' cy='16' r='11' fill='%238A5A3C'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%236B4430'/%3E%3Ccircle cx='15' cy='17' r='3' fill='%233D2A20'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&family=Gloock&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --heartwood: #2B1B14;
+    --bark: #3D2A20;
+    --bark-line: #563C2D;
+    --sapwood: #EADBB2;
+    --grain: #B79F79;
+    --cambium: #8DB360;
+    --display: "Gloock", Georgia, serif;
+    --body: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --measure: 36rem;
+    --gutter: clamp(1rem, 4vw, 3rem);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--heartwood);
+    color: var(--sapwood);
+    font: 1.0625rem/1.6 var(--body);
+  }
+  a { color: var(--cambium); text-underline-offset: 0.2em; }
+  a:hover { color: var(--sapwood); }
+  :focus-visible { outline: 2px solid var(--cambium); outline-offset: 3px; border-radius: 2px; }
+  .wrap { max-width: 72rem; margin: 0 auto; padding: 0 var(--gutter); }
+
+  /* Header */
+  .top { display: flex; justify-content: space-between; align-items: center; padding-block: 1.25rem; }
+  .brand { font: 1.5rem/1 var(--display); color: var(--sapwood); text-decoration: none; }
+  .top nav { display: flex; gap: 1.5rem; font-size: 0.95rem; }
+  .top nav a { color: var(--grain); text-decoration: none; }
+  .top nav a:hover { color: var(--sapwood); }
+
+  /* Hero */
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(2rem, 5vw, 5rem); align-items: center; padding-block: clamp(2rem, 6vw, 5rem) clamp(3rem, 7vw, 6rem); }
+  h1 { font: 400 clamp(2.6rem, 5.6vw, 4.6rem)/1.02 var(--display); letter-spacing: -0.01em; margin: 0 0 1.5rem; max-width: 12ch; }
+  .lede { font-size: 1.2rem; line-height: 1.55; color: var(--sapwood); max-width: 30rem; margin: 0 0 2rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .btn { display: inline-block; padding: 0.8rem 1.3rem; border-radius: 999px; font-weight: 600; text-decoration: none; border: 1.5px solid var(--sapwood); color: var(--sapwood); }
+  .btn.primary { background: var(--sapwood); color: var(--heartwood); }
+  .btn.primary:hover { background: var(--cambium); border-color: var(--cambium); color: var(--heartwood); }
+  .btn:not(.primary):hover { border-color: var(--cambium); color: var(--cambium); }
+  .fineprint { color: var(--grain); font-size: 0.9rem; margin: 0; }
+
+  .slice { margin: 0; }
+  .slice canvas { width: 100%; max-width: 100%; height: auto; aspect-ratio: 1; display: block; touch-action: none; cursor: crosshair; }
+  .slice figcaption { color: var(--grain); font-size: 0.95rem; margin-top: 1rem; min-height: 3.2em; max-width: 34rem; }
+  .slice figcaption strong { color: var(--sapwood); font-weight: 600; }
+
+  /* Sections */
+  section { padding-block: clamp(3rem, 7vw, 6rem); border-top: 1px solid var(--bark-line); }
+  h2 { font: 400 clamp(1.9rem, 3.6vw, 2.8rem)/1.1 var(--display); margin: 0 0 1rem; max-width: 22ch; }
+  h3 { font: 600 1.15rem/1.3 var(--body); margin: 0 0 0.5rem; color: var(--sapwood); }
+  .intro { max-width: var(--measure); color: var(--grain); margin: 0 0 2.5rem; }
+  .intro strong { color: var(--sapwood); font-weight: 600; }
+
+  /* Benchmarks */
+  .bench { display: grid; gap: 1.6rem; max-width: 56rem; }
+  .row { display: grid; grid-template-columns: 15rem 1fr; gap: 0.4rem 1.5rem; align-items: center; }
+  .row .name { grid-row: span 2; font-weight: 600; }
+  .row .name small { display: block; font-weight: 400; color: var(--grain); font-size: 0.88rem; }
+  .bar { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 10.5rem; grid-template-areas: "who track val"; align-items: center; gap: 0.75rem; font-size: 0.92rem; color: var(--grain); }
+  .bar .who { grid-area: who; }
+  .bar .track { grid-area: track; display: block; }
+  .bar .val { grid-area: val; }
+  .plank { display: block; height: 0.85rem; border-radius: 2px; min-width: 3px; background: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 22px, rgba(0,0,0,0.08) 22px 23px), var(--bark-line); }
+  .bar.sap .plank { background: var(--sapwood); }
+  .bar.sap { color: var(--sapwood); }
+  .gain { color: var(--cambium); font-weight: 600; }
+  .note { color: var(--grain); font-size: 0.92rem; margin-top: 2rem; max-width: var(--measure); }
+
+  /* Mechanisms */
+  .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 3.5rem); }
+  .three p { color: var(--grain); margin: 0; }
+
+  /* Code */
+  pre { margin: 0; background: var(--bark); border-radius: 10px; padding: 1.1rem 1.25rem; overflow-x: auto; font: 0.88rem/1.65 var(--mono); color: var(--sapwood); }
+  pre .c { color: var(--grain); }
+  .split { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(2rem, 5vw, 4rem); align-items: start; }
+  .split p { color: var(--grain); max-width: var(--measure); }
+  .tools { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; margin: 1.25rem 0 0; list-style: none; }
+  .tools li { font: 0.85rem/1 var(--mono); padding: 0.45rem 0.65rem; border: 1px solid var(--bark-line); border-radius: 6px; color: var(--sapwood); }
+
+  /* Cheat sheet */
+  table { border-collapse: collapse; width: 100%; max-width: 56rem; font-size: 0.98rem; }
+  th, td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid var(--bark-line); vertical-align: top; }
+  th { color: var(--grain); font-weight: 400; }
+  td code, p code, li code { font: 0.88em var(--mono); color: var(--sapwood); }
+  td code { white-space: nowrap; }
+  td:last-child { color: var(--grain); }
+
+  /* Honest list */
+  .wins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 3rem; max-width: 56rem; padding: 0; margin: 0; list-style: none; }
+  .wins li { color: var(--grain); }
+  .wins strong { display: block; color: var(--sapwood); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--bark-line); padding: 2.5rem 0 3.5rem; color: var(--grain); font-size: 0.92rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+
+  @media (max-width: 860px) {
+    .hero, .split { grid-template-columns: minmax(0, 1fr); }
+    .slice { max-width: 28rem; }
+    .three, .wins { grid-template-columns: minmax(0, 1fr); }
+    .row { grid-template-columns: minmax(0, 1fr); }
+    .row .name { grid-row: auto; }
+    .bar { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "who val" "track track"; gap: 0.3rem 0.75rem; }
+    .bar .val { text-align: right; }
+    .top nav { gap: 1rem; }
+    .top nav .optional { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="./">Sapwood</a>
+  <nav aria-label="Primary">
+    <a class="optional" href="#benchmarks">Benchmarks</a>
+    <a class="optional" href="#install">Install</a>
+    <a href="https://github.com/kabirnarang39/sapwood">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Source control for monorepos at agent scale</h1>
+      <p class="lede">Commits, rebases and history run on the server. Clients stay thin, CI reads files without cloning, and sixteen agents can land on one branch at once without a single retry.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">Install Sapwood</a>
+        <a class="btn" href="https://github.com/kabirnarang39/sapwood">Read the source</a>
+      </div>
+      <p class="fineprint">Open source under Apache-2.0. Written in Rust. Runs on a laptop with SQLite or on Postgres and S3 behind regional caches.</p>
+    </div>
+    <figure class="slice">
+      <canvas id="rings" width="900" height="900" role="img" aria-label="A tree cross-section whose 140 growth rings stand for the 82,443 commits in git's own history. The pale outer band is where new work lands."></canvas>
+      <figcaption id="ring-caption">Each ring stands for about 590 of the 82,443 commits in git's own history. The pale outer band is the sapwood, where new work lands. Point at a ring to see which commits it holds.</figcaption>
+    </figure>
+  </div>
+
+  <section id="benchmarks">
+    <div class="wrap">
+      <h2>Measured on git's own history</h2>
+      <p class="intro">Same repository, same machine, both systems local. <strong>git/git</strong>: 82,443 commits and 4,857 files. Apple M4, release builds, median of five runs. Reproduce with <code>bench/run.sh</code>.</p>
+      <div class="bench" id="bench"></div>
+      <p class="note">Server storage after <code>sapwood compact</code> is 369 MB against git's 333 MB pack (1.1x); before compaction it is 4.6 GB. A full Sapwood workspace keeps 380 KB of metadata where git keeps 334 MB of history.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Why it stays fast as history grows</h2>
+      <p class="intro">Anthropic described replacing git internally once merges passed 30,000 a day. Sapwood is an independent, open implementation of that architecture.</p>
+      <div class="three">
+        <div>
+          <h3>The server builds commits</h3>
+          <p>Your client sends the list of files you changed. The server updates the tree, so the cost of a commit follows the size of your change, not the size of the repository.</p>
+        </div>
+        <div>
+          <h3>Landing needs no lock</h3>
+          <p>When <code>main</code> has moved, the server rebases your change and moves the branch with one compare-and-swap. Changes that touch different files all land; there is no merge queue to wait in.</p>
+        </div>
+        <div>
+          <h3>Caches are never stale</h3>
+          <p>Every object is named by the hash of its content, so a cached copy is correct forever. Regional caches and per-machine daemons answer the same requests the server does.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>Built for agents to use directly</h2>
+        <p>Sapwood ships a Model Context Protocol server. Any MCP client can read files at any revision, commit, and land, without shelling out or parsing terminal output.</p>
+        <ul class="tools" aria-label="MCP tools">
+          <li>sap_cat</li><li>sap_ls</li><li>sap_find</li><li>sap_log</li><li>sap_blame</li><li>sap_diff</li><li>sap_status</li><li>sap_commit</li><li>sap_land</li><li>sap_sync</li>
+        </ul>
+      </div>
+      <pre><span class="c"># Claude Code</span>
+claude mcp add sapwood -- sap mcp
+
+<span class="c"># Any agent: read without a checkout</span>
+sap cat main services/api/handler.rs
+sap blame services/api/handler.rs
+
+<span class="c"># Edit, then publish in two steps</span>
+sap commit -m "Fix retry budget"
+sap land</pre>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap split">
+      <div>
+        <h2>Try it on your own repository</h2>
+        <p>Import keeps your full history and is safe to re-run; new git commits fast-forward the branch. Export writes it back to git with identical trees, so you are never locked in.</p>
+        <p>For the full topology with Postgres, S3-compatible storage, a regional cache and a node daemon, run <code>docker compose up</code> from the repository.</p>
+      </div>
+      <pre><span class="c"># Install (macOS, Linux)</span>
+curl -fsSL https://raw.githubusercontent.com/kabirnarang39/sapwood/main/install.sh | sh
+
+<span class="c"># Start a server and import your history</span>
+sapwood server --listen 127.0.0.1:7420 &amp;
+sap import-git ~/code/my-repo --server http://127.0.0.1:7420
+
+<span class="c"># Work</span>
+sap clone http://127.0.0.1:7420 work &amp;&amp; cd work
+sap commit -m "First change" &amp;&amp; sap land</pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Coming from git</h2>
+      <p class="intro">The verbs you know still work. <code>sap push</code> lands and <code>sap pull</code> syncs.</p>
+      <table>
+        <thead><tr><th scope="col">git</th><th scope="col">sap</th><th scope="col">What changes</th></tr></thead>
+        <tbody>
+          <tr><td><code>git clone URL</code></td><td><code>sap clone URL DIR</code></td><td>Downloads one tree, never history. Add <code>--path</code> for part of the repo.</td></tr>
+          <tr><td><code>git commit -am MSG</code></td><td><code>sap commit -m MSG</code></td><td>No staging area. Name paths to commit a subset.</td></tr>
+          <tr><td><code>git push</code></td><td><code>sap land</code></td><td>The server rebases if the branch moved. No rejected pushes.</td></tr>
+          <tr><td><code>git pull</code></td><td><code>sap sync</code></td><td>Applies only what changed.</td></tr>
+          <tr><td><code>git log -- path</code></td><td><code>sap log path</code></td><td>Answered by the server; works without a clone.</td></tr>
+          <tr><td><code>git show REV:path</code></td><td><code>sap cat REV path</code></td><td>One request instead of a clone.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Where git is still the better tool</h2>
+      <p class="intro">Sapwood makes a trade on purpose. These are the costs.</p>
+      <ul class="wins">
+        <li><strong>Working offline</strong>History, commits and landing need the server. That is how clients stay small.</li>
+        <li><strong>The ecosystem</strong>Every tool speaks git. Lossless import and export keep the door open both ways.</li>
+        <li><strong>Submodules and huge files</strong>Submodules are not supported, and single files are capped at 256 MB in v1.</li>
+        <li><strong>Merged side branches in history</strong>Log and blame show what landed on the branch, not every merged-in commit.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Sapwood is independent and not affiliated with Anthropic. Apache-2.0.</span>
+    <span><a href="https://github.com/kabirnarang39/sapwood">Source</a> &nbsp; <a href="https://github.com/kabirnarang39/sapwood/releases">Releases</a> &nbsp; <a href="https://github.com/kabirnarang39/sapwood/blob/main/docs/ARCHITECTURE.md">Architecture</a></span>
+  </div>
+</footer>
+
+<script>
+// Benchmarks (from bench/results/RESULTS.md). Bars share one scale per row: git = full length.
+const rows = [
+  ["Full clone", "whole repository", 19130, 463],
+  ["Sparse clone", "one directory", 9513, 106],
+  ["Read one file in CI", "no prior clone", 149, 9],
+  ["File history", "log -n 50 for one path", 100, 19],
+  ["Blame", "Makefile", 528, 352],
+  ["Commit and publish", "one file", 130, 77],
+  ["16 agents, 80 merges", "one branch, at once", 42800, 3500],
+];
+const fmt = ms => ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms + " ms";
+const bench = document.getElementById("bench");
+for (const [name, sub, g, s] of rows) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="name">${name}<small>${sub}</small></div>` +
+    `<div class="bar"><span class="who">git</span><span class="track"><span class="plank" style="width:100%"></span></span><span class="val">${fmt(g)}</span></div>` +
+    `<div class="bar sap"><span class="who">Sapwood</span><span class="track"><span class="plank" style="width:${(100 * s) / g}%"></span></span><span class="val">${fmt(s)} <span class="gain">${(g / s).toFixed(1)}x faster</span></span></div>`;
+  bench.appendChild(row);
+}
+
+// Tree cross-section. Deterministic noise so the slice looks the same on every load.
+(() => {
+  const canvas = document.getElementById("rings");
+  const caption = document.getElementById("ring-caption");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, C = W / 2, R = W * 0.47;
+  const N = 140, COMMITS = 82443, SAP_START = 0.8;
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  // Ring widths vary like wet and dry years.
+  const widths = Array.from({ length: N }, () => 0.55 + rand() * 0.9);
+  const total = widths.reduce((a, b) => a + b, 0);
+  const radii = []; let acc = 0;
+  for (const w of widths) { acc += w; radii.push(acc / total); }
+  const ph = [rand() * 6.28, rand() * 6.28, rand() * 6.28];
+  const pith = { x: C - W * 0.018, y: C + W * 0.012 };
+  const shape = (t, a) => 1 + 0.035 * Math.sin(3 * a + ph[0]) * t + 0.018 * Math.sin(5 * a + ph[1]) * t + 0.01 * Math.sin(9 * a + ph[2]);
+  const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const inner = hex("#5A3826"), outer = hex("#93603F"), sapIn = hex("#C9B080"), sapOut = hex("#EADBB2");
+  const color = t => t < SAP_START ? mix(inner, outer, t / SAP_START) : mix(sapIn, sapOut, (t - SAP_START) / (1 - SAP_START));
+  function ringPath(t) {
+    const p = new Path2D();
+    // The pith sits off-centre; rings drift toward the true centre as they grow.
+    const cx = pith.x + (C - pith.x) * t, cy = pith.y + (C - pith.y) * t;
+    for (let i = 0; i <= 180; i++) {
+      const a = (i / 180) * Math.PI * 2;
+      const r = R * t * shape(t, a);
+      i ? p.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)) : p.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+    }
+    p.closePath();
+    return p;
+  }
+  const paths = radii.map(ringPath);
+  function draw(count, highlight = -1) {
+    ctx.clearRect(0, 0, W, W);
+    // Bark.
+    const bark = ringPath(1.045);
+    ctx.fillStyle = "#3D2A20"; ctx.fill(bark);
+    for (let i = count - 1; i >= 0; i--) {
+      const [r, g, b] = color(radii[i]);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fill(paths[i]);
+      // Latewood: a thin darker line at the end of each year.
+      ctx.strokeStyle = `rgba(43,27,20,${radii[i] < SAP_START ? 0.62 : 0.3})`;
+      ctx.lineWidth = 1.6;
+      ctx.stroke(paths[i]);
+    }
+    if (count === N) {
+      ctx.strokeStyle = "#8DB360"; ctx.lineWidth = 4; ctx.stroke(paths[N - 1]);
+    }
+    if (highlight >= 0) {
+      ctx.strokeStyle = "#8DB360"; ctx.lineWidth = 3; ctx.stroke(paths[highlight]);
+    }
+    // Pith.
+    ctx.fillStyle = "#3D2A20"; ctx.beginPath(); ctx.arc(pith.x, pith.y, W * 0.008, 0, 6.29); ctx.fill();
+  }
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) draw(N);
+  else {
+    const start = performance.now(), dur = 1600;
+    const step = now => {
+      const k = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - k, 3);
+      draw(Math.max(1, Math.round(eased * N)));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  const defaultCaption = caption.innerHTML;
+  const fmtN = n => n.toLocaleString("en-US");
+  function point(ev) {
+    const box = canvas.getBoundingClientRect();
+    const x = (ev.clientX - box.left) * (W / box.width), y = (ev.clientY - box.top) * (W / box.height);
+    const d = Math.hypot(x - C, y - C) / R;
+    if (d > 1.02) { leave(); return; }
+    let i = radii.findIndex(r => r >= d); if (i < 0) i = N - 1;
+    const from = Math.round((i ? radii[i - 1] : 0) * COMMITS) + 1, to = Math.round(radii[i] * COMMITS);
+    draw(N, i);
+    caption.innerHTML = i === N - 1
+      ? `<strong>The newest ring.</strong> Commits ${fmtN(from)} to ${fmtN(to)}. This is where the next landed change goes.`
+      : `<strong>Ring ${i + 1} of ${N}.</strong> Commits ${fmtN(from)} to ${fmtN(to)}${radii[i] >= SAP_START ? ", in the sapwood: recent history, still being read and built on." : ", in the heartwood: settled history."}`;
+  }
+  function leave() { draw(N); caption.innerHTML = defaultCaption; }
+  canvas.addEventListener("pointermove", point);
+  canvas.addEventListener("pointerdown", point);
+  canvas.addEventListener("pointerleave", leave);
+})();
+</script>
+</body>
+</html>

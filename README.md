@@ -9,6 +9,9 @@ Server-side commits · lock-free landing · tiered caches · API-first reads · 
 [![CI](https://github.com/kabirnarang39/sapwood/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/sapwood/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![Release](https://img.shields.io/github/v/release/kabirnarang39/sapwood)](https://github.com/kabirnarang39/sapwood/releases)
+
+**[Website](https://kabirnarang39.github.io/sapwood/)** · **[Benchmarks](docs/comparisons/git-vs-sapwood.md)** · **[Architecture](docs/ARCHITECTURE.md)**
 
 </div>
 
@@ -74,8 +77,10 @@ Full results, methodology and the cases where git wins: [docs/comparisons/git-vs
 ## Quick start
 
 ```sh
-# 1. Install (or download a release binary)
-cargo install --git https://github.com/kabirnarang39/sapwood sap sapwood-server
+# 1. Install (macOS, Linux; verifies the release checksum). Windows: download the .zip from Releases.
+curl -fsSL https://raw.githubusercontent.com/kabirnarang39/sapwood/main/install.sh | sh
+#    or: docker run -p 7420:7420 ghcr.io/kabirnarang39/sapwood:latest
+#    or: cargo install --git https://github.com/kabirnarang39/sapwood sap sapwood-server
 
 # 2. Run a server (SQLite by default)
 sapwood server --listen 127.0.0.1:7420 &
