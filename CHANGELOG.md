@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.0] - 2026-10-15
 
 ### Added
 - **Pre-land checks** (`sapwood server --land-hook URL [--land-hook-token T]
@@ -118,6 +118,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[1.8.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.8.0
 [1.7.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.7.0
 [1.6.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.6.0
 [1.5.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.5.0
