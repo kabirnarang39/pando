@@ -146,9 +146,10 @@ async fn main() -> anyhow::Result<()> {
                 db.vacuum().await?;
             }
             println!(
-                "compacted {} of {} blob versions in {:.1}s: {} -> {} bytes ({:.1}x); {} changesets scanned",
+                "compacted {} of {} object versions ({} trees) in {:.1}s: {} -> {} bytes ({:.1}x); {} changesets scanned",
                 s.converted,
                 s.pairs,
+                s.trees_converted,
                 started.elapsed().as_secs_f64(),
                 s.bytes_before,
                 s.bytes_after,

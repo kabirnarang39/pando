@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt, stream};
-use sapwood_core::object::{Kind, encode_object};
+use sapwood_core::object::encode_object;
 use sapwood_core::ports::{BATCH_CONCURRENCY, ObjectStore};
 use sapwood_core::{Id, Result, delta};
 
@@ -29,7 +29,7 @@ impl DeltaObjects {
         }
         let chain = delta::chain(self.inner.as_ref(), &id, payload).await?;
         // Decompressing a chain and hashing the result is CPU work: keep it off the runtime.
-        tokio::task::spawn_blocking(move || chain.rebuild().map(|data| encode_object(Kind::Blob, &data).1))
+        tokio::task::spawn_blocking(move || chain.rebuild().map(|(kind, data)| encode_object(kind, &data).1))
             .await
             .map_err(storage_err)?
     }

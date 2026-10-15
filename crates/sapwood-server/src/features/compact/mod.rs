@@ -2,13 +2,19 @@
 //!
 //! Walks every changeset reachable from any ref, oldest generation first. For each file
 //! changed relative to the first parent, the new blob is re-stored as a zstd delta
-//! against the previous version of the same path.
+//! against the previous version of the same path; likewise every directory tree on the
+//! path to a change (including the root) against the parent's tree at the same path.
+//! Trees dominate storage in large monorepos, since each changeset writes a new root.
 //!
 //! Safety argument:
 //! * Exactly one compaction runs at a time (lease = CAS on a reserved system ref), and live
 //!   servers never convert objects, so conversions are serialised.
-//! * A conversion is skipped if the target already appears in the base's chain, so chains
-//!   are acyclic by construction.
+//! * Before `target` is stored as a delta on `base`, `base` is *pinned* (recorded in the
+//!   derived-data store), and pinned objects are never converted. A base's chain therefore
+//!   never changes after something depends on it: depth headers stay exact, chains stay
+//!   within `MAX_DEPTH`, and no cycle can form.
+//! * As a second line of defence a conversion is skipped if the target already appears in
+//!   the base's chain.
 //! * Every delta is decoded and compared with the target in memory *before* it replaces
 //!   the stored object; `replace` is atomic per object, so readers see old or new, never torn.
 //! * Readers re-verify the reconstructed content against its id on every read.
@@ -26,6 +32,8 @@ use sapwood_core::ports::ObjectStore;
 use sapwood_core::{Error, Id, Repo, Result, SYSTEM_REF_PREFIX, tree};
 
 pub const LEASE_REF: &str = "_sapwood/compaction-lease";
+/// Derived-store namespace recording objects that are delta bases (never converted).
+pub const PIN_KIND: &str = "delta-base-pin.v1";
 const UNLOCKED: Id = Id([0; 32]);
 /// Store a delta only if it is at most 80% of the full payload.
 const MIN_GAIN_NUM: usize = 8;
@@ -36,20 +44,24 @@ pub struct CompactStats {
     pub changesets: u64,
     pub pairs: u64,
     pub converted: u64,
+    pub trees_converted: u64,
     pub already_delta: u64,
     pub skipped_depth: u64,
     pub skipped_cycle: u64,
+    pub skipped_pinned: u64,
     pub skipped_small_gain: u64,
     pub skipped_large: u64,
     pub bytes_before: u64,
     pub bytes_after: u64,
 }
 
+type Content = (Kind, Arc<Vec<u8>>);
+
 #[derive(Clone)]
 struct ContentWeight;
-impl Weighter<Id, Arc<Vec<u8>>> for ContentWeight {
-    fn weight(&self, _: &Id, v: &Arc<Vec<u8>>) -> u64 {
-        v.len() as u64 + 64
+impl Weighter<Id, Content> for ContentWeight {
+    fn weight(&self, _: &Id, v: &Content) -> u64 {
+        v.1.len() as u64 + 64
     }
 }
 
@@ -60,7 +72,7 @@ pub struct Compactor {
     raw: Arc<dyn ObjectStore>,
     flags: Arc<dyn FeatureFlags>,
     /// Recently materialised contents: each version's content is the next version's base.
-    contents: Cache<Id, Arc<Vec<u8>>, ContentWeight>,
+    contents: Cache<Id, Content, ContentWeight>,
 }
 
 impl Compactor {
@@ -127,10 +139,29 @@ impl Compactor {
             let cs = self.repo.changeset(&id).await?;
             let Some(parent) = cs.first_parent()? else { continue };
             let parent_root = self.repo.root_tree(parent).await?;
+            let root = self.repo.root_tree(id).await?;
+            let mut dirs = std::collections::BTreeSet::from([String::new()]);
             for c in &cs.changes {
+                let mut cut = c.path.len();
+                while let Some(i) = c.path[..cut].rfind('/') {
+                    dirs.insert(c.path[..i].to_owned());
+                    cut = i;
+                }
                 let Some(target) = c.blob_id()? else { continue };
                 if let Some((mode, base)) = tree::lookup(self.repo.objects.as_ref(), parent_root, &c.path).await?
                     && mode != Mode::Dir
+                    && base != target
+                {
+                    stats.pairs += 1;
+                    self.pair(base, target, &mut stats).await?;
+                }
+            }
+            // Directory trees along every changed path, parents before children is not
+            // required: each pair is independent and pinning keeps chains exact.
+            for dir in dirs {
+                let objects = self.repo.objects.as_ref();
+                if let (Some((Mode::Dir, base)), Some((Mode::Dir, target))) =
+                    (tree::lookup(objects, parent_root, &dir).await?, tree::lookup(objects, root, &dir).await?)
                     && base != target
                 {
                     stats.pairs += 1;
@@ -144,19 +175,19 @@ impl Compactor {
         Ok(stats)
     }
 
-    async fn content(&self, id: Id, payload: bytes::Bytes) -> Result<Arc<Vec<u8>>> {
+    async fn content(&self, id: Id, payload: bytes::Bytes) -> Result<Content> {
         if let Some(c) = self.contents.get(&id) {
             return Ok(c);
         }
-        let (_, data) = delta::content(self.raw.as_ref(), &id, payload).await?;
-        let data = Arc::new(data);
-        self.contents.insert(id, data.clone());
-        Ok(data)
+        let (kind, data) = delta::content(self.raw.as_ref(), &id, payload).await?;
+        let c = (kind, Arc::new(data));
+        self.contents.insert(id, c.clone());
+        Ok(c)
     }
 
     /// Does `needle` appear in the delta chain starting at `start` (stored as `payload`)?
     async fn chain_contains(&self, mut payload: bytes::Bytes, needle: Id) -> Result<bool> {
-        for _ in 0..=MAX_DEPTH {
+        for _ in 0..delta::READ_DEPTH_LIMIT {
             if !delta::is_delta(&payload) {
                 return Ok(false);
             }
@@ -177,9 +208,13 @@ impl Compactor {
             stats.already_delta += 1;
             return Ok(());
         }
-        if payload_kind(&tp)? != Kind::Blob {
+        if self.repo.derived.get(PIN_KIND, &target).await?.is_some() {
+            // Something is already stored as a delta against `target`; converting it now
+            // would silently lengthen that chain.
+            stats.skipped_pinned += 1;
             return Ok(());
         }
+        let kind = payload_kind(&tp)?;
         let depth = if delta::is_delta(&bp) { delta::parse(&bp)?.1 } else { 0 };
         if depth + 1 >= MAX_DEPTH {
             // Target stays whole and becomes the root of the next chain.
@@ -190,10 +225,13 @@ impl Compactor {
             stats.skipped_cycle += 1;
             return Ok(());
         }
-        let base_content = self.content(base, bp).await?;
+        let (base_kind, base_content) = self.content(base, bp).await?;
+        if base_kind != kind {
+            return Ok(());
+        }
         let (_, target_content) = decode_object(&target, &tp)?;
         let target_content = Arc::new(target_content);
-        self.contents.insert(target, target_content.clone());
+        self.contents.insert(target, (kind, target_content.clone()));
         if base_content.len() > MAX_DELTA_INPUT || target_content.len() > MAX_DELTA_INPUT {
             stats.skipped_large += 1;
             return Ok(());
@@ -213,8 +251,11 @@ impl Compactor {
             stats.skipped_small_gain += 1;
             return Ok(());
         }
+        // Pin first: a crash between pin and replace leaves a harmless extra pin.
+        self.repo.derived.put(PIN_KIND, base, bytes::Bytes::from_static(b"1")).await?;
         if self.raw.replace(target, encoded.clone().into()).await? {
             stats.converted += 1;
+            stats.trees_converted += (kind == Kind::Tree) as u64;
             stats.bytes_before += tp.len() as u64;
             stats.bytes_after += encoded.len() as u64;
         }

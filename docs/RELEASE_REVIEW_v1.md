@@ -18,6 +18,17 @@ separately so nobody discovers them in production.
 | 8 | First CI run | S3 job could not start | MinIO no longer publishes community images | SeaweedFS (Apache-2.0) for CI and compose; adapter unchanged | CI `s3` job |
 | 9 | Benchmarks | `log -- path` and `blame` slower than git | Every history step re-read and decoded the changeset from storage | Memory caches for immutable changesets and derived data (`CachedLog`, `CachedDerived`) | `cached_metadata_decorators`; log 6x faster than git after fix |
 
+## Delta storage (unreleased, PR) review
+
+| # | Found by | Symptom | Root cause | Fix | Guarded by |
+|---|---|---|---|---|---|
+| D1 | Design review before coding | Write-time delta encoding on several replicas could form A→B / B→A cycles (unreadable data) | No cross-replica ordering | Conversion only in a single-writer, lease-protected `sapwood compact`; live servers only read | `compaction_preserves_every_version_and_shrinks_storage` (lease) |
+| D2 | Unit test | "10x smaller" assertion passed for the wrong reason | Test data compressible on its own | Incompressible LCG data; assertion now proves the delta effect (>100x) | `encode_apply_roundtrip_and_compression` |
+| D3 | e2e test | Deltas only 2x smaller | zstd prefix matching without long-distance matching | Measured 7 settings; level 3 + LDM: 1,405 → 41 bytes at the same speed | ADR-014 measurements |
+| D4 | Compacting git/git (82k commits) | "delta chain longer than the maximum depth" | A base converted *after* something depended on it made depth headers stale (reverts/copies) | Pin bases before use; pinned objects are never converted; readers tolerate 5x the cap | `compaction_never_converts_a_base_that_others_depend_on` |
+| D5 | Compacting git/git | Machine ran out of disk | SQLite VACUUM rewrites the whole file; test copies accumulated | Cleaned own artifacts only; disk watchdog during runs; documented VACUUM space need | docs (ARCHITECTURE: delta storage) |
+| D6 | Storage breakdown after blob deltas | Trees were 90% of remaining storage | Each changeset writes a new root tree | Delta-encode trees along changed paths; chain depth 50 (git's `pack.depth`) | `trees_converted` assertions in e2e |
+
 ## Verified properties
 
 * Full git/git history (82,443 commits) imports, and its tip exports back to git with a

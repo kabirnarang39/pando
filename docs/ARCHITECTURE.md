@@ -125,6 +125,17 @@ retry costs one small tree diff, and ref updates are single-row conditional writ
   `lstat`, so a hostile tree cannot escape the working copy (the class of git CVE-2024-32002).
 * Auth tokens are compared in constant time.
 
+## Delta storage
+
+`sapwood compact` re-stores each blob version as a zstd delta against the previous version
+of the same path (single writer, lease-protected, safe to run while serving). Reads go
+through `DeltaObjects`, which reconstructs chains on the blocking pool and verifies the
+result's BLAKE3 id, so nothing above the storage layer ever sees a delta. See ADR-014 for
+the safety argument (base pinning, verification before replace, bounded chains).
+
+SQLite returns freed pages to the filesystem with `VACUUM`, which `compact` runs at the end
+and which temporarily needs free disk space roughly equal to the database size.
+
 ## Performance notes
 
 * BLAKE3 (SIMD) for ids, zstd level 3 for storage, mimalloc in both binaries.

@@ -1,7 +1,8 @@
 //! Delta storage encoding: a server-side storage representation, never sent on the wire.
 //!
-//! A delta payload stores a blob as a zstd frame compressed against the full content of an
-//! older version (`base`), used as a raw-content prefix ("patch-from"):
+//! A delta payload stores an object (blob or tree) as a zstd frame compressed against the
+//! full content of an older version of the same kind (`base`), used as a raw-content
+//! prefix ("patch-from"). The target's kind is its base's kind:
 //!
 //! ```text
 //! 0x81 | base id (32 bytes) | depth (1 byte) | zstd frame
@@ -20,8 +21,12 @@ use crate::ports::ObjectStore;
 use crate::{Error, Id, Result};
 
 pub const DELTA_TAG: u8 = 0x81;
-/// Longest base chain a reader will follow. Compaction stops one short of it.
-pub const MAX_DEPTH: u8 = 16;
+/// Longest chain compaction creates (frames from an object down to its full base). Same as
+/// git's default `pack.depth`; reconstruction cost is bounded and hot objects are cached.
+pub const MAX_DEPTH: u8 = 50;
+/// Hard limit for readers: far above what compaction creates, so an unexpected chain can
+/// only make a read slower, never make data unreadable. Cycles are detected separately.
+pub const READ_DEPTH_LIMIT: usize = 256;
 /// Delta-encode only objects (and bases) up to this size: keeps the zstd window within the
 /// decoder's default limit (2^27) for base + target.
 pub const MAX_DELTA_INPUT: usize = 60 << 20;
@@ -113,8 +118,8 @@ pub async fn chain(store: &dyn ObjectStore, id: &Id, payload: Bytes) -> Result<C
     let mut cur = payload;
     loop {
         let (base, _, _) = parse(&cur)?;
-        if frames.len() >= MAX_DEPTH as usize {
-            return Err(Error::Corrupt(format!("{id}: delta chain longer than {MAX_DEPTH}")));
+        if frames.len() >= READ_DEPTH_LIMIT {
+            return Err(Error::Corrupt(format!("{id}: delta chain longer than {READ_DEPTH_LIMIT}")));
         }
         frames.push(cur.slice(HEADER..));
         if !seen.insert(base) {
@@ -128,19 +133,17 @@ pub async fn chain(store: &dyn ObjectStore, id: &Id, payload: Bytes) -> Result<C
 }
 
 impl Chain {
-    /// CPU-bound reconstruction; verifies the result hashes to the target id.
-    pub fn rebuild(self) -> Result<Vec<u8>> {
+    /// CPU-bound reconstruction; verifies the result hashes to the target id under the
+    /// base's kind.
+    pub fn rebuild(self) -> Result<(Kind, Vec<u8>)> {
         let (kind, mut data) = decode_object(&self.base, &self.base_payload)?;
-        if kind != Kind::Blob {
-            return Err(Error::Corrupt(format!("{}: delta base is not a blob", self.target)));
-        }
         for frame in self.frames.iter().rev() {
             data = apply(frame, &data)?;
         }
-        if Id::hash(Kind::Blob as u8, &data) != self.target {
+        if Id::hash(kind as u8, &data) != self.target {
             return Err(Error::Corrupt(format!("{}: reconstructed content hash mismatch", self.target)));
         }
-        Ok(data)
+        Ok((kind, data))
     }
 }
 
@@ -149,7 +152,7 @@ pub async fn content(store: &dyn ObjectStore, id: &Id, payload: Bytes) -> Result
     if !is_delta(&payload) {
         return decode_object(id, &payload);
     }
-    Ok((Kind::Blob, chain(store, id, payload).await?.rebuild()?))
+    chain(store, id, payload).await?.rebuild()
 }
 
 #[cfg(test)]

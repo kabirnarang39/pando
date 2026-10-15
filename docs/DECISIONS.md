@@ -102,3 +102,33 @@ Read access is repository-wide.
 **Why.** Content-addressed objects are reachable through parent trees, so path-scoped
 reads require object-level authorization (tracked on the roadmap). Shipping write
 protection now covers the OWNERS-style use case without a leaky read model.
+
+## ADR-014: Delta storage via an offline, single-writer compaction job
+
+**Decision.** Blob versions are delta-encoded in storage by `sapwood compact`: zstd
+"patch-from" frames (the previous version of the same path as a raw-content prefix, with
+long-distance matching), chain depth ≤ 50 (git's default `pack.depth`). Trees are
+delta-encoded the same way; they dominate storage because every changeset writes a new root. Live servers only *read* deltas: the
+`DeltaObjects` decorator reconstructs and hash-verifies every object before it leaves the
+storage layer, so the wire protocol, tiers and clients are unchanged.
+
+**Alternatives.**
+* Delta-encode at write time on every server: concurrent replicas can create delta cycles
+  (A→B and B→A) that make both objects unreadable. Rejected: data loss is unacceptable.
+* git-style packfiles: repacking requires global maintenance windows and breaks the
+  "every request is one immutable object" property that makes caching trivial.
+* zstd dictionaries trained per repository: ~2x, versus 20x+ for per-path deltas.
+
+**Why this is safe.**
+* One compactor at a time (lease = CAS on a reserved system ref).
+* A base is *pinned* before anything is stored against it, and pinned objects are never
+  converted; chains never change after something depends on them (depth headers exact,
+  no cycles). A chain check guards against cycles as a second line of defence.
+* Each delta is decoded and compared with the original in memory before the atomic
+  `replace`; readers re-verify the BLAKE3 id on every reconstruction.
+* Readers accept chains up to 256 frames (5x what compaction creates), so an unexpected
+  chain can only slow a read, never make data unreadable.
+
+**Measured.** Level 3 + long-distance matching: a one-line edit to a 22 KB source file
+deltas to 45 bytes (vs 6.9 KB for standalone zstd) at the same speed as plain level 3;
+higher levels cost 50-500x more time for <10% gain.
