@@ -131,4 +131,6 @@ storage layer, so the wire protocol, tiers and clients are unchanged.
 
 **Measured.** Level 3 + long-distance matching: a one-line edit to a 22 KB source file
 deltas to 45 bytes (vs 6.9 KB for standalone zstd) at the same speed as plain level 3;
-higher levels cost 50-500x more time for <10% gain.
+higher levels cost 50-500x more time for <10% gain. On git/git (82,443 commits) compaction
+converts 312k object versions (159k of them trees) in 15 minutes: storage 4.6 GB -> 369 MB
+(git's own pack: 333 MB), and all 24,380 mainline commits read back with identical content.
