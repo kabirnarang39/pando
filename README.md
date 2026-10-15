@@ -155,6 +155,9 @@ sap (CLI/MCP) ──objects──▶ daemon (node) ──▶ cache (region) ─�
   each owns its use case, gRPC handler and **feature flag** (`SAPWOOD_FLAGS=land=off`).
 * **Ports and adapters**: every infrastructure detail is a trait; every adapter passes the
   same contract test suite.
+* **Plain git works**: `git clone sapwood::URL`, push and pull via the built-in remote helper.
+* **SSO and permissions**: OpenID Connect login; per-directory **read** and write permissions
+  with path-scoped checkout, search and redacted history for partial readers.
 * **Large files**: content-defined chunking (FastCDC) with streaming upload and checkout;
   a 1 GiB file commits in 195 MB of memory, and an edit re-uploads only the changed chunks.
 * **Security**: bearer tokens (constant-time), TLS, per-directory write ACLs, per-ref ACLs,
