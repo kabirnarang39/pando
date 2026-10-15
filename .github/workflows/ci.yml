@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y -qq fuse3
-          echo "SAPWOOD_FUSE_TEST=1" >> "$GITHUB_ENV"
+          echo "PANDO_FUSE_TEST=1" >> "$GITHUB_ENV"
       - run: cargo test --workspace --locked
 
   databases:
@@ -59,7 +59,7 @@ jobs:
     services:
       postgres:
         image: postgres:17-alpine
-        env: { POSTGRES_PASSWORD: sapwood, POSTGRES_DB: sapwood }
+        env: { POSTGRES_PASSWORD: pando, POSTGRES_DB: pando }
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 2s --health-retries 30
     steps:
@@ -69,16 +69,16 @@ jobs:
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: Swatinem/rust-cache@v2
       - name: Postgres contract
-        env: { SAPWOOD_TEST_POSTGRES_URL: "postgres://postgres:sapwood@localhost:5432/sapwood" }
-        run: cargo test -p sapwood-adapters --test contract --locked postgres -- --nocapture
+        env: { PANDO_TEST_POSTGRES_URL: "postgres://postgres:pando@localhost:5432/pando" }
+        run: cargo test -p pando-adapters --test contract --locked postgres -- --nocapture
       - name: Start CockroachDB
         run: |
           docker run -d --name crdb -p 26257:26257 cockroachdb/cockroach:latest-v25.2 start-single-node --insecure
           for i in $(seq 1 60); do docker exec crdb ./cockroach sql --insecure -e 'select 1' && break; sleep 1; done
-          docker exec crdb ./cockroach sql --insecure -e 'create database if not exists sapwood'
+          docker exec crdb ./cockroach sql --insecure -e 'create database if not exists pando'
       - name: CockroachDB contract
-        env: { SAPWOOD_TEST_POSTGRES_URL: "postgres://root@localhost:26257/sapwood?sslmode=disable" }
-        run: cargo test -p sapwood-adapters --test contract --locked postgres -- --nocapture
+        env: { PANDO_TEST_POSTGRES_URL: "postgres://root@localhost:26257/pando?sslmode=disable" }
+        run: cargo test -p pando-adapters --test contract --locked postgres -- --nocapture
 
   s3:
     # Object storage adapter against a real S3 API (SeaweedFS).
@@ -93,16 +93,16 @@ jobs:
         run: |
           docker run -d --name s3 -p 8333:8333 chrislusf/seaweedfs:4.48 server -s3
           for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:8333/ && break; sleep 1; done
-          curl -sf -X PUT http://localhost:8333/sapwood
+          curl -sf -X PUT http://localhost:8333/pando
       - name: S3 contract
         env:
-          SAPWOOD_TEST_S3_URL: s3://sapwood/ci
-          AWS_ACCESS_KEY_ID: sapwood
-          AWS_SECRET_ACCESS_KEY: sapwood-secret
+          PANDO_TEST_S3_URL: s3://pando/ci
+          AWS_ACCESS_KEY_ID: pando
+          AWS_SECRET_ACCESS_KEY: pando-secret
           AWS_REGION: us-east-1
           AWS_ENDPOINT: http://localhost:8333
           AWS_ALLOW_HTTP: "true"
-        run: cargo test -p sapwood-adapters --test contract --locked s3 -- --nocapture
+        run: cargo test -p pando-adapters --test contract --locked s3 -- --nocapture
 
   sdks:
     # Python, Go and TypeScript clients against a live, seeded server.
@@ -118,11 +118,11 @@ jobs:
         with: { go-version: "1.25", cache-dependency-path: sdk/go/go.sum }
       - uses: actions/setup-node@v4
         with: { node-version: "24" }
-      - run: cargo build --release --locked -p sapwood-server -p sapwood
+      - run: cargo build --release --locked -p pando-server -p pando
       - name: Start seeded server
         run: |
           eval "$(sdk/test-server.sh)"
-          echo "SAPWOOD_URL=$SAPWOOD_URL" >> "$GITHUB_ENV"
+          echo "PANDO_URL=$PANDO_URL" >> "$GITHUB_ENV"
       - name: Python
         working-directory: sdk/python
         run: uv run --group dev pytest -q
@@ -149,6 +149,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: sapwood:ci
+          tags: pando:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

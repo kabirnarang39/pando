@@ -1,17 +1,17 @@
 # Prior art
 
-Sapwood builds on ideas that large engineering organisations have described in public.
+Pando builds on ideas that large engineering organisations have described in public.
 No code from any of these systems was used. This page credits them, records what each one
-proved, and sets the bar Sapwood measures itself against.
+proved, and sets the bar Pando measures itself against.
 
-| System | Organisation | Published scale | Ideas Sapwood shares | Open source? |
+| System | Organisation | Published scale | Ideas Pando shares | Open source? |
 |---|---|---|---|---|
 | Piper and Clients in the Cloud (CitC) | Google | ~1 billion files, ~35 million commits, 86 TB (2015) [^piper] | Server holds history; workspaces show the whole tree but store only what you change | No |
 | Sapling, Mononoke, EdenFS | Meta | Repositories with millions of files and very long histories [^sapling] | Operations scale with the files you use, not the repository; lazy virtual checkouts | Client yes; Mononoke and EdenFS not supported for outside use [^sapling-readme] |
 | VFS for Git (GVFS) and Scalar | Microsoft | Windows: ~3.5 million files, ~300 GB repository (2017) [^gvfs] | Fetch only what is used; virtualize the working directory | Yes (MIT), git-based |
 | Redesigning source control | Anthropic | Tens of thousands of merges a day from humans and agents [^anthropic] | Server-side commits and rebases, lock-free landing, tiered caches, API-first reads | No |
 
-## What Sapwood adds
+## What Pando adds
 
 * **Open source and self-hosted** under Apache-2.0: one binary on a laptop with SQLite, or
   stateless replicas on Postgres/CockroachDB and S3/GCS/Azure.
@@ -25,9 +25,9 @@ proved, and sets the bar Sapwood measures itself against.
 
 ## Where these systems are ahead
 
-They run in production at a scale Sapwood has not yet been tested at, with years of
-operating experience and integrated code review, search and build tooling. Sapwood is new.
-The benchmarks in [docs/comparisons/git-vs-sapwood.md](comparisons/git-vs-sapwood.md) and the
+They run in production at a scale Pando has not yet been tested at, with years of
+operating experience and integrated code review, search and build tooling. Pando is new.
+The benchmarks in [docs/comparisons/git-vs-pando.md](comparisons/git-vs-pando.md) and the
 large-scale runs on the roadmap are how it earns comparison, one public dataset at a time.
 
 [^piper]: Potvin and Levenberg, [*Why Google Stores Billions of Lines of Code in a Single Repository*](https://cacm.acm.org/research/why-google-stores-billions-of-lines-of-code-in-a-single-repository/), Communications of the ACM, July 2016. Figures from January 2015; the file count includes release branches and deleted files.

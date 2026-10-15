@@ -4,5 +4,5 @@ This project follows the [Contributor Covenant, version 2.1](https://www.contrib
 
 In short: be respectful, assume good intent, critique code rather than people, and help
 newcomers. Report unacceptable behaviour privately to the maintainers via
-[GitHub private reporting](https://github.com/kabirnarang39/sapwood/security/advisories/new)
+[GitHub private reporting](https://github.com/kabirnarang39/pando/security/advisories/new)
 or by email to kabirnarang39@gmail.com. Reports are handled confidentially.

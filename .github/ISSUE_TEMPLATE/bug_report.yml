@@ -4,7 +4,7 @@ labels: [bug]
 body:
   - type: input
     id: version
-    attributes: { label: "Version", description: "Output of `sap --version` and `sapwood --version`" }
+    attributes: { label: "Version", description: "Output of `pando --version` and `pando --version`" }
     validations: { required: true }
   - type: textarea
     id: what

@@ -1,5 +1,5 @@
 target
 bench/work
 .git
-sapwood-data
-sapwood-daemon
+pando-data
+pando-daemon

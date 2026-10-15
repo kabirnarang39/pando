@@ -1,16 +1,16 @@
 # Full production-shaped topology on one machine:
 #   Postgres (metadata) + SeaweedFS (S3-compatible object storage)
-#   -> sapwood server -> regional cache -> node daemon
+#   -> pandod server -> regional cache -> node daemon
 #
 #   docker compose up -d
-#   sap clone http://localhost:7420 work --objects http://localhost:7422
+#   pando clone http://localhost:7420 work --objects http://localhost:7422
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_PASSWORD: sapwood
-      POSTGRES_DB: sapwood
+      POSTGRES_PASSWORD: pando
+      POSTGRES_DB: pando
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -29,37 +29,37 @@ services:
     depends_on: [s3]
     entrypoint: >
       sh -c "until curl -s -o /dev/null http://s3:8333/; do sleep 1; done;
-             curl -sf -X PUT http://s3:8333/sapwood"
+             curl -sf -X PUT http://s3:8333/pando"
 
   server:
     build: .
-    image: ghcr.io/kabirnarang39/sapwood:latest
+    image: ghcr.io/kabirnarang39/pando:latest
     depends_on:
       postgres: { condition: service_healthy }
       s3-init: { condition: service_completed_successfully }
     command:
       - server
       - --listen=0.0.0.0:7420
-      - --metadata=postgres://postgres:sapwood@postgres/sapwood
-      - --objects=s3://sapwood/objects
+      - --metadata=postgres://postgres:pando@postgres/pando
+      - --objects=s3://pando/objects
       - --metrics=0.0.0.0:9420
     environment:
-      AWS_ACCESS_KEY_ID: sapwood
-      AWS_SECRET_ACCESS_KEY: sapwood-secret
+      AWS_ACCESS_KEY_ID: pando
+      AWS_SECRET_ACCESS_KEY: pando-secret
       AWS_REGION: us-east-1
       AWS_ENDPOINT: http://s3:8333
       AWS_ALLOW_HTTP: "true"
-      SAPWOOD_LOG_JSON: "true"
+      PANDO_LOG_JSON: "true"
     ports: ["7420:7420", "9420:9420"]
 
   cache:
-    image: ghcr.io/kabirnarang39/sapwood:latest
+    image: ghcr.io/kabirnarang39/pando:latest
     depends_on: [server]
     command: [cache, --listen=0.0.0.0:7421, --upstream=http://server:7420, --capacity-mb=1024]
     ports: ["7421:7421"]
 
   daemon:
-    image: ghcr.io/kabirnarang39/sapwood:latest
+    image: ghcr.io/kabirnarang39/pando:latest
     depends_on: [cache]
     command: [daemon, --listen=0.0.0.0:7422, --upstream=http://cache:7421, --dir=/data/daemon,
               --server=http://server:7420, --prefetch=main, --prefetch-interval=300]

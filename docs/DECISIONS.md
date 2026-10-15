@@ -52,7 +52,7 @@ report removing exactly this); client-side rebase + push retry loop (git; each r
 
 ## ADR-007: Ports and adapters with contract tests
 
-**Decision.** Every infrastructure dependency is a trait in `sapwood-core::ports`; each
+**Decision.** Every infrastructure dependency is a trait in `pando-core::ports`; each
 adapter must pass a shared contract suite.
 **Why.** Infrastructure is replaceable (SQLite → Postgres → CockroachDB; disk → S3) without
 touching features; the contract suite turns "implements the trait" into "behaves identically".
@@ -90,8 +90,8 @@ deploy; new features can ship dark.
 
 ## ADR-012: MCP server via the official Rust SDK
 
-**Decision.** `sap mcp` exposes read/commit/land tools over stdio using `rmcp`.
-**Why.** Agent-agnostic integration: any MCP client can drive Sapwood without bespoke
+**Decision.** `pando mcp` exposes read/commit/land tools over stdio using `rmcp`.
+**Why.** Agent-agnostic integration: any MCP client can drive Pando without bespoke
 glue. The official SDK tracks the protocol specification.
 
 ## ADR-015: Path-scoped reads without object-level ACLs
@@ -99,7 +99,7 @@ glue. The official SDK tracks the protocol specification.
 **Decision.** A principal with restricted read access may not read objects by id at all.
 The server serves them path-filtered views: a streaming `Checkout`, filtered `ListDir`/`Find`,
 diffs limited to readable paths, and redacted changesets (marked `redacted`, so clients
-know they cannot hash-verify them). `sap` detects the scope via `WhoAmI` and switches to
+know they cannot hash-verify them). `pando` detects the scope via `WhoAmI` and switches to
 these APIs automatically.
 **Alternatives.** Per-object ACLs (an object can be reachable from many paths and
 revisions, so every read would need a reverse index); per-principal projected trees (new
@@ -118,7 +118,7 @@ protection now covers the OWNERS-style use case without a leaky read model.
 
 ## ADR-014: Delta storage via an offline, single-writer compaction job
 
-**Decision.** Blob versions are delta-encoded in storage by `sapwood compact`: zstd
+**Decision.** Blob versions are delta-encoded in storage by `pandod compact`: zstd
 "patch-from" frames (the previous version of the same path as a raw-content prefix, with
 long-distance matching), chain depth ≤ 50 (git's default `pack.depth`). Trees are
 delta-encoded the same way; they dominate storage because every changeset writes a new root. Live servers only *read* deltas: the
@@ -153,7 +153,7 @@ converts 312k object versions (159k of them trees) in 15 minutes: storage 4.6 GB
 **Decision.** Landing calls a `LandCheck` port once, after authorization and before the
 rebase/compare-and-swap loop. The shipped adapter POSTs the proposal to a URL; only a 2xx
 answer lands, and timeouts or errors refuse the land.
-**Why.** A webhook lets any CI system or review tool gate landing without Sapwood owning a
+**Why.** A webhook lets any CI system or review tool gate landing without Pando owning a
 review database. Checking before rebase keeps the hook off the contended retry path, and is
 sound because a server-side rebase only happens when no changed path conflicts, so the
 approved file changes are exactly what lands. Failing closed means an outage of the gate

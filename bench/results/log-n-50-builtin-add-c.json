@@ -225,8 +225,8 @@
       }
     },
     {
-      "command": "sap log builtin/add.c -n 50 --oneline",
-      "name": "sapwood",
+      "command": "pando log builtin/add.c -n 50 --oneline",
+      "name": "pando",
       "measurements": [
         {
           "time_wall_clock": {

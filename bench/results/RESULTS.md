@@ -1,11 +1,11 @@
-# git vs Sapwood: git
+# git vs Pando: git
 
 * Machine: Apple M4, 10 cores
-* git 2.50.1, sap 1.0.0
+* git 2.50.1, pando 1.0.0
 * History: 82443 commits, 4857 files at HEAD
-* Each row: median of 5 runs (hyperfine), both systems local (git over file://, Sapwood over loopback gRPC)
+* Each row: median of 5 runs (hyperfine), both systems local (git over file://, Pando over loopback gRPC)
 
-| Scenario | git | Sapwood | Sapwood vs git |
+| Scenario | git | Pando | Pando vs git |
 |---|---:|---:|---|
 | full-clone | 19,130 ms | 463 ms | 41.3x faster |
 | sparse-clone (Documentation/) | 9,513 ms | 106 ms | 89.7x faster |
@@ -17,16 +17,16 @@
 
 ## Footprint after full clone
 
-| | git | Sapwood |
+| | git | Pando |
 |---|---:|---:|
-| Client metadata | 334M (`.git`, full history) | 380K (`.sap`, index only) |
+| Client metadata | 334M (`.git`, full history) | 380K (`.pando`, index only) |
 | Server storage | 333M (delta-compressed pack) | 4.6G (per-object zstd, no deltas) |
 
 Full-history import: 226.3 s (first run); re-import of unchanged history: 129.63 s (no uploads)
 
 ## Concurrent publishing: 16 agents x 5 changes = 80 merges to one branch
 
-| | git (push / fetch+rebase retry) | Sapwood (land) |
+| | git (push / fetch+rebase retry) | Pando (land) |
 |---|---:|---:|
 | Wall time | 42.8 s | 3.5 s |
 | Throughput | 1.9 merges/s | 22.7 merges/s |

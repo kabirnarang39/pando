@@ -1,7 +1,7 @@
-// Package sapwood is a Go client for Sapwood (https://github.com/kabirnarang39/sapwood):
+// Package pando is a Go client for Pando (https://github.com/kabirnarang39/pando):
 // read files, list directories, search, and inspect history at any revision without
 // cloning. Changeset and file contents are verified against their BLAKE3 ids.
-package sapwood
+package pando
 
 import (
 	"bytes"
@@ -13,8 +13,8 @@ import (
 	"io"
 	"net/url"
 
-	"github.com/kabirnarang39/sapwood/sdk/go/objectspb"
-	pb "github.com/kabirnarang39/sapwood/sdk/go/sapwoodpb"
+	"github.com/kabirnarang39/pando/sdk/go/v2/objectspb"
+	pb "github.com/kabirnarang39/pando/sdk/go/v2/pandopb"
 	"github.com/zeebo/blake3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -26,7 +26,7 @@ import (
 const maxMessage = 260 << 20
 
 // ErrIntegrity reports data that does not match its content id.
-var ErrIntegrity = errors.New("sapwood: content does not match its id")
+var ErrIntegrity = errors.New("pando: content does not match its id")
 
 var modes = map[int32]string{0: "file", 1: "exec", 2: "symlink", 3: "dir"}
 
@@ -57,7 +57,7 @@ type DirEntry struct {
 	ID   string
 }
 
-// Client talks to one Sapwood server.
+// Client talks to one Pando server.
 type Client struct {
 	conn  *grpc.ClientConn
 	token string

@@ -1,13 +1,13 @@
-"""Runs against a seeded server: eval "$(../test-server.sh)" (sets SAPWOOD_URL)."""
+"""Runs against a seeded server: eval "$(../test-server.sh)" (sets PANDO_URL)."""
 
 import os
 
 import pytest
 
-from sapwood import Client
+from pando import Client
 
-URL = os.environ.get("SAPWOOD_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="SAPWOOD_URL not set (start ../test-server.sh)")
+URL = os.environ.get("PANDO_URL")
+pytestmark = pytest.mark.skipif(not URL, reason="PANDO_URL not set (start ../test-server.sh)")
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def repo():
 
 
 def test_reads_without_a_clone(repo):
-    assert repo.read_file("README.md") == b"hello sapwood\n"
+    assert repo.read_file("README.md") == b"hello pando\n"
     assert repo.read_file("src/lib.rs") == b"pub fn answer() -> u32 { 42 }\n"
     assert [e.name for e in repo.list_dir()] == ["README.md", "docs", "src"]
     assert repo.find("guide") == ["docs/guide.md"]

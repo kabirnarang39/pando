@@ -36,20 +36,20 @@ jobs:
         with: { targets: "${{ matrix.target }}" }
       - uses: arduino/setup-protoc@v3
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
-      - run: cargo build --release --locked --target ${{ matrix.target }} --bin sap --bin sapwood --bin git-remote-sapwood
+      - run: cargo build --release --locked --target ${{ matrix.target }} --bin pando --bin pandod --bin git-remote-pando
       - name: Package
         shell: bash
         run: |
-          name="sapwood-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="pando-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir "$name"
           ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
-          cp "target/${{ matrix.target }}/release/sap$ext" "target/${{ matrix.target }}/release/sapwood$ext" "target/${{ matrix.target }}/release/git-remote-sapwood$ext" README.md LICENSE "$name/"
+          cp "target/${{ matrix.target }}/release/pando$ext" "target/${{ matrix.target }}/release/pandod$ext" "target/${{ matrix.target }}/release/git-remote-pando$ext" README.md LICENSE "$name/"
           if [[ "$ext" == ".exe" ]]; then 7z a "$name.zip" "$name" >/dev/null; f="$name.zip"; else tar czf "$name.tar.gz" "$name"; f="$name.tar.gz"; fi
           if command -v sha256sum >/dev/null; then sha256sum "$f" > "$f.sha256"; else shasum -a 256 "$f" > "$f.sha256"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: sapwood-*
+          path: pando-*
 
   publish:
     needs: binaries
@@ -80,11 +80,11 @@ jobs:
         run: |
           mkdir -p dist/data
           for pair in amd64:x86_64-unknown-linux-gnu arm64:aarch64-unknown-linux-gnu; do
-            arch=${pair%%:*}; target=${pair#*:}; name="sapwood-$TAG-$target"
+            arch=${pair%%:*}; target=${pair#*:}; name="pando-$TAG-$target"
             gh release download "$TAG" --pattern "$name.tar.gz*" --dir dl
             (cd dl && sha256sum -c "$name.tar.gz.sha256")
             tar xzf "dl/$name.tar.gz" -C dl
-            mkdir -p "dist/$arch" && cp "dl/$name/sapwood" "dl/$name/sap" "dl/$name/git-remote-sapwood" "dist/$arch/"
+            mkdir -p "dist/$arch" && cp "dl/$name/pandod" "dl/$name/pando" "dl/$name/git-remote-pando" "dist/$arch/"
           done
       - name: Image tags
         id: tags
@@ -171,9 +171,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" > tap/Formula/sapwood.rb
+          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" > tap/Formula/pando.rb
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "sapwood ${GITHUB_REF_NAME#v}"
+          git commit -am "pando ${GITHUB_REF_NAME#v}"
           git push

@@ -1,0 +1,52 @@
+[package]
+name = "pando-vcs"
+description = "Pando: source control for monorepos at agent scale. Command-line client (`pando`) and git remote helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "pando"
+
+[[bin]]
+name = "pando"
+path = "src/main.rs"
+
+[[bin]]
+name = "git-remote-pando"
+path = "src/bin/git-remote-pando.rs"
+
+[dependencies]
+pando-core.workspace = true
+pando-adapters.workspace = true
+pando-proto.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+clap.workspace = true
+futures.workspace = true
+ignore.workspace = true
+mimalloc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+similar.workspace = true
+prost.workspace = true
+quick_cache.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser.workspace = true
+
+[dev-dependencies]
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
+pando-server.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

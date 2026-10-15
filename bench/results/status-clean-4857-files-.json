@@ -225,8 +225,8 @@
       }
     },
     {
-      "command": "bash -c 'cd s && sap status'",
-      "name": "sapwood",
+      "command": "bash -c 'cd s && pando status'",
+      "name": "pando",
       "measurements": [
         {
           "time_wall_clock": {
