@@ -28,7 +28,6 @@ sqlx = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true
-tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]

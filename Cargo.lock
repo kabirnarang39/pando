@@ -806,16 +806,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
-name = "filetime"
-version = "0.2.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
-dependencies = [
- "cfg-if",
- "libc",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2674,9 +2664,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "clap",
- "filetime",
  "futures",
- "hex",
  "ignore",
  "mimalloc",
  "prost",
@@ -2691,7 +2679,6 @@ dependencies = [
  "similar",
  "tempfile",
  "tokio",
- "tokio-stream",
  "tonic",
 ]
 
@@ -2715,7 +2702,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
- "tracing",
  "url",
 ]
 
@@ -2752,7 +2738,6 @@ name = "sapwood-server"
 version = "1.0.1"
 dependencies = [
  "anyhow",
- "async-trait",
  "bytes",
  "clap",
  "futures",

@@ -18,9 +18,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 clap.workspace = true
-filetime.workspace = true
 futures.workspace = true
-hex.workspace = true
 ignore.workspace = true
 mimalloc.workspace = true
 serde.workspace = true
@@ -30,7 +28,6 @@ prost.workspace = true
 rmcp.workspace = true
 schemars.workspace = true
 tokio.workspace = true
-tokio-stream.workspace = true
 tonic.workspace = true
 
 [dev-dependencies]
