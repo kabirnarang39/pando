@@ -113,7 +113,9 @@ jobs:
         with: { node-version: "24" }
       - run: cargo build --release --locked -p sapwood-server -p sap
       - name: Start seeded server
-        run: sdk/test-server.sh >> "$GITHUB_ENV.tmp" && sed 's/^export //; s/ /\n/' "$GITHUB_ENV.tmp" | tr ' ' '\n' >> "$GITHUB_ENV"
+        run: |
+          eval "$(sdk/test-server.sh)"
+          echo "SAPWOOD_URL=$SAPWOOD_URL" >> "$GITHUB_ENV"
       - name: Python
         working-directory: sdk/python
         run: uv run --group dev pytest -q
