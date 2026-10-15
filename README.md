@@ -168,6 +168,7 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Decisions: [DECISIONS.md](
 | Metadata store | `--metadata` / `SAPWOOD_METADATA` | `sqlite://./sapwood-data/meta.db` (`memory`, `postgres://…`) |
 | Object store | `--objects` / `SAPWOOD_OBJECTS` | `metadata` (`file:///…`, `s3://…`, `gs://…`, `az://…`) |
 | Auth tokens | `--tokens` / `SAPWOOD_TOKENS` | none (dev mode); `alice:tok1,ci:tok2` |
+| SSO (OIDC) | `--oidc-issuer`, `--oidc-audience`, `--oidc-claim` | off; e.g. Okta, Entra ID, Google, Auth0, Keycloak |
 | Access rules | `--acl` / `SAPWOOD_ACL` | allow all; see [SECURITY.md](SECURITY.md) |
 | TLS | `--tls-cert`, `--tls-key` | off |
 | Metrics | `--metrics` / `SAPWOOD_METRICS` | off; e.g. `0.0.0.0:9420` |

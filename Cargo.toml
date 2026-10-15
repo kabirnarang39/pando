@@ -49,6 +49,9 @@ mimalloc = "0.1"
 ignore = "0.4"
 url = "2"
 similar = "3"
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 tower = "0.5"

@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod config;
 pub mod features;
+pub mod oidc;
 mod status;
 pub mod telemetry;
 

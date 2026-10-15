@@ -728,3 +728,54 @@ async fn git_bridge_clone_push_pull_and_concurrent_push() {
     let (ok, _, err) = git_bridge(d.path(), &["clone", "-q", &url, "g3"], &[("SAPWOOD_FLAGS", "git-bridge=off")]);
     assert!(!ok && err.contains("git-bridge"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn oidc_tokens_authenticate_and_drive_permissions() {
+    use jsonwebtoken::{Algorithm, EncodingKey, Header};
+    use sapwood_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
+
+    let jwks = include_str!("../../sapwood-server/tests/fixtures/test-oidc-jwks.json");
+    let key = include_bytes!("../../sapwood-server/tests/fixtures/test-oidc-key.pem");
+    let oidc = OidcAuthenticator::with_jwks(
+        OidcConfig {
+            issuer: "https://idp.example.com".into(),
+            audience: "sapwood".into(),
+            principal_claim: "email".into(),
+        },
+        serde_json::from_str(jwks).unwrap(),
+    );
+    let exp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 300;
+    let token = |email: &str| {
+        let claims =
+            serde_json::json!({ "iss": "https://idp.example.com", "aud": "sapwood", "email": email, "exp": exp });
+        let mut h = Header::new(Algorithm::RS256);
+        h.kid = Some("test-key-1".into());
+        jsonwebtoken::encode(&h, &claims, &EncodingKey::from_rsa_pem(key).unwrap()).unwrap()
+    };
+    let policy = sapwood_adapters::acl::RulesPolicy::parse(
+        r#"{"principals":{"alice@example.com":{"write":["*"],"refs":["*"]},"bob@example.com":{"write":["docs"],"refs":["main"]}}}"#,
+    )
+    .unwrap();
+    let auth = FirstMatch(vec![Arc::new(StaticTokens::new(["ci:ci-token".to_owned()])), Arc::new(oidc)]);
+    let c = start_full(SpecFlags::all_on(), Arc::new(auth), "memory", Arc::new(policy)).await;
+    let as_ = |t: &str| -> Arc<dyn Remote> { Arc::new(GrpcRemote::connect(&c.server, None, Some(t)).unwrap()) };
+    let (alice, bob) = (as_(&token("alice@example.com")), as_(&token("bob@example.com")));
+
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("w");
+    let cfg = Config { server: c.server.clone(), objects: None, ref_name: "main".into(), sparse: vec![] };
+    let mut wa = clone::run(alice.as_ref(), &flags(), &p, cfg.clone()).await.unwrap();
+    write(&p, "src/main.rs", "fn main() {}\n");
+    commit_land(&mut wa, alice.as_ref(), "alice via SSO").await;
+
+    let d2 = tempfile::tempdir().unwrap();
+    let p2 = d2.path().join("w");
+    let mut wb = clone::run(bob.as_ref(), &flags(), &p2, cfg).await.unwrap();
+    write(&p2, "src/main.rs", "fn main() { evil() }\n");
+    let err = commit::run(bob.as_ref(), &mut wb, "x", "bob", &[]).await.unwrap_err().to_string();
+    assert!(err.contains("bob@example.com may not write src/main.rs"), "{err}");
+
+    // Static CI tokens still work next to SSO; garbage tokens do not.
+    assert!(as_("ci-token").list_refs().await.is_ok());
+    assert!(as_("not-a-token").list_refs().await.is_err());
+}

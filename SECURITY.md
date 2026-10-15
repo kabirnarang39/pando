@@ -17,6 +17,11 @@ You will receive an acknowledgement within 72 hours and a fix timeline after tri
 * **Authentication**: bearer tokens (`SAPWOOD_TOKENS`, `principal:token` pairs), compared in
   constant time. Run with TLS (`--tls-cert/--tls-key`) whenever traffic leaves the host.
   Without `SAPWOOD_TOKENS` the server allows anonymous access and logs a warning.
+* **SSO**: OpenID Connect bearer tokens (`--oidc-issuer/--oidc-audience`). Keys come from the
+  issuer's JWKS and rotate automatically; only asymmetric algorithms matching the key are
+  accepted (no `alg: none`, no HMAC key confusion); `iss`, `aud` and `exp` are required. The
+  principal is a configurable claim and works with the access rules below. Static tokens and
+  OIDC can be enabled together.
 * **Authorization**: per-directory write permissions and per-ref permissions
   (`--acl rules.json`). Read access is repository-wide in v1.
 * **Integrity**: every object is hash-verified when accepted by a server, when received
