@@ -16,6 +16,7 @@ separately so nobody discovers them in production.
 | 6 | Code review | `find` fetched trees one by one despite its doc comment | Implementation drift | Batched `get_many` per tree level | `clone_commit_land_sync_roundtrip` |
 | 7 | Running the docker-compose topology | Server logged the Postgres URL **including its password**; `--help` could print env values | Raw URLs passed to the logger; clap shows env values by default | `config::redact` on every logged URL; `hide_env_values` on URL args | `redacts_credentials` |
 | 8 | First CI run | S3 job could not start | MinIO no longer publishes community images | SeaweedFS (Apache-2.0) for CI and compose; adapter unchanged | CI `s3` job |
+| 10 | Delta-storage test suite (after v1.0.0) | `sap commit` rejected a file replaced by a same-named directory | Client sent delete + upsert for overlapping paths, which the server rightly treats as ambiguous | Drop the redundant delete on the client (fixed in **v1.0.1**) | `file_and_directory_swaps_commit_cleanly` |
 | 9 | Benchmarks | `log -- path` and `blame` slower than git | Every history step re-read and decoded the changeset from storage | Memory caches for immutable changesets and derived data (`CachedLog`, `CachedDerived`) | `cached_metadata_decorators`; log 6x faster than git after fix |
 
 ## Delta storage (unreleased, PR) review
