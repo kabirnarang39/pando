@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16
+
 ### Added
 - `pandod copy`: back up, restore, or move a repository between backends (SQLite,
   Postgres, CockroachDB; disk, S3, GCS, Azure). Consistent while the source serves,
@@ -276,6 +278,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.2.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.2.0
 [2.1.3]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.3
 [2.1.2]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.2
 [2.1.1]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.1

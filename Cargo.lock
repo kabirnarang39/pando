@@ -1967,7 +1967,7 @@ dependencies = [
 
 [[package]]
 name = "pando-adapters"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "pando-core"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2009,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "pando-proto"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "pando-core",
  "prost",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "pando-server"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2053,7 +2053,7 @@ dependencies = [
 
 [[package]]
 name = "pando-vcs"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
