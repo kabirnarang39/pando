@@ -31,7 +31,7 @@ jobs:
           - { target: x86_64-pc-windows-msvc,    os: windows-latest }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "${{ matrix.target }}" }
       - uses: arduino/setup-protoc@v3
@@ -60,7 +60,7 @@ jobs:
       id-token: write      # Sigstore signing of the attestations
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
       # Signed SLSA build provenance for every archive: verify with
@@ -100,7 +100,7 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fetch release binaries
         run: |
           mkdir -p dist/data
@@ -144,7 +144,7 @@ jobs:
     if: github.event_name == 'push' && vars.PUBLISH_CRATES == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
@@ -160,7 +160,7 @@ jobs:
     permissions:
       id-token: write  # PyPI trusted publishing: no token stored in the repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
       - run: uv build
         working-directory: sdk/python
@@ -175,7 +175,7 @@ jobs:
       contents: read
       id-token: write  # provenance attestation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 24, registry-url: "https://registry.npmjs.org" }
       - run: npm ci && npm publish --provenance --access public
@@ -188,8 +188,8 @@ jobs:
     if: github.event_name == 'push' && vars.PUBLISH_HOMEBREW == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: kabirnarang39/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
