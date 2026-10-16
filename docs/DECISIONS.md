@@ -175,3 +175,24 @@ the arbiter between replicas, so correctness does not depend on the queue, and a
 conflicting change fails without affecting the rest of its batch. A randomized test checks
 the path-scoped conflict check against the previous full-diff rule.
 
+## ADR-018: Test landing by deterministic simulation; write in dependency order
+
+**Decision.** The landing protocol is tested by a seeded simulation: several replicas share
+a store that fails, delays and loses replies, replicas crash and restart, and clients land
+changes, some conflicting, on random replicas. One seed drives a single-threaded runtime
+with a paused clock, so any failure replays exactly. After each run four invariants are
+checked: no change lands twice, every acknowledged land is in history, the tree equals
+replaying history, and no change lands over a conflicting change it never saw. It runs 200
+seeds in every CI build and 50,000 new seeds nightly.
+**Why.** Landing is where a bug loses work, and its failure cases (a reply lost after a
+write was applied, a crash halfway through a batch) are hard to reach with example tests.
+The first runs found three real bugs: a batch failed entirely on one transient storage
+error; a flush that failed halfway could leave a record naming a tree or changeset that
+was never written, which a later land recreating the same changeset would trust; and a
+change rebased by a land whose reply was lost was applied a second time when retried.
+The fixes: batches retry storage errors from the current head; staged writes go out in
+dependency order (objects, then changesets, then derived records); and each rebased
+change records the id it landed as, so a retry reports that landing instead of repeating
+it. Scope: this simulates the landing protocol over in-memory stores, not the whole system
+(network, disk and SQLite are real code paths it does not exercise).
+

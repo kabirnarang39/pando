@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A land retried after a lost reply could apply a rebased change a second time. Each
+  rebased change now records the id it landed as, and a retry reports that landing.
+- A batch flush that failed halfway could leave a derived record naming a tree or
+  changeset that was never written; a later land of the same changeset then failed with
+  "not found". Staged writes now go out objects first, then changesets, then derived data.
+- One transient storage error failed every change in a land batch. Batches now retry
+  storage errors (up to four times, with backoff) from the current head.
+
+### Added
+- A deterministic simulation of the landing protocol with fault injection, replica
+  crashes and conflicting changes (`crates/pando-server/tests/simulation.rs`, ADR-018):
+  200 seeds in every CI run, 50,000 new seeds nightly. It found the three bugs above.
+
 ## [2.1.1] - 2026-10-16
 
 ### Added

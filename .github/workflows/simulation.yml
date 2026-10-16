@@ -1,0 +1,27 @@
+name: Simulation
+
+# The landing simulation (crates/pando-server/tests/simulation.rs) runs 200 seeds in every
+# CI build. This explores 50,000 new seeds a night; a failure prints the seed to replay.
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Run 50,000 seeds
+        run: |
+          base=$(( $(date +%s) / 86400 * 50000 ))
+          echo "seed base $base"
+          PANDO_SIM_SEED_BASE=$base PANDO_SIM_SEEDS=50000 \
+            cargo test --release -p pando-server --test simulation -- --nocapture

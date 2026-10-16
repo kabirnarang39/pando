@@ -2023,6 +2023,7 @@ name = "pando-server"
 version = "2.1.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.23.1",
  "bytes",
  "clap",
