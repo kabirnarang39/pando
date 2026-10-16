@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-16
+
 ### Fixed
 - A land retried after a lost reply could apply a rebased change a second time. Each
   rebased change now records the id it landed as, and a retry reports that landing.
@@ -247,6 +249,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.1.2]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.2
 [2.1.1]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.1
 [2.1.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.0
 [2.0.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.0.0
