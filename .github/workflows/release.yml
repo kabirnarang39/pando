@@ -86,7 +86,7 @@ jobs:
           sbom-path: dist/pando-${{ github.ref_name }}.spdx.json
       - name: Release notes from CHANGELOG
         run: awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[" v "\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           body_path: notes.md
           files: dist/*
