@@ -8,8 +8,19 @@ base="https://github.com/kabirnarang39/pando/releases/download/$tag"
 sum() {
   gh release download "$tag" --repo kabirnarang39/pando --pattern "pando-$tag-$1.tar.gz.sha256" --output - | cut -d' ' -f1
 }
+# Fetch every checksum before printing anything: a release still being built has no assets
+# yet, and a formula with an empty checksum must never be written.
+for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
+  s=$(sum "$t") || s=""
+  case "$s" in
+    [0-9a-f]*) ;;
+    *) echo "no checksum for $t in $tag; is the release published?" >&2; exit 1 ;;
+  esac
+  eval "sum_$(echo "$t" | tr '-' '_')=$s"
+done
 asset() {
-  printf '      url "%s/pando-%s-%s.tar.gz"\n      sha256 "%s"\n' "$base" "$tag" "$1" "$(sum "$1")"
+  eval "s=\$sum_$(echo "$1" | tr '-' '_')"
+  printf '      url "%s/pando-%s-%s.tar.gz"\n      sha256 "%s"\n' "$base" "$tag" "$1" "$s"
 }
 cat <<RUBY
 class Pando < Formula
