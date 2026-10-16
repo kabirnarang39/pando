@@ -67,8 +67,9 @@ impl refs_server::Refs for Refs {
         let who = principal(&req);
         let r = req.into_inner();
         let expected = if r.expect_exists { Some(id_from(&r.expected)?) } else { None };
-        let swapped =
-            Refs::compare_and_swap(self, &who, &r.name, expected, id_from(&r.new)?).await.map_err(to_status)?;
+        let new = id_from(&r.new)?;
+        let swapped = Refs::compare_and_swap(self, &who, &r.name, expected, new).await.map_err(to_status)?;
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "set_ref", principal = %who.0, r#ref = %r.name, new = %new, swapped);
         Ok(Response::new(CasResponse { swapped }))
     }
 

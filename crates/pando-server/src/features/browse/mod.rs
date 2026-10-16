@@ -229,6 +229,7 @@ impl browse_server::Browse for Browse {
     async fn list_dir(&self, req: Request<BrowseRequest>) -> RpcResult<ListDirResponse> {
         let who = principal(&req);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "list_dir", principal = %who.0, rev = %r.rev, path = %r.path);
         let entries = Browse::list_dir(self, &who, &r.rev, &r.path).await.map_err(to_status)?;
         Ok(Response::new(ListDirResponse {
             entries: entries.into_iter().map(|e| DirEntry { name: e.name, mode: e.mode, id: e.id }).collect(),
@@ -238,6 +239,7 @@ impl browse_server::Browse for Browse {
     async fn read_file(&self, req: Request<BrowseRequest>) -> RpcResult<ReadFileResponse> {
         let who = principal(&req);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "read_file", principal = %who.0, rev = %r.rev, path = %r.path);
         let (mode, id, content) = Browse::read_file(self, &who, &r.rev, &r.path).await.map_err(to_status)?;
         Ok(Response::new(ReadFileResponse { content, mode: mode as i32, id: id.0.to_vec() }))
     }
@@ -245,6 +247,7 @@ impl browse_server::Browse for Browse {
     async fn find(&self, req: Request<FindRequest>) -> RpcResult<FindResponse> {
         let who = principal(&req);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "find", principal = %who.0, rev = %r.rev, pattern = %r.pattern);
         let (paths, truncated) = Browse::find(self, &who, &r.rev, &r.pattern, r.limit).await.map_err(to_status)?;
         Ok(Response::new(FindResponse { paths, truncated }))
     }
@@ -252,6 +255,7 @@ impl browse_server::Browse for Browse {
     async fn checkout(&self, req: Request<CheckoutRequest>) -> RpcResult<Self::CheckoutStream> {
         let who = principal(&req);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "checkout", principal = %who.0, rev = %r.rev, paths = %r.paths.join(","));
         let this = self.clone();
         let stream = async_stream(move |tx| async move {
             if let Err(e) = this.checkout(&who, &r.rev, &r.paths, &tx).await {

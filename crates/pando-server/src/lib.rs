@@ -74,6 +74,7 @@ pub async fn serve(
     builder
         .layer(telemetry::MeteredLayer)
         .layer(InterceptorLayer::new(AuthInterceptor(auth)))
+        .layer(telemetry::AuditLayer)
         .add_routes(routes)
         .serve_with_incoming_shutdown(tokio_stream::wrappers::TcpListenerStream::new(listener), shutdown)
         .await?;

@@ -34,6 +34,12 @@ You will receive an acknowledgement within 72 hours and a fix timeline after tri
 * **Resource limits**: per-object size cap (256 MiB; larger files are chunked) with bounded decompression; bounded
   ids per request, history scan, find and blame work per request.
 
+## Audit trail
+
+Run the server with `--audit-log FILE` to record who read or changed what, from where,
+with what result, including rejected requests. The format is described in the
+[deployment guide](https://kabirnarang39.github.io/pando/docs/deploy.html#audit-log).
+
 ## Verifying a release
 
 From 2.1.1 on, every release archive carries a signed SLSA build provenance attestation

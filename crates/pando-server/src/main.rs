@@ -28,6 +28,10 @@ struct Cli {
     /// Emit JSON logs.
     #[arg(long, global = true, env = "PANDO_LOG_JSON")]
     log_json: bool,
+    /// Append an audit trail (JSON lines: who read or changed what, from where, with what
+    /// result) to this file. Off by default; it grows with every request.
+    #[arg(long, global = true, env = "PANDO_AUDIT_LOG")]
+    audit_log: Option<std::path::PathBuf>,
     /// Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only).
     #[arg(long, global = true, env = "PANDO_TOKENS", hide_env_values = true)]
     tokens: Option<String>,
@@ -145,7 +149,7 @@ async fn shutdown_signal() {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    telemetry::init_logging(cli.log_json);
+    telemetry::init_logging(cli.log_json, cli.audit_log.as_deref())?;
     if let Some(addr) = cli.metrics {
         telemetry::init_metrics(addr)?;
     }
