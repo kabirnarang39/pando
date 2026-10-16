@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-10-16
+
 ### Fixed
 - Two replicas landing the same retried change could both apply it, leaving it in history
   twice. A change rebased onto a tip that already holds all of its changes is now reported
@@ -261,6 +263,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.1.3]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.3
 [2.1.2]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.2
 [2.1.1]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.1
 [2.1.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.0
