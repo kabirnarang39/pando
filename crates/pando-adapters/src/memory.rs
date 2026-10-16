@@ -46,6 +46,17 @@ impl ObjectStore for MemoryStore {
         let map = self.objects.read().unwrap();
         Ok(ids.iter().filter(|id| !map.contains_key(id)).copied().collect())
     }
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        Ok(page(self.objects.read().unwrap().keys().copied(), after, limit))
+    }
+}
+
+/// Up to `limit` ids greater than `after`, ascending.
+fn page(ids: impl Iterator<Item = Id>, after: Option<Id>, limit: usize) -> Vec<Id> {
+    let mut ids: Vec<Id> = ids.filter(|id| after.is_none_or(|a| *id > a)).collect();
+    ids.sort_unstable();
+    ids.truncate(limit);
+    ids
 }
 
 #[async_trait]
@@ -56,6 +67,9 @@ impl ChangesetLog for MemoryStore {
     }
     async fn get(&self, id: &Id) -> Result<Option<Bytes>> {
         Ok(self.changesets.read().unwrap().get(id).cloned())
+    }
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        Ok(page(self.changesets.read().unwrap().keys().copied(), after, limit))
     }
 }
 
@@ -85,5 +99,10 @@ impl DerivedStore for MemoryStore {
     async fn put(&self, kind: &str, id: Id, value: Bytes) -> Result<()> {
         self.derived.write().unwrap().insert((kind.to_owned(), id), value);
         Ok(())
+    }
+    async fn list(&self, kind: &str, after: Option<Id>, limit: usize) -> Result<Vec<(Id, Bytes)>> {
+        let map = self.derived.read().unwrap();
+        let ids = page(map.keys().filter(|(k, _)| k == kind).map(|(_, id)| *id), after, limit);
+        Ok(ids.into_iter().map(|id| (id, map[&(kind.to_owned(), id)].clone())).collect())
     }
 }

@@ -110,6 +110,14 @@ impl SqliteStore {
             .map_err(storage_err)
     }
 
+    async fn list_ids(&self, sql: &'static str, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        let after = after.map(|a| a.0.to_vec()).unwrap_or_default();
+        self.read(move |c| {
+            c.prepare_cached(sql)?.query_map(params![after, limit as i64], |r| id_of(r.get(0)?))?.collect()
+        })
+        .await
+    }
+
     async fn write<T, F>(&self, f: F) -> Result<T>
     where
         T: Send + 'static,
@@ -260,6 +268,10 @@ impl ObjectStore for SqliteStore {
         })
         .await
     }
+
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        self.list_ids("SELECT id FROM objects WHERE id > ?1 ORDER BY id LIMIT ?2", after, limit).await
+    }
 }
 
 #[async_trait]
@@ -282,6 +294,10 @@ impl ChangesetLog for SqliteStore {
                 .map(|o| o.map(Bytes::from))
         })
         .await
+    }
+
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        self.list_ids("SELECT id FROM changesets WHERE id > ?1 ORDER BY id LIMIT ?2", after, limit).await
     }
 }
 
@@ -345,6 +361,19 @@ impl DerivedStore for SqliteStore {
             c.prepare_cached("INSERT OR REPLACE INTO derived (kind, id, value) VALUES (?1, ?2, ?3)")?
                 .execute(params![kind, &id.0[..], &value[..]])
                 .map(drop)
+        })
+        .await
+    }
+
+    async fn list(&self, kind: &str, after: Option<Id>, limit: usize) -> Result<Vec<(Id, Bytes)>> {
+        let kind = kind.to_owned();
+        let after = after.map(|a| a.0.to_vec()).unwrap_or_default();
+        self.read(move |c| {
+            c.prepare_cached("SELECT id, value FROM derived WHERE kind = ?1 AND id > ?2 ORDER BY id LIMIT ?3")?
+                .query_map(params![kind, after, limit as i64], |r| {
+                    Ok((id_of(r.get(0)?)?, Bytes::from(r.get::<_, Vec<u8>>(1)?)))
+                })?
+                .collect()
         })
         .await
     }

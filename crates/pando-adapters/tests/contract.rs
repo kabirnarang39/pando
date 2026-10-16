@@ -121,6 +121,62 @@ where
     log_contract(s.as_ref()).await;
     ref_contract(s.clone()).await;
     derived_contract(s.as_ref()).await;
+    object_list_contract(s.as_ref()).await;
+    metadata_list_contract(s.as_ref()).await;
+}
+
+/// Page through everything with `next` and check the pages: strictly ascending, no
+/// duplicates, nothing skipped.
+async fn all_pages<F, Fut>(mut next: F) -> Vec<Id>
+where
+    F: FnMut(Option<Id>) -> Fut,
+    Fut: std::future::Future<Output = Vec<Id>>,
+{
+    let (mut all, mut after) = (Vec::new(), None);
+    loop {
+        let page = next(after).await;
+        assert!(page.len() <= 7, "a page must respect its limit");
+        if page.is_empty() {
+            break;
+        }
+        all.extend(page);
+        after = all.last().copied();
+    }
+    assert!(all.windows(2).all(|w| w[0] < w[1]), "listing must be strictly ascending");
+    all
+}
+
+/// Listing (for copying a store) returns every object once, in id order, across pages.
+async fn object_list_contract(s: &dyn ObjectStore) {
+    let objs: Vec<_> = (1000..1025u32).map(obj).collect();
+    s.put_many(objs.clone()).await.unwrap();
+    let all = all_pages(|after| async move { s.list(after, 7).await.unwrap() }).await;
+    for (id, _) in &objs {
+        assert!(all.contains(id), "listing missed {id}");
+    }
+}
+
+async fn metadata_list_contract<S: ChangesetLog + DerivedStore>(s: &S) {
+    let ids: Vec<Id> = (0..20u8).map(|i| Id([i.wrapping_mul(37); 32])).collect();
+    for id in &ids {
+        s.append(*id, Bytes::from_static(b"cs")).await.unwrap();
+        DerivedStore::put(s, "list-test", *id, Bytes::copy_from_slice(&id.0[..4])).await.unwrap();
+    }
+    let all = all_pages(|after| async move { ChangesetLog::list(s, after, 7).await.unwrap() }).await;
+    assert!(ids.iter().all(|id| all.contains(id)), "changeset listing missed ids");
+    let (mut derived, mut after) = (Vec::new(), None);
+    loop {
+        let page = DerivedStore::list(s, "list-test", after, 7).await.unwrap();
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().map(|(id, _)| *id);
+        derived.extend(page);
+    }
+    let mut expect: Vec<_> = ids.iter().map(|id| (*id, Bytes::copy_from_slice(&id.0[..4]))).collect();
+    expect.sort_by_key(|(id, _)| *id);
+    expect.dedup_by_key(|(id, _)| *id);
+    assert_eq!(derived, expect, "derived listing is exact, ordered and scoped to its kind");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -164,12 +220,16 @@ async fn sqlite_persists_across_reopen() {
 async fn object_storage_local_filesystem() {
     let dir = tempfile::tempdir().unwrap();
     let url = pando_adapters::cloud::file_url(&dir.path().join("objs")).unwrap();
-    object_contract(&CloudObjects::from_url(&url).unwrap()).await;
+    let s = CloudObjects::from_url(&url).unwrap();
+    object_contract(&s).await;
+    object_list_contract(&s).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn object_storage_memory() {
-    object_contract(&CloudObjects::from_url("memory:///").unwrap()).await;
+    let s = CloudObjects::from_url("memory:///").unwrap();
+    object_contract(&s).await;
+    object_list_contract(&s).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -236,7 +296,9 @@ async fn object_storage_s3() {
         eprintln!("skipping: PANDO_TEST_S3_URL not set");
         return;
     };
-    object_contract(&CloudObjects::from_url(&url).unwrap()).await;
+    let s = CloudObjects::from_url(&url).unwrap();
+    object_contract(&s).await;
+    object_list_contract(&s).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

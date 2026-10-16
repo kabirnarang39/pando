@@ -28,6 +28,16 @@ fn to_id(b: Vec<u8>) -> Result<Id> {
 }
 
 impl PostgresStore {
+    async fn list_ids(&self, sql: &'static str, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        let rows = sqlx::query(sql)
+            .bind(after.map(|a| a.0.to_vec()).unwrap_or_default())
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(storage_err)?;
+        rows.into_iter().map(|r| to_id(r.get(0))).collect()
+    }
+
     pub async fn connect(url: &str, max_connections: u32) -> Result<Self> {
         let pool = PgPoolOptions::new().max_connections(max_connections).connect(url).await.map_err(storage_err)?;
         rename_legacy_tables(&pool).await?;
@@ -131,6 +141,10 @@ impl ObjectStore for PostgresStore {
             rows.into_iter().map(|r| to_id(r.get(0))).collect::<Result<_>>()?;
         Ok(ids.iter().filter(|i| !present.contains(i)).copied().collect())
     }
+
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        self.list_ids("SELECT id FROM pando_objects WHERE id > $1 ORDER BY id LIMIT $2", after, limit).await
+    }
 }
 
 #[async_trait]
@@ -152,6 +166,10 @@ impl ChangesetLog for PostgresStore {
             .await
             .map_err(storage_err)?;
         Ok(row.map(|r| Bytes::from(r.get::<Vec<u8>, _>(0))))
+    }
+
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        self.list_ids("SELECT id FROM pando_changesets WHERE id > $1 ORDER BY id LIMIT $2", after, limit).await
     }
 }
 
@@ -221,5 +239,16 @@ impl DerivedStore for PostgresStore {
         .await
         .map_err(storage_err)?;
         Ok(())
+    }
+
+    async fn list(&self, kind: &str, after: Option<Id>, limit: usize) -> Result<Vec<(Id, Bytes)>> {
+        let rows = sqlx::query("SELECT id, value FROM pando_derived WHERE kind = $1 AND id > $2 ORDER BY id LIMIT $3")
+            .bind(kind)
+            .bind(after.map(|a| a.0.to_vec()).unwrap_or_default())
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(storage_err)?;
+        rows.into_iter().map(|r| Ok((to_id(r.get(0))?, Bytes::from(r.get::<Vec<u8>, _>(1))))).collect()
     }
 }

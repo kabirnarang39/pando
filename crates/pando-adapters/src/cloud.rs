@@ -96,6 +96,33 @@ impl ObjectStore for CloudObjects {
             .try_collect()
             .await
     }
+
+    /// Pages through the 256 two-hex-digit fan-out directories in order and sorts each one,
+    /// because not every backend lists keys in order (the local filesystem does not).
+    async fn list(&self, after: Option<Id>, limit: usize) -> Result<Vec<Id>> {
+        let mut out = Vec::new();
+        let first = after.map_or(0, |a| a.0[0] as usize);
+        for fan in first..256 {
+            let dir = self.prefix.clone().join("objects").join(format!("{fan:02x}"));
+            let mut ids: Vec<Id> = self
+                .backend
+                .list(Some(&dir))
+                .map_err(storage_err)
+                .try_filter_map(|meta| async move {
+                    let hex = format!("{fan:02x}{}", meta.location.filename().unwrap_or_default());
+                    Ok(hex.parse::<Id>().ok())
+                })
+                .try_collect()
+                .await?;
+            ids.retain(|id| after.is_none_or(|a| *id > a));
+            ids.sort_unstable();
+            out.extend(ids.into_iter().take(limit - out.len()));
+            if out.len() == limit {
+                break;
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// `file://` URL for a local directory, correct on every platform (`C:\\x` included).

@@ -5,6 +5,7 @@ pub mod access;
 pub mod browse;
 pub mod changesets;
 pub mod compact;
+pub mod copy;
 pub mod diff;
 pub mod history;
 pub mod land;
