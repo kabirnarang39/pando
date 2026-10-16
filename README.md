@@ -15,6 +15,7 @@
   <a href="https://github.com/kabirnarang39/pando/releases"><img src="https://img.shields.io/github/v/release/kabirnarang39/pando?color=16324F" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-16324F" alt="Apache-2.0 license"></a>
   <a href="https://kabirnarang39.github.io/pando/docs/"><img src="https://img.shields.io/badge/docs-read-F0B429" alt="Documentation"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/kabirnarang39/pando"><img src="https://api.scorecard.dev/projects/github.com/kabirnarang39/pando/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 <p align="center">

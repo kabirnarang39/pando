@@ -33,3 +33,17 @@ You will receive an acknowledgement within 72 hours and a fix timeline after tri
   write follows a symlink, so a malicious tree cannot write outside the working copy.
 * **Resource limits**: per-object size cap (256 MiB; larger files are chunked) with bounded decompression; bounded
   ids per request, history scan, find and blame work per request.
+
+## Verifying a release
+
+From 2.1.1 on, every release archive carries a signed SLSA build provenance attestation
+and an SPDX software bill of materials, both signed through Sigstore by the release
+workflow. Check an archive before installing it:
+
+```sh
+gh attestation verify pando-v2.1.1-x86_64-unknown-linux-gnu.tar.gz --repo kabirnarang39/pando
+```
+
+Container images on `ghcr.io/kabirnarang39/pando` carry build provenance and an SBOM as
+OCI attestations (`docker buildx imagetools inspect --format '{{ json .Provenance }}' IMAGE`).
+Each archive also ships a `.sha256` checksum, which `install.sh` verifies.

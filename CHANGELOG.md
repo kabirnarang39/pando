@@ -24,6 +24,12 @@ All notable changes to this project are documented here. The format follows
 - Commands that work without a workspace (`cat`, `ls`, `log`, ...) suggested a `--server`
   flag they do not have; the error now points to `PANDO_SERVER`.
 
+### Security
+- Release archives get signed SLSA build provenance and an SPDX SBOM through GitHub
+  artifact attestations (verify with `gh attestation verify`); container images carry
+  provenance and SBOM attestations. See SECURITY.md.
+- OpenSSF Scorecard runs weekly and on every push to `main`.
+
 ## [2.1.0] - 2026-10-16
 
 ### Added
