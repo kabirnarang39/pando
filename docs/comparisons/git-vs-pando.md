@@ -125,3 +125,30 @@ working across a monorepo.
 | History shown by log/blame | full DAG | first-parent (what landed) |
 | Submodules | yes | not supported (skipped on import) |
 | Hash | SHA-1 (SHA-256 opt-in) | BLAKE3 |
+
+## CI checkouts on one machine
+
+Each CI job starts from an empty directory, checks out one top-level directory of git/git
+(sparse, the usual CI case), checks the file count and deletes it. 16 jobs run at once on
+one machine for 30 s; jobs rotate over `Documentation`, `builtin`, `t`, `contrib`, `compat`
+and `po` (28 to 2,554 files). Every system checked out identical file counts.
+
+| System | Checkouts/s | p50 | p99 |
+|---|---:|---:|---:|
+| git: shallow, blobless, sparse clone from `git daemon` (standard CI) | 2.7 | 3.71 s | 10.3 s |
+| git: `--shared` clone from a mirror on the same machine (no network) | 4.2 | 1.87 s | 5.6 s |
+| Pando: `pando clone --path` from the server | 5.8 | 0.35 s | 5.4 s |
+| Pando: through the machine's node daemon | 6.1 | 0.43 s | 4.6 s |
+
+* One checkout on an idle machine: 0.15-0.23 s for Pando against about 1.7 s for git, the
+  largest directory included. With 16 at once, both systems are limited by writing files
+  on the client machine, so the gap narrows to about 2x.
+* Server cost: 1.57 CPU-seconds for 175 checkouts, about 9 ms each.
+* The node daemon adds little here because server and jobs share one machine; it exists to
+  take load off the server and the network between them.
+* At 64 and 256 jobs the laptop is saturated for every system (at 256, `git daemon`
+  connections time out), so those runs measure the machine rather than the tools.
+* This benchmark found a bug: about 3% of Pando checkouts failed with `File exists` when
+  two writers created the same directory at once. Fixed in 2.1.1.
+* Reproduce: `bench/ci_checkout_load.py --system {git,git-mirror,pando,pando-node} --jobs 16`.
+

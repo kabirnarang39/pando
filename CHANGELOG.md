@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- A documentation site (mdBook, with search) at kabirnarang39.github.io/pando/docs:
+  getting started, coming from git, deploying, and AI agents and SDKs, alongside the
+  architecture, design decisions and benchmarks.
+- New logo, README, landing page and social preview. Charts and diagrams are generated
+  as light and dark SVGs by `scripts/charts.py`.
+- `bench/ci_checkout_load.py`: concurrent CI checkouts on one machine, for git and Pando.
+
 ### Fixed
 - Checkouts that write many files in parallel could fail with `File exists (os error 17)`
   when two writers created the same new directory at once (seen in about 3% of concurrent

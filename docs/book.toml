@@ -1,0 +1,18 @@
+[book]
+title = "Pando"
+description = "Documentation for Pando, open-source source control for monorepos where many AI agents commit at once."
+authors = ["Kabir Narang"]
+language = "en"
+src = "."
+
+[output.html]
+site-url = "/pando/docs/"
+git-repository-url = "https://github.com/kabirnarang39/pando"
+edit-url-template = "https://github.com/kabirnarang39/pando/edit/main/docs/{path}"
+additional-css = ["theme/pando.css"]
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = true
+
+[output.html.search]
+enable = true

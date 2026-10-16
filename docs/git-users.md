@@ -1,0 +1,57 @@
+# Coming from git
+
+You can move to Pando one person at a time. git users and `pando` users work on the same
+branches of the same server.
+
+## Keep using git
+
+With `git-remote-pando` on your `PATH` (the installer puts it there), git talks to a Pando
+server directly:
+
+```sh
+git clone pando::http://127.0.0.1:7420 repo
+git push          # lands on the server; if main moved, the server rebases instead of rejecting
+git pull --rebase
+```
+
+Fetches are incremental. Set `PANDO_PUSH=strict` to get git's reject-if-behind behaviour
+instead of a server-side rebase.
+
+## Command map
+
+| git | pando | Notes |
+|---|---|---|
+| `git clone URL` | `pando clone URL DIR` | add `--path services/api` to check out part of the repository |
+| `git status` | `pando status` | alias `st` |
+| `git add` + `git commit -m` | `pando commit -m MSG [PATHS]` | no staging area; pass paths to commit a subset |
+| `git push` | `pando land` | alias `push`; the server rebases if `main` moved |
+| `git pull` | `pando sync` | alias `pull` |
+| `git switch -c x` / `git switch x` | `pando checkout -b x` / `pando checkout x` | |
+| `git log -- path` | `pando log path` | answered by the server, no local history |
+| `git diff` / `git diff A B` | `pando diff` / `pando diff A B` | |
+| `git show REV` | `pando show REV` | |
+| `git blame f` | `pando blame f` | |
+| `git show REV:path` | `pando cat REV path` | works without a clone |
+| `git ls-tree REV dir` | `pando ls REV [dir]` | works without a clone |
+| `git branch` | `pando refs` | alias `branch` |
+| `git merge-base A B` | `pando merge-base A B` | |
+| (none) | `pando find PATTERN` | path search on the server |
+| (none) | `pando mount DIR --rev main` | Linux: a read-only view, files fetched on first read |
+
+## Moving history in and out
+
+```sh
+pando import-git ~/code/my-repo --server http://127.0.0.1:7420   # incremental; rerun any time
+pando export-git ./mirror.git                                     # first-parent history, identical trees
+```
+
+Submodules are not imported. Commits are imported with their authors, messages and dates,
+so `pando log` and `pando blame` show the original history.
+
+## What works differently
+
+- **No staging area.** `pando commit` takes paths instead of `git add`.
+- **No local history.** `log`, `blame` and `diff` between revisions ask the server. You
+  need the server to be reachable; this is the main trade-off against git.
+- **Landing replaces push.** If `main` moved, the server rebases your change when it
+  touches different files. You only resolve conflicts that are real.
