@@ -47,8 +47,8 @@ fn main() {
     let d = delta::encode(id, 1, &small, &edited).unwrap();
     let (eid, _) = encode_object(Kind::Blob, &edited);
     write("object", "delta", &with_id(&eid, &d));
-    let split = [&[d.len().min(255) as u8][..], &d, &small].concat();
-    write("delta", "delta", &split);
+    let framed = [&(d.len() as u16).to_le_bytes()[..], &d, &small].concat();
+    write("delta", "delta", &framed);
 
     // Changesets: canonical encodings with and without parents.
     let cs = Changeset {
