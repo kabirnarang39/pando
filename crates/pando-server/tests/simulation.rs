@@ -142,7 +142,7 @@ impl RefStore for Faulty {
     }
     async fn list(&self) -> Result<Vec<(String, Id)>> {
         self.fault(false).await?;
-        self.inner.list().await
+        RefStore::list(self.inner.as_ref()).await
     }
 }
 

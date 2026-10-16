@@ -82,6 +82,19 @@ enum Role {
         #[arg(long)]
         force_unlock: bool,
     },
+    /// Copy a repository to another store: a backup, a restore, or a move to another backend
+    /// (e.g. SQLite to Postgres). Safe while the source serves; repeat it to copy only what
+    /// is new.
+    Copy {
+        #[arg(long)]
+        from_metadata: String,
+        #[arg(long, default_value = "metadata")]
+        from_objects: String,
+        #[arg(long)]
+        to_metadata: String,
+        #[arg(long, default_value = "metadata")]
+        to_objects: String,
+    },
     /// Regional cache: stateless, memory-bounded, read-through to an upstream tier.
     Cache {
         #[arg(long, default_value = "0.0.0.0:7421")]
@@ -184,6 +197,22 @@ async fn main() -> anyhow::Result<()> {
                 None => Arc::new(NoChecks),
             };
             (listen, authority_routes(repo, flags, policy, checks))
+        }
+        Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {
+            let from = config::open_storage(&from_metadata, &from_objects).await?;
+            let to = config::open_storage(&to_metadata, &to_objects).await?;
+            let started = std::time::Instant::now();
+            let s = pando_server::features::copy::copy(&from.raw, &to.raw).await?;
+            println!(
+                "copied {} refs, {} changesets, {} objects ({} already there), {} derived records in {:.1}s",
+                s.refs,
+                s.changesets,
+                s.objects_copied,
+                s.objects_present,
+                s.derived,
+                started.elapsed().as_secs_f64()
+            );
+            return Ok(());
         }
         Role::Compact { metadata, objects, force_unlock } => {
             let storage = config::open_storage(&metadata, &objects).await?;

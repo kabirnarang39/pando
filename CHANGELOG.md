@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `pandod copy`: back up, restore, or move a repository between backends (SQLite,
+  Postgres, CockroachDB; disk, S3, GCS, Azure). Consistent while the source serves,
+  incremental when repeated, keeps compacted objects compact and verifies whole objects.
+  Storage ports gain paged listing, covered by the adapter contract tests.
+
+### Added
 - Coverage-guided fuzzing (cargo-fuzz) of every decoder of untrusted bytes: objects,
   trees, changesets, chunk manifests, deltas and paths, with a seed corpus of valid
   inputs. Ten minutes per target nightly, one minute on pull requests.

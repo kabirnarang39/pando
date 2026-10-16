@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt, stream};
 
-use crate::{Id, Result};
+use crate::{Error, Id, Result};
 
 /// Concurrency used by default batch implementations.
 pub const BATCH_CONCURRENCY: usize = 64;
@@ -40,6 +40,13 @@ pub trait ObjectStore: Send + Sync {
         Ok(false)
     }
 
+    /// Up to `limit` ids this store holds, in ascending order, starting after `after`. Used
+    /// to copy a store (backup, restore, moving between backends); caches and remote tiers
+    /// cannot list and return an error.
+    async fn list(&self, _after: Option<Id>, _limit: usize) -> Result<Vec<Id>> {
+        Err(Error::invalid("this object store cannot list its contents"))
+    }
+
     /// Ids from `ids` this store cannot serve.
     async fn missing(&self, ids: &[Id]) -> Result<Vec<Id>> {
         let present: Vec<bool> = stream::iter(ids.iter().copied())
@@ -57,6 +64,11 @@ pub trait ChangesetLog: Send + Sync {
     /// Idempotent: appending an existing id is a no-op.
     async fn append(&self, id: Id, encoded: Bytes) -> Result<()>;
     async fn get(&self, id: &Id) -> Result<Option<Bytes>>;
+    /// Up to `limit` changeset ids in ascending order, starting after `after` (see
+    /// [`ObjectStore::list`]).
+    async fn list(&self, _after: Option<Id>, _limit: usize) -> Result<Vec<Id>> {
+        Err(Error::invalid("this changeset log cannot list its contents"))
+    }
 }
 
 /// Named pointers. The only mutable state in the system; every move is a
@@ -74,6 +86,10 @@ pub trait RefStore: Send + Sync {
 pub trait DerivedStore: Send + Sync {
     async fn get(&self, kind: &str, id: &Id) -> Result<Option<Bytes>>;
     async fn put(&self, kind: &str, id: Id, value: Bytes) -> Result<()>;
+    /// Up to `limit` entries of `kind` in ascending id order, starting after `after`.
+    async fn list(&self, _kind: &str, _after: Option<Id>, _limit: usize) -> Result<Vec<(Id, Bytes)>> {
+        Err(Error::invalid("this derived store cannot list its contents"))
+    }
 }
 
 /// A change about to be landed, as seen by pre-land checks.

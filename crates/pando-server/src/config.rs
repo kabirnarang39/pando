@@ -23,6 +23,8 @@ use pando_core::ports::ObjectStore;
 /// A composed repository plus direct handles needed by maintenance jobs.
 pub struct Storage {
     pub repo: Repo,
+    /// The durable stores without decorators or caches (for copying a repository).
+    pub raw: Repo,
     /// The durable object store without read decorators or caches (for compaction).
     pub raw_objects: Arc<dyn ObjectStore>,
     /// Present when metadata lives in SQLite, so maintenance can VACUUM.
@@ -55,6 +57,7 @@ pub async fn open_storage(metadata: &str, objects: &str) -> anyhow::Result<Stora
         repo.objects = Arc::new(CloudObjects::from_url(objects)?);
     }
     let raw_objects = repo.objects.clone();
+    let raw = repo.clone();
     // Reads always resolve delta-encoded objects (written by `pandod compact`) back to
     // ordinary verified payloads, so nothing above this layer ever sees a delta.
     repo.objects = Arc::new(DeltaObjects::new(raw_objects.clone()));
@@ -63,7 +66,7 @@ pub async fn open_storage(metadata: &str, objects: &str) -> anyhow::Result<Stora
     repo.objects = Arc::new(Tiered::new(Arc::new(BoundedCache::new(256 << 20)), repo.objects));
     repo.log = Arc::new(CachedLog::new(repo.log, 128 << 20));
     repo.derived = Arc::new(CachedDerived::new(repo.derived, 64 << 20));
-    Ok(Storage { repo, raw_objects, sqlite })
+    Ok(Storage { repo, raw, raw_objects, sqlite })
 }
 
 /// Regional cache: memory only, read-through to `upstream`.
