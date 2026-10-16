@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Coverage-guided fuzzing (cargo-fuzz) of every decoder of untrusted bytes: objects,
+  trees, changesets, chunk manifests, deltas and paths, with a seed corpus of valid
+  inputs. Ten minutes per target nightly, one minute on pull requests.
+
 ## [2.1.3] - 2026-10-16
 
 ### Fixed

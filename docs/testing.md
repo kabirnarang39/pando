@@ -41,6 +41,20 @@ restarts them, and pauses the database. At the end the same four invariants are 
 through the public API. A nightly job runs it for five minutes; a typical two-minute run
 kills replicas about 30 times and lands about 9,000 changes.
 
+## Fuzzing the decoders
+
+Everything Pando reads from the network or disk goes through a handful of decoders:
+objects (zstd frames, chunk manifests, deltas), trees, changesets, and path validation.
+Each has a [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) target in `fuzz/`,
+seeded with valid inputs from `fuzz/examples/seed_corpus.rs` so the fuzzer starts past
+checksums and headers. Any input must produce a value or an error, never a panic; the path
+target also checks that every accepted path stays inside the working copy. Each target
+runs for ten minutes nightly and one minute on pull requests that touch the decoders.
+
+```sh
+cargo +nightly fuzz run tree fuzz/seeds/tree
+```
+
 ## What these found
 
 | Bug | Found by | Fixed in |
@@ -54,5 +68,5 @@ kills replicas about 30 times and lands about 9,000 changes.
 ## What is not covered yet
 
 The simulation covers the landing protocol over in-memory stores, not the whole server.
-There is no fuzzing of the object and protocol decoders yet, and no independent
-(Jepsen) analysis.
+The gRPC message decoders are generated code (prost) and are not fuzzed separately. There
+has been no independent (Jepsen) analysis.
