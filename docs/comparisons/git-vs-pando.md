@@ -142,7 +142,10 @@ and `po` (28 to 2,554 files). Every system checked out identical file counts.
 
 * One checkout on an idle machine: 0.15-0.23 s for Pando against about 1.7 s for git, the
   largest directory included. With 16 at once, both systems are limited by writing files
-  on the client machine, so the gap narrows to about 2x.
+  on the client machine, so the gap narrows to about 2x. Pando's checkout of `t/` (2,554
+  files, fetched, decoded and verified) takes as long as a plain loop that only writes the
+  same files (0.20 s), so the client is at the filesystem's limit; going further means not
+  writing files at all, which `pando mount` does on Linux.
 * Server cost: 1.57 CPU-seconds for 175 checkouts, about 9 ms each.
 * The node daemon adds little here because server and jobs share one machine; it exists to
   take load off the server and the network between them.
