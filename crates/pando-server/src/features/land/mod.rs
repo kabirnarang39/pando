@@ -101,6 +101,7 @@ impl Land {
         queue.pending.lock().expect("land queue").push(Pending { id: cs_id, cs, base, done });
         loop {
             tokio::select! {
+                biased; // a finished result wins; no hidden randomness, so simulations replay
                 r = &mut result => return r.map_err(|_| Error::Storage(anyhow::anyhow!("land batch stopped")))?,
                 turn = queue.turn.clone().lock_owned() => {
                     let batch = std::mem::take(&mut *queue.pending.lock().expect("land queue"));
@@ -125,9 +126,23 @@ impl Land {
                 let _ = p.done.send(Err(copy_err(e)));
             }
         };
+        // A storage error (a timeout, a lost reply) retries the whole attempt from the current
+        // head instead of failing every change in the batch. That is safe even when the failed
+        // write was applied: changes that already landed are found in the head's history and
+        // reported as landed, never applied twice.
+        let mut storage_retries = 0;
+        let mut retry_storage = async |e: &Error| -> bool {
+            if !matches!(e, Error::Storage(_)) || storage_retries == STORAGE_RETRIES {
+                return false;
+            }
+            tokio::time::sleep(STORAGE_BACKOFF * 2u32.pow(storage_retries)).await;
+            storage_retries += 1;
+            true
+        };
         for attempt in 1..=MAX_ATTEMPTS {
             let head = match self.repo.refs.get(ref_name).await {
                 Ok(h) => h,
+                Err(e) if retry_storage(&e).await => continue,
                 Err(e) => return fail(batch, &e),
             };
             let staged = Staged::over(&self.repo);
@@ -149,13 +164,22 @@ impl Land {
                 }
                 outcomes.push(r);
             }
+            if let Some(Err(e)) = outcomes.iter().find(|r| matches!(r, Err(Error::Storage(_))))
+                && retry_storage(e).await
+            {
+                continue;
+            }
             if tip != head {
                 if let Err(e) = staged.flush(&self.repo).await {
+                    if retry_storage(&e).await {
+                        continue;
+                    }
                     return fail(batch, &e);
                 }
                 match self.repo.refs.compare_and_swap(ref_name, head, tip.expect("moved")).await {
                     Ok(true) => {}
                     Ok(false) => continue, // another replica moved the ref: redo on its head
+                    Err(e) if retry_storage(&e).await => continue,
                     Err(e) => return fail(batch, &e),
                 }
             }
@@ -173,6 +197,10 @@ impl Land {
         fail(batch, &Error::Conflict(format!("ref `{ref_name}` too contended after {MAX_ATTEMPTS} attempts")));
     }
 }
+
+/// Storage errors a batch rides out before failing, and the first backoff (doubling).
+const STORAGE_RETRIES: u32 = 4;
+const STORAGE_BACKOFF: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// Concurrent reads per batch while preparing.
 const PREPARE_CONCURRENCY: usize = 64;
@@ -227,6 +255,14 @@ async fn replay(repo: &Repo, p: &Pending, prep: Prepared, tip: Option<Id>) -> Re
     if tip == p.id {
         return Ok((p.id, false, false)); // the same changeset twice in one batch
     }
+    // Already landed under a rebased id (a client retrying after a lost reply, or the same
+    // change twice in one batch): report that landing instead of applying the change again.
+    if let Some(v) = repo.derived.get(LANDED_AS, &p.id).await? {
+        let earlier = Id::from_slice(&v)?;
+        if earlier == tip || repo.is_ancestor(earlier, tip).await? {
+            return Ok((earlier, true, false));
+        }
+    }
     if tip == base {
         return Ok((p.id, false, true));
     }
@@ -246,8 +282,14 @@ async fn replay(repo: &Repo, p: &Pending, prep: Prepared, tip: Option<Id>) -> Re
     }
     let mut parents = vec![tip.0.to_vec()];
     parents.extend(p.cs.parents.iter().skip(1).cloned());
-    Ok((repo.create_changeset(Changeset { parents, ..p.cs.clone() }).await?, true, true))
+    let rebased = repo.create_changeset(Changeset { parents, ..p.cs.clone() }).await?;
+    // Staged with the batch, so it is durable before the ref can move.
+    repo.derived.put(LANDED_AS, p.id, Bytes::copy_from_slice(&rebased.0)).await?;
+    Ok((rebased, true, true))
 }
+
+/// Derived record: the id a changeset was rebased to when it landed.
+const LANDED_AS: &str = "landed-as.v1";
 
 /// The same error for every member of a batch.
 fn copy_err(e: &Error) -> Error {
@@ -295,17 +337,22 @@ impl Staged {
         Repo { objects: self.clone(), log: self.clone(), refs: self.inner().refs.clone(), derived: self.clone() }
     }
 
-    /// Write everything staged; changesets and derived data only reference objects
-    /// written in the same flush or earlier, and nothing is visible until the ref moves.
+    /// Write everything staged in dependency order: objects, then the changesets that name
+    /// them, then derived records that name both (a changeset's tree, the id it landed as).
+    /// A flush that fails halfway then never leaves a record pointing at something missing,
+    /// which a later land recreating the same changeset would trust (both orderings were
+    /// found by the landing simulation). Nothing is visible until the ref moves.
     async fn flush(&self, to: &Repo) -> Result<()> {
-        let objects: Vec<_> = self.objects.lock().expect("staged").drain().collect();
+        let mut objects: Vec<_> = self.objects.lock().expect("staged").drain().collect();
+        objects.sort_unstable_by_key(|(id, _)| *id); // a fixed write order keeps simulations replayable
         let log = std::mem::take(&mut *self.log.lock().expect("staged"));
         let derived = std::mem::take(&mut *self.derived.lock().expect("staged"));
-        let logs = futures::future::try_join_all(log.into_iter().map(|(id, b)| to.log.append(id, b)));
-        let derived = futures::future::try_join_all(
+        to.objects.put_many(objects).await?;
+        futures::future::try_join_all(log.into_iter().map(|(id, b)| to.log.append(id, b))).await?;
+        futures::future::try_join_all(
             derived.into_iter().map(|(k, id, v)| async move { to.derived.put(&k, id, v).await }),
-        );
-        futures::try_join!(to.objects.put_many(objects), logs, derived)?;
+        )
+        .await?;
         Ok(())
     }
 }
