@@ -1,0 +1,40 @@
+name: Fuzz
+
+# Coverage-guided fuzzing (cargo-fuzz / libFuzzer) of every decoder that reads untrusted
+# bytes: objects, trees, changesets, chunk manifests, deltas and paths. Ten minutes per
+# target nightly; one minute per target on pull requests that touch the decoders.
+on:
+  schedule:
+    - cron: "13 3 * * *"
+  pull_request:
+    paths: ["fuzz/**", "crates/pando-core/**", ".github/workflows/fuzz.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [object, tree, changeset, manifest, delta, path]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-fuzz }
+      - name: Fuzz ${{ matrix.target }}
+        run: |
+          secs=$([ "${{ github.event_name }}" = pull_request ] && echo 60 || echo 600)
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cp fuzz/seeds/${{ matrix.target }}/* fuzz/corpus/${{ matrix.target }}/
+          cargo fuzz run ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- -max_total_time=$secs -rss_limit_mb=2048
+      - name: Keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: fuzz/artifacts/
