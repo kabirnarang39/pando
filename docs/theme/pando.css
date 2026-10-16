@@ -1,0 +1,95 @@
+/* Pando brand for the mdBook docs: aspen bark, Fishlake blue, autumn gold. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap");
+
+:root {
+  --pando-blue: #16324F;
+  --pando-gold: #F0B429;
+  --pando-bark: #EEF1EC;
+  --pando-eye: #23282D;
+  --pando-lichen: #8FA89A;
+  --mono-font: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --content-max-width: 760px;
+}
+
+html, body, .sidebar, .menu-title { font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif; }
+code, pre { font-family: var(--mono-font); font-size: 0.875em; }
+main h1, main h2, main h3 { font-weight: 650; letter-spacing: -0.01em; line-height: 1.2; }
+main h1 { font-size: 2.2em; margin-block-end: 0.6em; }
+main h2 { font-size: 1.5em; }
+main h3 { font-size: 1.2em; }
+main p, main li { line-height: 1.65; }
+main table { width: 100%; }
+main table th { text-align: left; }
+main pre > code { border-radius: 6px; }
+.light main pre > code { background: #EEF1EC; }
+.navy main pre > code { background: #0B1A2C; }
+
+.light {
+  --bg: #FBFCFA;
+  --fg: #23282D;
+  --sidebar-bg: #EEF1EC;
+  --sidebar-fg: #3A444D;
+  --sidebar-non-existant: #8A949C;
+  --sidebar-active: #16324F;
+  --sidebar-spacer: #D5DBD7;
+  --scrollbar: #A9B8B0;
+  --icons: #5B6670;
+  --icons-hover: #16324F;
+  --links: #1F5C99;
+  --inline-code-color: #16324F;
+  --theme-popup-bg: #FBFCFA;
+  --theme-popup-border: #D5DBD7;
+  --theme-hover: #EEF1EC;
+  --quote-bg: #EEF1EC;
+  --quote-border: #D5DBD7;
+  --table-border-color: #D5DBD7;
+  --table-header-bg: #EEF1EC;
+  --table-alternate-bg: #F5F7F4;
+  --searchbar-border-color: #A9B8B0;
+  --searchbar-bg: #FFFFFF;
+  --searchresults-header-fg: #5B6670;
+  --searchresults-border-color: #D5DBD7;
+  --searchresults-li-bg: #EEF1EC;
+  --search-mark-bg: #F6D27A;
+}
+.light .sidebar .active { font-weight: 600; }
+
+.navy {
+  --bg: #0F2238;
+  --fg: #E3E8E4;
+  --sidebar-bg: #0B1A2C;
+  --sidebar-fg: #B9C4BE;
+  --sidebar-non-existant: #6B7A86;
+  --sidebar-active: #F0B429;
+  --sidebar-spacer: #22374F;
+  --scrollbar: #33414E;
+  --icons: #A3B0A9;
+  --icons-hover: #F0B429;
+  --links: #F3C55A;
+  --inline-code-color: #F3C55A;
+  --theme-popup-bg: #0B1A2C;
+  --theme-popup-border: #33414E;
+  --theme-hover: #16324F;
+  --quote-bg: #16324F;
+  --quote-border: #22374F;
+  --table-border-color: #22374F;
+  --table-header-bg: #16324F;
+  --table-alternate-bg: #12283F;
+  --searchbar-border-color: #33414E;
+  --searchbar-bg: #16324F;
+  --searchresults-header-fg: #A3B0A9;
+  --searchresults-border-color: #22374F;
+  --searchresults-li-bg: #16324F;
+  --search-mark-bg: #8A6A16;
+}
+
+/* The logo beside the book title. */
+.menu-title::before {
+  content: "";
+  display: inline-block;
+  width: 1.4em;
+  height: 1.4em;
+  margin-right: 0.45em;
+  vertical-align: -0.3em;
+  background: url("../assets/brand/mark.svg") center / contain no-repeat;
+}

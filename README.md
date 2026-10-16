@@ -1,226 +1,134 @@
-<div align="center">
+<p align="center">
+  <a href="https://kabirnarang39.github.io/pando/"><img src="docs/assets/brand/mark.svg" width="96" height="96" alt="Pando logo: aspen trunks rising from one shared root"></a>
+</p>
 
-# 🌳 Pando
+<h1 align="center">Pando</h1>
 
-**Source control for monorepos at agent scale.**
+<p align="center">
+  <b>Open-source source control for monorepos where hundreds of AI agents commit at once.</b><br>
+  Commits, rebases and history run on the server. Clones take milliseconds, CI reads files
+  without checking out, and concurrent changes land without a merge queue. Plain git keeps working.
+</p>
 
-<sub>Named after <a href="https://en.wikipedia.org/wiki/Pando_(tree)">Pando</a>, a grove of some 47,000 aspen trunks that share one root system: one repository, many agents.</sub>
+<p align="center">
+  <a href="https://github.com/kabirnarang39/pando/actions/workflows/ci.yml"><img src="https://github.com/kabirnarang39/pando/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/kabirnarang39/pando/releases"><img src="https://img.shields.io/github/v/release/kabirnarang39/pando?color=16324F" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-16324F" alt="Apache-2.0 license"></a>
+  <a href="https://kabirnarang39.github.io/pando/docs/"><img src="https://img.shields.io/badge/docs-read-F0B429" alt="Documentation"></a>
+</p>
 
-Server-side commits · landing without a merge queue · tiered caches · API-first reads · built-in MCP for AI agents
+<p align="center">
+  <a href="https://kabirnarang39.github.io/pando/docs/">Documentation</a> ·
+  <a href="https://kabirnarang39.github.io/pando/docs/getting-started.html">Getting started</a> ·
+  <a href="docs/comparisons/git-vs-pando.md">Benchmarks</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
+</p>
 
-[![CI](https://github.com/kabirnarang39/pando/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/pando/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
-[![Release](https://img.shields.io/github/v/release/kabirnarang39/pando)](https://github.com/kabirnarang39/pando/releases)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/headline-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/charts/headline-light.svg">
+    <img src="docs/assets/charts/headline-light.svg" width="840" alt="Bar charts: with 1,000 agents landing on one branch, Pando lands 504 changes per second and git 0.2. Cloning git/git takes 0.46 seconds with Pando and 19.1 seconds with git.">
+  </picture>
+  <br>
+  <sub>Both systems on one Apple M4 laptop, release builds. Reproduce with <a href="bench/run.sh"><code>bench/run.sh</code></a> and <a href="crates/pando/examples/land_load.rs"><code>examples/land_load.rs</code></a>.</sub>
+</p>
 
-**[Website](https://kabirnarang39.github.io/pando/)** · **[Benchmarks](docs/comparisons/git-vs-pando.md)** · **[Architecture](docs/ARCHITECTURE.md)**
+## Why Pando
 
-<img src="docs/assets/demo.gif" alt="Terminal recording on git/git's 82,443-commit history: git clone takes about 22 seconds, pando clone under one second; then pando log and pando cat answer in about 10 ms without a clone." width="820">
+git gives every clone the full history and lets every pusher race for the same branch.
+That works for people. It breaks when agents and CI land tens of thousands of changes a
+day into one repository: every job clones history it never reads, and every push to
+`main` loses to someone else's and retries.
 
-<sub>Live recording, both servers on one laptop. Reproduce with <a href="bench/run.sh"><code>bench/run.sh</code></a> and <a href="docs/assets/demo.tape"><code>docs/assets/demo.tape</code></a>.</sub>
+Google, Meta and Microsoft solved this with in-house systems that move history and commit
+creation to the server ([prior art](docs/PRIOR_ART.md)). Pando is that design as one
+open-source binary: SQLite on a laptop, or stateless replicas on Postgres and S3 behind
+caches.
 
-</div>
+## Highlights
 
----
-
-When humans and AI agents merge **tens of thousands of changes a day** into one repository,
-git's model starts to hurt: every CI job clones history it never reads, every push races a
-global ref and loses, and every query needs a local copy of 100 GB of history. The largest
-engineering organisations solved this with in-house systems that move history and commit
-creation to the server.
-
-**Pando is an open-source source control system built on that model**, designed to run on
-infrastructure you already have: from a single binary with SQLite on a laptop, to stateless
-replicas on Postgres/CockroachDB + S3 behind regional caches. See [Prior art](docs/PRIOR_ART.md)
-for the public work it builds on and how it compares.
-
-## Benchmarks: git vs Pando
-
-<!-- BENCH:START -->
-Measured on **git/git** (82,443 commits, 4,857 files), Apple M4, release builds, median of 5 runs
-([hyperfine](https://github.com/sharkdp/hyperfine)). Reproduce with [`bench/run.sh`](bench/run.sh).
-
-| Scenario | git | Pando | Pando vs git |
-|---|---:|---:|---|
-| full-clone | 19,130 ms | 463 ms | 41.3x faster |
-| sparse-clone (Documentation/) | 9,513 ms | 106 ms | 89.7x faster |
-| read one file, no prior clone (CI) | 149 ms | 9 ms | 16.0x faster |
-| status (clean, 4857 files) | 91 ms | 48 ms | 1.9x faster |
-| log -n 50 -- builtin/add.c | 100 ms | 19 ms | 5.4x faster |
-| blame Makefile | 528 ms | 352 ms | 1.5x faster |
-| commit + publish 1 file | 130 ms | 77 ms | 1.7x faster |
-
-**16 AI agents landing 80 changes on one branch at once:**
-
-| | git push (fetch + rebase + retry) | pando land |
-|---|---:|---:|
-| Wall time | 42.8 s | **3.5 s** |
-| Throughput | 1.9 merges/s | **22.7 merges/s** (12x) |
-| Client retries | 456 | **0** (server rebased 79) |
-
-Client metadata after a full clone: **380 KB** (`.pando`) vs **334 MB** (`.git`).
-Server storage after `pandod compact` (delta storage): **369 MB vs git's 333 MB pack**
-(1.1x; 4.6 GB before compaction). Where git still wins: offline work.
-<!-- BENCH:END -->
-
-**1,000 agents landing on one branch at once** (each agent on its own connection, writing its
-own directory; 30 s window, fresh store per run, same laptop):
-
-| Agents | git push (fetch + rebase + retry) | pando land | pando p99 latency | pando errors |
-|---:|---:|---:|---:|---:|
-| 16 | 2.0 lands/s | **758 lands/s** | 55 ms | 0 |
-| 200 | 0.5 lands/s | **1,012 lands/s** | 0.30 s | 0 |
-| 1,000 | 0.2 lands/s (5 in 30 s) | **504 lands/s** (907 across 64 directories) | 2.7 s | 0 |
-| 5,000 | not run | **172 lands/s** (531 across 64 directories) | 16 s | 0 |
-
-One `pandod` on SQLite. For scale: Anthropic reported over 30,000 merges per day in
-September 2026 and Google about 40,000 commits per workday in 2015, both under one per second on average.
-Reproduce with [`examples/land_load.rs`](crates/pando/examples/land_load.rs) and
-[`bench/git_push_load.py`](bench/git_push_load.py).
-
-Full results, methodology and the cases where git wins: [docs/comparisons/git-vs-pando.md](docs/comparisons/git-vs-pando.md).
-
-## Why it is fast
-
-| | git | Pando |
-|---|---|---|
-| Clone | downloads **all history** | downloads **one tree**, lazily, only the paths you ask for |
-| Commit | local; publishing = push whole packs, lose races, fetch, rebase, retry | server builds the commit from the list of changed files; cost ∝ change size |
-| Landing concurrent changes | one winner per race; everyone else fetches + rebases | server rebases non-conflicting changes in batches; one compare-and-swap per batch; **no merge queue, no client retries** |
-| Reading a file in CI | clone first | one RPC: `pando cat main path` |
-| log / blame / diff / merge-base | local history required | server-side APIs, O(log n) ancestry via jump pointers |
-| Caching | mirrors drift from the tip | immutable content-addressed objects: any tier answers any request, forever correct |
-| Integrity | SHA-1 | BLAKE3, verified at every tier |
+- **Landing without a merge queue.** The server rebases concurrent changes that touch
+  different files and moves the branch with one compare-and-swap per batch. 1,000 agents
+  land 504 changes a second, with no client retries.
+- **Clones without history.** A clone fetches one tree, lazily, only for the paths you ask
+  for: 0.46 s for git/git's 82,443 commits, against 19.1 s for `git clone`.
+- **CI without checkouts.** `pando cat main path/to/file` answers in 9 ms. History, blame,
+  diff and search are server APIs.
+- **Built for agents.** A built-in [MCP](https://modelcontextprotocol.io) server, plus
+  Python, TypeScript and Go SDKs.
+- **Plain git still works.** `git clone pando::https://…`, then push and pull as usual.
+  Import and export round-trip with identical trees, so you can leave any time.
+- **Ready for a company.** SSO through OpenID Connect, per-directory read and write
+  permissions, pre-land checks for CI and review, TLS, Prometheus metrics.
+- **Runs on what you have.** SQLite, Postgres or CockroachDB for metadata; disk, S3, GCS
+  or Azure for objects. Every feature sits behind a flag.
 
 ## Quick start
 
 ```sh
-# 1. Install (macOS, Linux; verifies the release checksum). Windows: download the .zip from Releases.
-curl -fsSL https://raw.githubusercontent.com/kabirnarang39/pando/main/install.sh | sh
-#    or: brew install kabirnarang39/tap/pando
-#    or: docker run -p 7420:7420 ghcr.io/kabirnarang39/pando:latest
-#    or: cargo install --git https://github.com/kabirnarang39/pando pando pando-server
+brew install kabirnarang39/tap/pando        # or: curl -fsSL https://raw.githubusercontent.com/kabirnarang39/pando/main/install.sh | sh
 
-# 2. Run a server (SQLite by default)
-pandod server --listen 127.0.0.1:7420 &
-
-# 3. Bring your git history (idempotent, incremental, no lock-in)
+pandod server --listen 127.0.0.1:7420 &     # a server on SQLite
 pando import-git ~/code/my-repo --server http://127.0.0.1:7420
 
-# 4. Work
 pando clone http://127.0.0.1:7420 work && cd work
-echo "hello" > hello.txt
-pando commit -m "say hello"
-pando land                      # server-side rebase + atomic ref move
+echo hello > hello.txt && pando commit -m "Say hello" && pando land
 ```
 
-Production topology (Postgres + S3 + regional cache + node daemon) in one command:
+<p align="center">
+  <img src="docs/assets/demo.gif" width="760" alt="Terminal recording on git/git's 82,443-commit history: git clone takes about 22 seconds, pando clone under one second; then pando log and pando cat answer in about 10 ms without a clone.">
+</p>
 
-```sh
-docker compose up -d
-pando clone http://localhost:7420 work --objects http://localhost:7422
-```
+Docker, Postgres and S3 setups are in the [deployment guide](https://kabirnarang39.github.io/pando/docs/deploy.html).
+Coming from git? The [command map](https://kabirnarang39.github.io/pando/docs/git-users.html) lists every equivalent.
 
-## Or keep using plain git
+## How it works
 
-With `git-remote-pando` on your `PATH` (the installer puts it there), git talks to a
-Pando server directly:
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/architecture-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/charts/architecture-light.svg">
+    <img src="docs/assets/charts/architecture-light.svg" width="840" alt="Clients fetch file contents through a node daemon and a regional cache from the pandod server; commits, lands and history queries go straight to the server, which stores metadata in SQLite, Postgres or CockroachDB and objects in S3, GCS, Azure or disk.">
+  </picture>
+</p>
 
-```sh
-git clone pando::http://127.0.0.1:7420 repo
-git push        # lands on the server; if main moved, the server rebases instead of rejecting
-git pull --rebase
-```
+- **The server creates commits.** A client sends the files it changed, not a tree; the
+  server builds the commit in time proportional to the change.
+- **Content is immutable and addressed by its BLAKE3 hash**, so every cache tier can answer
+  any request and verify it. Only branch pointers change.
+- **Landing is optimistic.** Changes that touch different paths all land; real conflicts
+  fail alone and leave the branch untouched.
 
-Fetches are incremental. Set `PANDO_PUSH=strict` to get git's reject-if-behind behaviour.
-Teams can adopt Pando one person at a time: git users and `pando` users share the same branch.
+Read the [architecture](docs/ARCHITECTURE.md) and the [design decisions](docs/DECISIONS.md).
 
-## git → pando cheat sheet
+## Benchmarks
 
-| git | pando | Notes |
-|---|---|---|
-| `git clone URL` | `pando clone URL DIR` | add `--path services/api` for a sparse clone |
-| `git status` | `pando status` | alias `st` |
-| `git add` + `git commit -m` | `pando commit -m MSG [PATHS]` | no staging area; PATHS = commit a subset |
-| `git push` | `pando land` | alias `push`; server rebases if main moved |
-| `git pull` | `pando sync` | alias `pull` |
-| `git checkout -b x` / `git switch x` | `pando checkout -b x` / `pando checkout x` | |
-| `git log -- path` | `pando log path` | server-side, no local history |
-| `git diff` / `git diff A B` | `pando diff` / `pando diff A B` | |
-| `git show REV` | `pando show REV` | |
-| `git blame f` | `pando blame f` | |
-| `git show REV:path` | `pando cat REV path` | works without a clone |
-| `git ls-tree` | `pando ls REV [dir]` | works without a clone |
-| (no equivalent) | `pando mount DIR --rev main` | Linux: read-only view, files fetched on first read |
-| `git branch` | `pando refs` | alias `branch` |
-| `git merge-base A B` | `pando merge-base A B` | |
+On git/git's history (82,443 commits), both systems on one machine:
 
-## For AI agents: built-in MCP
+| | git | Pando | |
+|---|---:|---:|---|
+| Full clone | 19.1 s | 0.46 s | 41× faster |
+| Sparse clone of `Documentation/` | 9.5 s | 0.11 s | 90× faster |
+| Read one file in CI, no clone | 149 ms | 9 ms | 16× faster |
+| `log -n 50 -- builtin/add.c` | 100 ms | 19 ms | 5× faster |
+| 1,000 agents landing on one branch | 0.2 /s | 504 /s | no client retries |
+| Server storage after compaction | 333 MB | 369 MB | 1.1× git's pack |
 
-```sh
-claude mcp add pando -- pando mcp          # or any MCP client: Codex, Cursor, ...
-```
-
-Tools: `sap_cat`, `sap_ls`, `sap_find`, `sap_log`, `sap_blame`, `sap_diff`, `sap_status`,
-`sap_commit`, `sap_land`, `sap_sync`. Agents read, commit and land without shelling out.
-
-## SDKs
-
-Read files, list directories, search and inspect history from your own tools, without a
-clone. Every client verifies content against its BLAKE3 id.
-
-| Language | Package | Example |
-|---|---|---|
-| Python | [`sdk/python`](sdk/python) (`pando`) | `Client(url).read_file("src/lib.rs")` |
-| Go | [`sdk/go`](sdk/go) | `c.ReadFile(ctx, "main", "src/lib.rs")` |
-| TypeScript / Node | [`sdk/typescript`](sdk/typescript) (`pando-client`) | `await new Client(url).readFile("src/lib.rs")` |
-
-Any other language: generate a client from [`pando.proto`](crates/pando-proto/proto/pando.proto); object
-encodings are published in [`pando_objects.proto`](crates/pando-proto/proto/pando_objects.proto).
-
-## Architecture
-
-```
-pando (CLI/MCP) ──objects──▶ daemon (node) ──▶ cache (region) ──▶ server ──▶ SQLite | Postgres | CockroachDB
-      └─────────────metadata RPCs─────────────────────────────────▶ │  └──▶ S3 | GCS | Azure | disk
-```
-
-* **Feature slices**: objects, changesets, refs, land, history, diff, merge-base, browse;
-  each owns its use case, gRPC handler and **feature flag** (`PANDO_FLAGS=land=off`).
-* **Ports and adapters**: every infrastructure detail is a trait; every adapter passes the
-  same contract test suite.
-* **Plain git works**: `git clone pando::URL`, push and pull via the built-in remote helper.
-* **SSO and permissions**: OpenID Connect login; per-directory **read** and write permissions
-  with path-scoped checkout, search and redacted history for partial readers.
-* **Large files**: content-defined chunking (FastCDC) with streaming upload and checkout;
-  a 1 GiB file commits in 195 MB of memory, and an edit re-uploads only the changed chunks.
-* **Security**: bearer tokens (constant-time), TLS, per-directory write ACLs, per-ref ACLs,
-  hash verification at every tier, symlink-safe working-copy writes.
-* **Operations**: Prometheus metrics, JSON logs, gRPC health + reflection, graceful shutdown.
-
-Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Decisions: [DECISIONS.md](docs/DECISIONS.md)
-
-## Configuration
-
-| Setting | Flag / env | Default |
-|---|---|---|
-| Metadata store | `--metadata` / `PANDO_METADATA` | `sqlite://./pando-data/meta.db` (`memory`, `postgres://…`) |
-| Object store | `--objects` / `PANDO_OBJECTS` | `metadata` (`file:///…`, `s3://…`, `gs://…`, `az://…`) |
-| Auth tokens | `--tokens` / `PANDO_TOKENS` | none (dev mode); `alice:tok1,ci:tok2` |
-| SSO (OIDC) | `--oidc-issuer`, `--oidc-audience`, `--oidc-claim` | off; e.g. Okta, Entra ID, Google, Auth0, Keycloak |
-| Access rules | `--acl` / `PANDO_ACL` | allow all; see [SECURITY.md](SECURITY.md) |
-| Pre-land check (CI, code review) | `--land-hook URL`, `--land-hook-token`, `--land-hook-timeout` | off; see [Land checks](docs/ARCHITECTURE.md#land-checks) |
-| TLS | `--tls-cert`, `--tls-key` | off |
-| Metrics | `--metrics` / `PANDO_METRICS` | off; e.g. `0.0.0.0:9420` |
-| Feature flags | `PANDO_FLAGS` | all on; e.g. `land=off,git-import=off` |
-| Client token | `PANDO_TOKEN` | none |
+Where git wins: working offline with full history. Methods, raw numbers and limits are on
+the [benchmark page](docs/comparisons/git-vs-pando.md).
 
 ## Status
 
-**v1.0**: the protocol (`pando.v1`), storage formats and CLI are stable and follow
-SemVer. See the [CHANGELOG](CHANGELOG.md) and [roadmap](docs/ROADMAP.md) (virtualized
-FUSE checkouts, read ACLs, delta storage, chunked large files).
+Pando is new and maintained by one person. The protocol (`pando.v1`), storage formats and
+CLI follow semantic versioning, and CI runs the test suite on Linux, macOS and Windows.
+The safest way to try it is next to git, through the git bridge. See the
+[changelog](CHANGELOG.md) and [roadmap](docs/ROADMAP.md).
 
-## License
+## Contributing
 
-[Apache-2.0](LICENSE). Contributions welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+Licensed under [Apache-2.0](LICENSE). Named after [Pando](https://en.wikipedia.org/wiki/Pando_(tree)),
+a grove of some 47,000 aspen trunks that grow from one root system.
