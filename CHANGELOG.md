@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Checkouts that write many files in parallel could fail with `File exists (os error 17)`
+  when two writers created the same new directory at once (seen in about 3% of concurrent
+  CI checkouts of git/git's `t/`).
+- The MCP tools still used the pre-rename prefix: `sap_cat`, `sap_land` and the others are
+  now `pando_cat`, `pando_land` and so on. MCP clients discover tool names, so agents pick
+  up the new names on restart.
+- Commands that work without a workspace (`cat`, `ls`, `log`, ...) suggested a `--server`
+  flag they do not have; the error now points to `PANDO_SERVER`.
+
 ## [2.1.0] - 2026-10-16
 
 ### Added

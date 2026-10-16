@@ -553,37 +553,37 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
     let names: Vec<&str> =
         list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     for want in [
-        "sap_cat",
-        "sap_ls",
-        "sap_find",
-        "sap_log",
-        "sap_blame",
-        "sap_diff",
-        "sap_status",
-        "sap_commit",
-        "sap_land",
-        "sap_sync",
+        "pando_cat",
+        "pando_ls",
+        "pando_find",
+        "pando_log",
+        "pando_blame",
+        "pando_diff",
+        "pando_status",
+        "pando_commit",
+        "pando_land",
+        "pando_sync",
     ] {
         assert!(names.contains(&want), "missing {want} in {names:?}");
     }
 
-    send(serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sap_cat","arguments":{"path":"docs/hello.md"}}})).await;
+    send(serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pando_cat","arguments":{"path":"docs/hello.md"}}})).await;
     let cat = recv().await;
     assert_eq!(cat["result"]["content"][0]["text"], "hi from pando\n", "{cat}");
 
     // An agent edits, commits and lands entirely through MCP.
     write(&p, "docs/hello.md", "edited by agent\n");
-    send(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"sap_commit","arguments":{"message":"agent edit"}}})).await;
+    send(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pando_commit","arguments":{"message":"agent edit"}}})).await;
     let commit = recv().await;
     assert!(commit["result"]["content"][0]["text"].as_str().unwrap().starts_with("committed"), "{commit}");
-    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"sap_land","arguments":{}}}))
+    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"pando_land","arguments":{}}}))
         .await;
     let landed = recv().await;
     assert!(landed["result"]["content"][0]["text"].as_str().unwrap().starts_with("landed"), "{landed}");
     assert_eq!(browse::cat(r.as_ref(), "main", "docs/hello.md").await.unwrap(), b"edited by agent\n");
 
     // Errors surface as tool errors, not protocol failures.
-    send(serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"sap_cat","arguments":{"path":"nope"}}})).await;
+    send(serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"pando_cat","arguments":{"path":"nope"}}})).await;
     let missing = recv().await;
     assert_eq!(missing["result"]["isError"], true, "{missing}");
 }

@@ -545,14 +545,23 @@ fn ensure_parents(root: &Path, rel: &str) -> Result<PathBuf> {
             Ok(m) if m.is_dir() => {}
             Ok(_) => {
                 fs::remove_file(&cur)?;
-                fs::create_dir(&cur)?;
+                create_dir_once(&cur)?;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => fs::create_dir(&cur)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => create_dir_once(&cur)?,
             Err(e) => return Err(e.into()),
         }
     }
     cur.push(parts[parts.len() - 1]);
     Ok(cur)
+}
+
+/// Create `dir`, tolerating a parallel writer that created it first. What exists must be
+/// a real directory: a symlink or file that appeared in between is an error, never followed.
+fn create_dir_once(dir: &Path) -> Result<()> {
+    match fs::create_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && fs::symlink_metadata(dir)?.is_dir() => Ok(()),
+        r => Ok(r?),
+    }
 }
 
 /// Create parents and clear whatever occupies `rel` (file, symlink or directory) so the
@@ -664,6 +673,22 @@ mod tests {
         assert!(dir_in_sparse(&s, "services"));
         assert!(!dir_in_sparse(&s, "libs"));
         assert!(in_sparse(&[], "anything"));
+    }
+
+    /// Parallel checkout writers create the same new directories at the same time; none
+    /// may fail because another created a directory first.
+    #[test]
+    fn parallel_writers_share_new_directories() {
+        for _ in 0..20 {
+            let root = tempfile::tempdir().unwrap();
+            std::thread::scope(|s| {
+                for i in 0..16 {
+                    let root = root.path();
+                    s.spawn(move || ensure_parents(root, &format!("t/lib/deep/f{i}")).unwrap());
+                }
+            });
+            assert!(root.path().join("t/lib/deep").is_dir());
+        }
     }
 
     #[cfg(unix)]

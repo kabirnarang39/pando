@@ -170,12 +170,12 @@ fn ws_remote(ws: &Workspace, token: Option<&str>) -> Result<Arc<dyn Remote>> {
     connect(&ws.config.server, ws.config.objects.as_deref(), token)
 }
 
-/// Server for workspace-free commands: --server, $PANDO_SERVER, or the current workspace.
+/// Server for workspace-free commands: $PANDO_SERVER, or the current workspace.
 fn server_for(explicit: Option<String>) -> Result<String> {
     explicit
         .or_else(|| std::env::var("PANDO_SERVER").ok())
         .or_else(|| workspace().ok().map(|w| w.config.server))
-        .context("no server: pass --server, set PANDO_SERVER, or run inside a workspace")
+        .context("no server: set PANDO_SERVER=URL or run inside a workspace")
 }
 
 fn short_message(m: &str) -> &str {
