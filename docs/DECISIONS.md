@@ -196,3 +196,13 @@ change records the id it landed as, so a retry reports that landing instead of r
 it. Scope: this simulates the landing protocol over in-memory stores, not the whole system
 (network, disk and SQLite are real code paths it does not exercise).
 
+**Addendum (2.1.3).** A black-box chaos test against real replicas on Postgres
+(`bench/chaos.sh`) found that the landed-as record is not enough: two replicas landing the
+same retried change both write it, and the replica that loses the race can overwrite the
+winner's record, so a later retry lands the change again. The fix that holds without
+bookkeeping: a change rebased onto a tip that already holds all of its changes is reported
+as landed at that tip instead of becoming an empty commit, which is also what `git rebase`
+does with commits that become empty. The landed-as record stays as a fast path. The
+simulation's clients now give up waiting and retry on other replicas, and it catches this
+race at the second seed when the fix is removed.
+

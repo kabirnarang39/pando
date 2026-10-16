@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Two replicas landing the same retried change could both apply it, leaving it in history
+  twice. A change rebased onto a tip that already holds all of its changes is now reported
+  as landed there instead of becoming an empty commit (as `git rebase` drops commits that
+  become empty).
+
+### Added
+- `bench/chaos.sh`: three replicas on Postgres behind a connection-cutting proxy, killed
+  and restarted while clients land; checks the landing invariants through the public API.
+  Runs nightly with the simulation.
+- Documentation: how Pando is tested.
+
 ## [2.1.2] - 2026-10-16
 
 ### Fixed

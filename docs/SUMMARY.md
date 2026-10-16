@@ -14,5 +14,6 @@
 - [Architecture](ARCHITECTURE.md)
 - [Design decisions](DECISIONS.md)
 - [Benchmarks](comparisons/git-vs-pando.md)
+- [How Pando is tested](testing.md)
 - [Prior art](PRIOR_ART.md)
 - [Roadmap](ROADMAP.md)

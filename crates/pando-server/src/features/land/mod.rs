@@ -270,15 +270,26 @@ async fn replay(repo: &Repo, p: &Pending, prep: Prepared, tip: Option<Id>) -> Re
     // not the size of everything that landed since our base.
     let tip_root = repo.root_tree(tip).await?;
     let mut conflicts = Vec::new();
+    let mut already_there = true;
     for (c, b) in p.cs.changes.iter().zip(&trails) {
         let t = tree::trail(repo.objects.as_ref(), tip_root, &c.path).await?;
         if path_conflicts(c, b, &t)? {
             conflicts.push(c.path.clone());
         }
+        already_there &= tip_holds(c, &t)?;
     }
     if !conflicts.is_empty() {
         let shown: Vec<_> = conflicts.iter().take(20).map(String::as_str).collect();
         return Err(Error::Conflict(format!("{} conflicting path(s): {}", conflicts.len(), shown.join(", "))));
+    }
+    // Rebased onto a tip that already holds every one of its changes, the change would add
+    // nothing: report it as landed at the tip instead of creating an empty commit, as `git
+    // rebase` drops commits that become empty. This is what makes landing idempotent across
+    // replicas: a retry of a change that another replica already landed (whose reply was
+    // lost) finds its content there. The landed-as record above is only a fast path to the
+    // exact earlier commit; replicas racing on one change can overwrite it.
+    if already_there {
+        return Ok((tip, true, false));
     }
     let mut parents = vec![tip.0.to_vec()];
     parents.extend(p.cs.parents.iter().skip(1).cloned());
@@ -413,6 +424,15 @@ impl DerivedStore for Staged {
         self.derived.lock().expect("staged").push((kind.to_owned(), id, value));
         Ok(())
     }
+}
+
+/// Whether the tip already holds `ours` exactly, given the entries along its path at the tip.
+fn tip_holds(ours: &FileChange, tip: &[Option<(Mode, Id)>]) -> Result<bool> {
+    let at = tip.last().copied().flatten();
+    Ok(match ours.blob_id()? {
+        None => at.is_none(),
+        Some(id) => at == Some((Mode::parse(ours.mode)?, id)),
+    })
 }
 
 /// Whether `ours` collides with what changed between base and head along its path, given

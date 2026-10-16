@@ -25,3 +25,16 @@ jobs:
           echo "seed base $base"
           PANDO_SIM_SEED_BASE=$base PANDO_SIM_SEEDS=50000 \
             cargo test --release -p pando-server --test simulation -- --nocapture
+
+  # The same invariants against real binaries: three replicas on Postgres, a proxy that cuts
+  # connections mid-reply, replicas killed with SIGKILL and the database paused.
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Five minutes of chaos
+        run: bench/chaos.sh 300
