@@ -96,13 +96,13 @@ impl SapMcp {
 #[tool_router(server_handler)]
 impl SapMcp {
     #[tool(description = "Read a file at any revision without a checkout.")]
-    async fn sap_cat(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
+    async fn pando_cat(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
         let bytes = browse::cat(self.remote.as_ref(), &a.rev, &a.path).await.map_err(err)?;
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     #[tool(description = "List a directory at any revision (mode, id, name per line).")]
-    async fn sap_ls(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
+    async fn pando_ls(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
         let entries = browse::ls(self.remote.as_ref(), &a.rev, &a.path).await.map_err(err)?;
         Ok(entries
             .iter()
@@ -112,12 +112,12 @@ impl SapMcp {
     }
 
     #[tool(description = "Find files whose path contains a substring, at any revision.")]
-    async fn sap_find(&self, Parameters(a): Parameters<FindArgs>) -> ToolResult {
+    async fn pando_find(&self, Parameters(a): Parameters<FindArgs>) -> ToolResult {
         Ok(self.remote.find(&a.rev, &a.pattern, 1000).await.map_err(err)?.join("\n"))
     }
 
     #[tool(description = "Changeset history (newest first), optionally limited to a path.")]
-    async fn sap_log(&self, Parameters(a): Parameters<LogArgs>) -> ToolResult {
+    async fn pando_log(&self, Parameters(a): Parameters<LogArgs>) -> ToolResult {
         let log = browse::log(self.remote.as_ref(), &a.rev, &a.path, a.limit.unwrap_or(20)).await.map_err(err)?;
         Ok(log
             .iter()
@@ -127,7 +127,7 @@ impl SapMcp {
     }
 
     #[tool(description = "Which changeset last changed each line of a file.")]
-    async fn sap_blame(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
+    async fn pando_blame(&self, Parameters(a): Parameters<RevPath>) -> ToolResult {
         let lines = self.remote.blame(&a.rev, &a.path).await.map_err(err)?;
         Ok(lines
             .iter()
@@ -138,12 +138,12 @@ impl SapMcp {
     }
 
     #[tool(description = "Unified diff between two revisions (computed server-side).")]
-    async fn sap_diff(&self, Parameters(a): Parameters<DiffArgs>) -> ToolResult {
+    async fn pando_diff(&self, Parameters(a): Parameters<DiffArgs>) -> ToolResult {
         diff::revisions(self.remote.as_ref(), &a.from, &a.to, false).await.map_err(err)
     }
 
     #[tool(description = "Uncommitted changes in the workspace (A/M/D per line).")]
-    async fn sap_status(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
+    async fn pando_status(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
         let ws = self.ws()?;
         let changes = ws.status(&[]).map_err(err)?;
         if changes.is_empty() {
@@ -164,7 +164,7 @@ impl SapMcp {
     }
 
     #[tool(description = "Commit workspace changes as a server-side changeset (not yet landed).")]
-    async fn sap_commit(&self, Parameters(a): Parameters<CommitArgs>) -> ToolResult {
+    async fn pando_commit(&self, Parameters(a): Parameters<CommitArgs>) -> ToolResult {
         let mut ws = self.ws()?;
         match commit::run(self.remote.as_ref(), &mut ws, &a.message, &crate::default_author(), &a.paths)
             .await
@@ -176,7 +176,7 @@ impl SapMcp {
     }
 
     #[tool(description = "Land committed work on the workspace ref (server-side rebase, atomic).")]
-    async fn sap_land(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
+    async fn pando_land(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
         let mut ws = self.ws()?;
         let out = land::run(self.remote.as_ref(), &mut ws).await.map_err(err)?;
         Ok(format!(
@@ -189,7 +189,7 @@ impl SapMcp {
     }
 
     #[tool(description = "Update the workspace to the latest ref head.")]
-    async fn sap_sync(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
+    async fn pando_sync(&self, Parameters(_): Parameters<Empty>) -> ToolResult {
         let mut ws = self.ws()?;
         let out = sync::run(self.remote.as_ref(), &mut ws, None).await.map_err(err)?;
         Ok(format!("at {} ({} files changed)", out.to, out.changed))
