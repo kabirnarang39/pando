@@ -55,10 +55,35 @@ jobs:
     needs: binaries
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write      # Sigstore signing of the attestations
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
+      # Signed SLSA build provenance for every archive: verify with
+      # `gh attestation verify FILE --repo kabirnarang39/pando`.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+      # A software bill of materials for the release, attested against each archive.
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/pando-${{ github.ref_name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/attest-sbom@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+          sbom-path: dist/pando-${{ github.ref_name }}.spdx.json
       - name: Release notes from CHANGELOG
         run: awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[" v "\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > notes.md
       - uses: softprops/action-gh-release@v2
@@ -107,6 +132,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.list }}
+          provenance: mode=max
+          sbom: true
       - name: Smoke test
         run: docker run --rm "ghcr.io/${{ github.repository }}:$TAG" --version
 
