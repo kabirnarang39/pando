@@ -31,7 +31,8 @@ jobs:
           secs=$([ "${{ github.event_name }}" = pull_request ] && echo 60 || echo 600)
           mkdir -p fuzz/corpus/${{ matrix.target }}
           cp fuzz/seeds/${{ matrix.target }}/* fuzz/corpus/${{ matrix.target }}/
-          cargo fuzz run ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- -max_total_time=$secs -rss_limit_mb=2048
+          # cargo-fuzz may be a musl build, which would default to a musl target ASan cannot use.
+          cargo fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- -max_total_time=$secs -rss_limit_mb=2048
       - name: Keep the crashing input
         if: failure()
         uses: actions/upload-artifact@v4
