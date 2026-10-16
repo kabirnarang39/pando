@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-16
+
 ### Added
 - A documentation site (mdBook, with search) at kabirnarang39.github.io/pando/docs:
   getting started, coming from git, deploying, and AI agents and SDKs, alongside the
@@ -231,6 +233,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.1.1]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.1
 [2.1.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.0
 [2.0.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.0.0
 [1.9.0]: https://github.com/kabirnarang39/sapwood/releases/tag/v1.9.0

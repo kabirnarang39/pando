@@ -1,6 +1,6 @@
 [project]
 name = "pando-vcs"
-version = "2.1.0"
+version = "2.1.1"
 description = "Python client for Pando, source control for monorepos at agent scale"
 readme = "README.md"
 license = "Apache-2.0"
