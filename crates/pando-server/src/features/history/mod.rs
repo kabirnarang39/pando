@@ -157,8 +157,10 @@ impl history_server::History for History {
     type LogStream = Pin<Box<dyn Stream<Item = Result<ChangesetInfo, Status>> + Send>>;
 
     async fn log(&self, req: Request<LogRequest>) -> RpcResult<Self::LogStream> {
-        let scope = self.scope(&principal(&req));
+        let who = principal(&req);
+        let scope = self.scope(&who);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "log", principal = %who.0, rev = %r.rev, path = %r.path);
         let ids = self.walk(&scope, &r.rev, &r.path, r.limit).await.map_err(to_status)?;
         let repo = self.repo.clone();
         let stream = async_stream(move |tx| async move {
@@ -176,6 +178,7 @@ impl history_server::History for History {
     async fn blame(&self, req: Request<BlameRequest>) -> RpcResult<BlameResponse> {
         let who = principal(&req);
         let r = req.into_inner();
+        tracing::info!(target: crate::telemetry::AUDIT, kind = "blame", principal = %who.0, rev = %r.rev, path = %r.path);
         let lines = History::blame(self, &who, &r.rev, &r.path).await.map_err(to_status)?;
         Ok(Response::new(BlameResponse {
             lines: lines.into_iter().map(|(id, text)| BlameLine { changeset: id.0.to_vec(), text }).collect(),

@@ -66,7 +66,11 @@ impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
         let bearer =
             req.metadata().get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
-        let who = self.0.authenticate(bearer)?;
+        let who = self.0.authenticate(bearer).inspect_err(|e| {
+            let peer = req.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+            let presented = bearer.is_some();
+            tracing::info!(target: crate::telemetry::AUDIT, kind = "auth_failed", peer, presented, reason = e.message());
+        })?;
         req.extensions_mut().insert(who);
         Ok(req)
     }
@@ -80,6 +84,34 @@ pub fn principal<T>(req: &Request<T>) -> Principal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A rejected request leaves an audit record, and never the token it presented.
+    #[test]
+    fn failed_authentication_is_audited() {
+        #[derive(Clone, Default)]
+        struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Captured {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let out = Captured::default();
+        let writer = out.clone();
+        let subscriber = tracing_subscriber::fmt().json().with_writer(move || writer.clone()).finish();
+        let mut auth = AuthInterceptor(Arc::new(StaticTokens::new(["alice:al1ce".to_owned()])));
+        tracing::subscriber::with_default(subscriber, || {
+            let mut req = Request::new(());
+            req.metadata_mut().insert("authorization", "Bearer guessed-token".parse().unwrap());
+            assert!(auth.call(req).is_err());
+        });
+        let log = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        assert!(log.contains("auth_failed") && log.contains("invalid token"), "{log}");
+        assert!(!log.contains("guessed-token"), "the presented token must not be logged: {log}");
+    }
 
     #[test]
     fn static_tokens() {

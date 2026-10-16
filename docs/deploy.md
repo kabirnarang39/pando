@@ -94,6 +94,31 @@ git/git's history (84,050 changesets, 330,000 objects) a first copy to SQLite ta
 and a repeat 3.5 s. Run it on a schedule for incremental backups. System pointers such as
 the compaction lease are not copied.
 
+## Audit log
+
+`--audit-log FILE` (or `PANDO_AUDIT_LOG`) appends one JSON line per event: who read or
+changed what, from which address, with what result. It is off by default because it grows
+with every request; rotate it like any log file.
+
+```json
+{"timestamp":"2026-10-16T09:06:02.695Z","kind":"land","principal":"alice","ref":"main","changeset":"0844d2dc…","landed":"0844d2dc…","rebased":false}
+{"timestamp":"2026-10-16T09:06:02.702Z","kind":"read_file","principal":"ci","rev":"main","path":"README"}
+{"timestamp":"2026-10-16T09:06:02.702Z","kind":"rpc","principal":"ci","peer":"10.0.4.17","method":"/pando.v1.Browse/ReadFile","status":"0","ms":0}
+{"timestamp":"2026-10-16T09:06:58.112Z","kind":"auth_failed","peer":"10.0.9.2","presented":true,"reason":"invalid token"}
+```
+
+| `kind` | Recorded for |
+|---|---|
+| `rpc` | every authenticated request: principal, client address, method, gRPC status, duration |
+| `auth_failed` | every rejected request: client address, whether a token was presented, why (never the token) |
+| `land` | each land: branch, changeset, and the landed id or the refusal |
+| `set_ref` | branch moves through the refs API |
+| `read_file`, `list_dir`, `checkout`, `find` | content reads, with revision and paths |
+| `log`, `blame` | history queries, with revision and path |
+
+Audit events never appear in the normal log, and the normal log never appears in the
+audit file.
+
 ## Monitoring
 
 `--metrics` exposes Prometheus metrics: request counts and latencies per RPC

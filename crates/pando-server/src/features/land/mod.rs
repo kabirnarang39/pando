@@ -471,7 +471,17 @@ impl land_server::Land for Land {
     async fn land(&self, req: Request<LandRequest>) -> RpcResult<LandResponse> {
         let who = principal(&req);
         let r = req.into_inner();
-        let landed = Land::land(self, &who, &r.r#ref, id_from(&r.changeset)?).await.map_err(to_status)?;
+        let changeset = id_from(&r.changeset)?;
+        let result = Land::land(self, &who, &r.r#ref, changeset).await;
+        match &result {
+            Ok(l) => {
+                tracing::info!(target: crate::telemetry::AUDIT, kind = "land", principal = %who.0, r#ref = %r.r#ref, %changeset, landed = %l.id, rebased = l.rebased)
+            }
+            Err(e) => {
+                tracing::info!(target: crate::telemetry::AUDIT, kind = "land", principal = %who.0, r#ref = %r.r#ref, %changeset, refused = %e)
+            }
+        }
+        let landed = result.map_err(to_status)?;
         Ok(Response::new(LandResponse {
             landed: landed.id.0.to_vec(),
             rebased: landed.rebased,
