@@ -61,7 +61,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
       # Signed SLSA build provenance for every archive: verify with
       # `gh attestation verify FILE --repo kabirnarang39/pando`.
