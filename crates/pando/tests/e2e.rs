@@ -576,8 +576,10 @@ async fn mcp_server_speaks_json_rpc_and_reads_repo() {
     send(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pando_commit","arguments":{"message":"agent edit"}}})).await;
     let commit = recv().await;
     assert!(commit["result"]["content"][0]["text"].as_str().unwrap().starts_with("committed"), "{commit}");
-    send(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"pando_land","arguments":{}}}))
-        .await;
+    send(
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"pando_land","arguments":{}}}),
+    )
+    .await;
     let landed = recv().await;
     assert!(landed["result"]["content"][0]["text"].as_str().unwrap().starts_with("landed"), "{landed}");
     assert_eq!(browse::cat(r.as_ref(), "main", "docs/hello.md").await.unwrap(), b"edited by agent\n");
