@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Pando console: browse code, watch changes land and see locked files on a Pando server." />
+    <title>Pando console</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      // Apply the saved theme before first paint, so dark mode never flashes light.
+      try {
+        const t = localStorage.getItem("pando.console.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>The Pando console needs JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
