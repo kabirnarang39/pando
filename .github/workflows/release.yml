@@ -193,25 +193,3 @@ jobs:
         working-directory: sdk/typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  homebrew:
-    needs: publish
-    if: github.event_name == 'push' && vars.PUBLISH_HOMEBREW == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: kabirnarang39/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
-      - name: Update the formula
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" > tap/Formula/pando.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "pando ${GITHUB_REF_NAME#v}"
-          git push
