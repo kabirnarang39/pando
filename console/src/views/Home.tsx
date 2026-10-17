@@ -15,7 +15,8 @@ export function HomeView() {
   const inbox = useInbox();
   const repos = useRepositories();
   const events = useEvents();
-  const reviews = useCapabilities().data?.reviews ?? false;
+  const caps = useCapabilities();
+  const reviews = caps.data?.reviews ?? false;
   const now = Math.max(useNow(), Date.now());
   const name = viewer.data?.account?.displayName.split(" ")[0];
   const lands = repos.data?.reduce((s, r) => s + r.lands24h, 0) ?? 0;
@@ -23,7 +24,7 @@ export function HomeView() {
   if (viewer.data && !viewer.data.platform) return <Navigate to="/$owner/$repo" params={{ owner: SINGLE.owner, repo: SINGLE.name }} replace />;
 
   // Appear once, complete: panels filling in one by one push each other around on phones.
-  if (!inbox.data || !repos.data)
+  if (!inbox.data || !repos.data || caps.isPending)
     return (
       <div className="page" aria-busy="true">
         <Skeleton rows={14} />
