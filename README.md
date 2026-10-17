@@ -7,7 +7,8 @@
 <p align="center">
   <b>Open-source source control for monorepos where hundreds of AI agents commit at once.</b><br>
   Commits, rebases and history run on the server. Clones take milliseconds, CI reads files
-  without checking out, and concurrent changes land without a merge queue. Plain git keeps working.
+  without checking out, and concurrent changes land without a merge queue. Run it beside
+  GitHub or Bitbucket, or instead of them.
 </p>
 
 <p align="center">
@@ -52,6 +53,21 @@ Google, Meta and Microsoft solved this with in-house systems that move history a
 creation to the server ([prior art](docs/PRIOR_ART.md)). Pando is that design as one
 open-source binary: SQLite on a laptop, or stateless replicas on Postgres and S3 behind
 caches.
+
+## Beside GitHub, or instead of it
+
+You choose how far to go, and can change your mind at any point.
+
+- **Beside your git host.** Agents land in Pando; `pando mirror` pushes every landed change to
+  GitHub, GitLab or Bitbucket as ordinary commits, so CI, code search, issue links and
+  reviewers keep working where they are. Nothing to migrate; stop the mirror to roll back.
+- **Instead of it.** Pando hosts your repositories, people browse and review in its web
+  console, and plain git, CI and editors connect through `git-remote-pando`. The history
+  stays exportable to git at any time, so there's no lock-in either way.
+
+Most teams start beside and move the busiest repositories over once the numbers are in.
+Accounts and code review on the server are being built now; today the console demonstrates
+them in your browser.
 
 ## Highlights
 
