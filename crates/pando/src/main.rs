@@ -1,6 +1,7 @@
 mod admin;
 mod cr;
 mod issue;
+mod migrate;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -238,6 +239,27 @@ enum Cmd {
         server: Option<String>,
         #[command(subcommand)]
         action: admin::TokenCmd,
+    },
+    /// Move a repository from any git host to Pando: full history, and from GitHub, open pull
+    /// requests (as change requests) and issues with their comments.
+    Migrate {
+        /// Where it is now: any URL git can clone.
+        from: String,
+        /// Where it goes: SERVER/OWNER/NAME.
+        #[arg(long)]
+        to: String,
+        /// For private GitHub repositories, and to avoid GitHub's rate limit.
+        #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true)]
+        github_token: Option<String>,
+        /// Skip issues.
+        #[arg(long)]
+        no_issues: bool,
+        /// Skip pull requests.
+        #[arg(long)]
+        no_pull_requests: bool,
+        /// GitHub Enterprise Server's API, e.g. https://github.example.com/api/v3.
+        #[arg(long)]
+        github_api: Option<String>,
     },
     /// Keep a git repository (GitHub, GitLab, Bitbucket, any git remote) up to date with a
     /// branch: every landed change becomes the same git commit every time, pushed without force.
@@ -763,6 +785,17 @@ async fn run() -> Result<()> {
                 }
                 RepoCmd::Grant { repo, principal, role, .. } => admin::grant(platform, &repo, principal, role).await?,
             }
+        }
+        Cmd::Migrate { from, to, github_token, no_issues, no_pull_requests, github_api } => {
+            let m = migrate::Migration {
+                from,
+                to,
+                github_token,
+                issues: !no_issues,
+                pull_requests: !no_pull_requests,
+                github_api,
+            };
+            migrate::run(m, token, &flags).await?;
         }
         Cmd::Mirror { to, server, rev, git_ref, dir, every } => {
             let remote = connect(&server_for(server)?, None, token)?;

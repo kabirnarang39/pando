@@ -61,7 +61,8 @@ You choose how far to go, and can change your mind at any point.
 - **Beside your git host.** Agents land in Pando; `pando mirror` pushes every landed change to
   GitHub, GitLab or Bitbucket as ordinary commits, so CI, code search, issue links and
   reviewers keep working where they are. Nothing to migrate; stop the mirror to roll back.
-- **Instead of it.** Pando hosts your repositories, people browse and review in its web
+- **Instead of it.** `pando migrate https://github.com/acme/fleet --to SERVER/acme/fleet`
+  brings the full history, open pull requests and issues across in one command. Pando hosts your repositories, people browse and review in its web
   console, and plain git, CI and editors connect through `git-remote-pando`. The history
   stays exportable to git at any time, so there's no lock-in either way.
 

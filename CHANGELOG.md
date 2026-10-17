@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `pando migrate FROM --to SERVER/OWNER/NAME` (ADR-028, `docs/migrate.md`): moves a repository
+  from GitHub, GitLab, Bitbucket or any git host with its full history on every branch; from
+  GitHub (and GitHub Enterprise Server with `--github-api`), open pull requests become change
+  requests and issues come with comments, labels and state. It prints the `pando mirror`
+  command that keeps the old host current while you move.
 - Issues (ADR-027): open, discuss, label and assign issues to people or agents, in the console
   (Issues tab), the CLI (`pando issue`) and over MCP (`pando_issues`, `pando_issue`,
   `pando_open_issue`, `pando_comment_on_issue`, `pando_update_issue`). Issues and change
