@@ -258,3 +258,18 @@ shows their one repository. The cost is about 107 KB of gzipped JavaScript for R
 router and the gRPC-Web runtime before any interface code; the build enforces a budget for the
 first screen.
 
+## ADR-022: Hosting many repositories by dispatching to one set of services per repository
+
+**Decision.** A server started with `--platform` keeps a small registry of repositories and opens
+each one's storage from templates (`{repo}`, `{repo_id}`) the first time it is used. A layer
+inside authentication reads the `x-pando-repo` header and hands the call to that repository's own
+services, built by the same `authority_routes` as a single-repository server. Calls without the
+header reach the default repository.
+**Why.** Nothing in the features had to change: every repository gets the code that is already
+tested, simulated and chaos-tested, including its own landing queues, so a busy repository cannot
+slow another. Separate storage per repository is the isolation a hosted, multi-tenant service needs
+(backup, move, delete or place one repository on its own), and the content-addressed object store
+can still be shared by pointing every template at one bucket. Putting the dispatch inside
+authentication means the principal is known before any repository is opened, and the header
+keeps every existing client working. The cost is one open database per active repository, which
+is why repositories open lazily.

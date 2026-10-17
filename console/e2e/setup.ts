@@ -10,6 +10,9 @@ import { join, resolve } from "node:path";
 const bin = resolve(process.env.PANDO_BIN ?? "../target/release");
 export const PORT = 7611;
 export const SERVER = `http://127.0.0.1:${PORT}`;
+/** A second server that hosts many repositories (platform phase 1). */
+export const HOSTING_PORT = 7613;
+export const HOSTING = `http://127.0.0.1:${HOSTING_PORT}`;
 
 function git(cwd: string, ...args: string[]) {
   execFileSync("git", ["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" });
@@ -57,7 +60,25 @@ export default async function setup() {
     throw e;
   }
 
+  const hosting = spawn(
+    join(bin, "pandod"),
+    ["server", "--listen", `127.0.0.1:${HOSTING_PORT}`, "--metadata", "memory", "--platform", `sqlite://${join(dir, "platform.db")}`, "--repos-metadata", `sqlite://${join(dir, "repos")}/{repo}.db`, "--platform-admins", "anonymous", "--web-origins", "http://127.0.0.1:4173"],
+    { stdio: ["ignore", "ignore", "inherit"] },
+  );
+  try {
+    await up(HOSTING_PORT);
+    const run = (args: string[]) => execFileSync(join(bin, "pando"), args, { stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
+    run(["repo", "create", "lumen/fleet", "--description", "The product monorepo", "--server", HOSTING]);
+    run(["repo", "create", "lumen/web", "--description", "The storefront", "--server", HOSTING]);
+    run(["import-git", src, "--server", `${HOSTING}/lumen/fleet`]);
+  } catch (e) {
+    server.kill();
+    hosting.kill();
+    throw e;
+  }
+
   return () => {
     server.kill();
+    hosting.kill();
   };
 }

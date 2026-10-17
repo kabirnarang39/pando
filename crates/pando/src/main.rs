@@ -145,7 +145,7 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
-    /// Mount a revision read-only; files are fetched on first read (Linux, FUSE).
+    /// Mount a revision read-only; files are fetched on first read (Linux, macOS, Windows).
     Mount {
         dir: PathBuf,
         #[arg(long)]
@@ -169,6 +169,11 @@ enum Cmd {
         #[arg(long)]
         server: Option<String>,
     },
+    /// Create and list repositories on a server that hosts many (`pandod server --platform`).
+    Repo {
+        #[command(subcommand)]
+        action: RepoCmd,
+    },
     /// Export first-parent history to a git repository.
     ExportGit {
         git_dir: PathBuf,
@@ -178,6 +183,25 @@ enum Cmd {
         rev: String,
         #[arg(long = "git-ref", default_value = "main")]
         git_ref: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepoCmd {
+    /// Create OWNER/NAME. Then: `pando clone SERVER/OWNER/NAME`.
+    Create {
+        name: String,
+        #[arg(long, default_value = "")]
+        description: String,
+        #[arg(long)]
+        server: Option<String>,
+    },
+    /// List repositories, optionally of one owner.
+    List {
+        #[arg(long, default_value = "")]
+        owner: String,
+        #[arg(long)]
+        server: Option<String>,
     },
 }
 
@@ -546,6 +570,50 @@ async fn run() -> Result<()> {
             };
             drop(stdout);
             pando::mcp::SapMcp::new(remote, ws.map(|w| w.root)).serve_stdio().await?;
+        }
+        Cmd::Repo { action } => {
+            let server = match &action {
+                RepoCmd::Create { server, .. } | RepoCmd::List { server, .. } => server.clone(),
+            };
+            let base = pando_proto::split_repo_url(&server_for(server)?).0;
+            let mut platform = GrpcRemote::connect(&base, None, token)?.platform();
+            let unimplemented = |s: tonic::Status| {
+                if s.code() == tonic::Code::Unimplemented {
+                    anyhow::anyhow!("this server hosts one repository; start pandod with --platform to host many")
+                } else {
+                    anyhow::anyhow!("{}", s.message())
+                }
+            };
+            match action {
+                RepoCmd::Create { name, description, .. } => {
+                    let (owner, repo) = name.split_once('/').context("give the repository as OWNER/NAME")?;
+                    let r = platform
+                        .create_repository(pando_proto::CreateRepositoryRequest {
+                            owner: owner.into(),
+                            name: repo.into(),
+                            description,
+                            ..Default::default()
+                        })
+                        .await
+                        .map_err(unimplemented)?
+                        .into_inner();
+                    println!(
+                        "created {}/{}; clone it with: pando clone {base}/{}/{}",
+                        r.owner, r.name, r.owner, r.name
+                    );
+                }
+                RepoCmd::List { owner, .. } => {
+                    let rs = platform
+                        .list_repositories(pando_proto::ListRepositoriesRequest { owner, ..Default::default() })
+                        .await
+                        .map_err(unimplemented)?
+                        .into_inner()
+                        .repositories;
+                    for r in rs {
+                        println!("{}/{}\t{} landed today\t{}", r.owner, r.name, r.lands_24h, r.description);
+                    }
+                }
+            }
         }
         Cmd::ExportGit { git_dir, server, rev, git_ref } => {
             let remote = connect(&server_for(server)?, None, token)?;

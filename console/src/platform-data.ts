@@ -58,6 +58,28 @@ export function useViewer() {
   });
 }
 
+/**
+ * What the connected server can do. Hosting many repositories and reviewing change requests
+ * ship separately; the app shows only what the server answers.
+ */
+export function useCapabilities() {
+  const api = usePlatformApi();
+  return useQuery({
+    queryKey: ["capabilities"],
+    queryFn: async () => {
+      let reviews = true;
+      try {
+        await api.reviews.inbox({ limit: 1 });
+      } catch (e) {
+        if (isUnimplemented(e)) reviews = false;
+        else throw e;
+      }
+      return { reviews };
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useRepositories(owner = "") {
   const api = usePlatformApi();
   const { label } = useConnection();

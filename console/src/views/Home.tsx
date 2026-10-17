@@ -1,7 +1,7 @@
 import { Link, Navigate } from "@tanstack/react-router";
 import { ChecksIcon, StateIcon } from "../components/ReviewParts";
 import { EventKind } from "../gen/pando_platform_pb";
-import { SINGLE, useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
+import { SINGLE, useCapabilities, useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
 import { ago, Author, Empty, Icon, Skeleton, Time, useNow } from "../ui";
 
 function greeting(h: number) {
@@ -14,6 +14,7 @@ export function HomeView() {
   const inbox = useInbox();
   const repos = useRepositories();
   const events = useEvents();
+  const reviews = useCapabilities().data?.reviews ?? false;
   const now = Math.max(useNow(), Date.now());
   const name = viewer.data?.account?.displayName.split(" ")[0];
   const lands = repos.data?.reduce((s, r) => s + r.lands24h, 0) ?? 0;
@@ -37,7 +38,9 @@ export function HomeView() {
             {name ? `, ${name}` : ""}
           </h1>
           <p>
-            {inbox.data
+            {!reviews
+              ? `${lands.toLocaleString()} changes landed across your repositories today.`
+              : inbox.data
               ? inbox.data.length === 0
                 ? "Nothing is waiting on you."
                 : `${inbox.data.length} ${inbox.data.length === 1 ? "thing is" : "things are"} waiting on you. ${lands.toLocaleString()} changes landed across your repositories today.`
@@ -47,6 +50,7 @@ export function HomeView() {
       </div>
       <div className="grid-2">
         <div className="stack">
+          {reviews && (
           <section className="panel" aria-labelledby="waiting-title">
             <div className="panel-head">
               <Icon name="inbox" />
@@ -89,6 +93,7 @@ export function HomeView() {
               </ul>
             )}
           </section>
+          )}
           <section className="panel" aria-labelledby="repos-title">
             <div className="panel-head">
               <Icon name="repo" />

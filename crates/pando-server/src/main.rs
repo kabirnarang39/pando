@@ -70,7 +70,7 @@ struct Cli {
 enum Role {
     /// Authoritative server: all features, durable storage.
     Server {
-        #[arg(long, default_value = "0.0.0.0:7420")]
+        #[arg(long, default_value = "127.0.0.1:7420")]
         listen: SocketAddr,
         /// memory | sqlite://PATH | postgres://...
         #[arg(long, env = "PANDO_METADATA", hide_env_values = true, default_value = "sqlite://./pando-data/meta.db")]
@@ -90,6 +90,20 @@ enum Role {
         /// Seconds to wait for the land hook before refusing the land.
         #[arg(long, default_value_t = 10)]
         land_hook_timeout: u64,
+        /// Host many repositories: the registry of which exist (sqlite://PATH or memory).
+        /// Without it the server hosts one repository, `--metadata` / `--objects`.
+        #[arg(long, env = "PANDO_PLATFORM", hide_env_values = true)]
+        platform: Option<String>,
+        /// Storage for each hosted repository; `{repo}` becomes OWNER/NAME and `{repo_id}`
+        /// OWNER--NAME, e.g. sqlite:///var/lib/pando/repos/{repo}.db
+        #[arg(long, env = "PANDO_REPOS_METADATA", hide_env_values = true, requires = "platform")]
+        repos_metadata: Option<String>,
+        /// Objects for each hosted repository (same placeholders), or `metadata`.
+        #[arg(long, env = "PANDO_REPOS_OBJECTS", hide_env_values = true, default_value = "metadata")]
+        repos_objects: String,
+        /// Principals that may create repositories.
+        #[arg(long, env = "PANDO_PLATFORM_ADMINS", value_delimiter = ',')]
+        platform_admins: Vec<String>,
     },
     /// Delta-compress stored blob versions (single writer; safe to run while serving).
     Compact {
@@ -116,7 +130,7 @@ enum Role {
     },
     /// Regional cache: stateless, memory-bounded, read-through to an upstream tier.
     Cache {
-        #[arg(long, default_value = "0.0.0.0:7421")]
+        #[arg(long, default_value = "127.0.0.1:7421")]
         listen: SocketAddr,
         #[arg(long, env = "PANDO_UPSTREAM", hide_env_values = true)]
         upstream: String,
@@ -208,8 +222,21 @@ async fn main() -> anyhow::Result<()> {
     };
     let upstream_token = std::env::var("PANDO_UPSTREAM_TOKEN").ok();
 
+    let mut hosting: Option<Arc<pando_server::hosting::Hosting>> = None;
     let (listen, routes) = match cli.role {
-        Role::Server { listen, metadata, objects, acl, land_hook, land_hook_token, land_hook_timeout } => {
+        Role::Server {
+            listen,
+            metadata,
+            objects,
+            acl,
+            land_hook,
+            land_hook_token,
+            land_hook_timeout,
+            platform,
+            repos_metadata,
+            repos_objects,
+            platform_admins,
+        } => {
             let repo = config::open_repo(&metadata, &objects).await?;
             let policy: Arc<dyn AccessPolicy> = match &acl {
                 Some(path) => Arc::new(RulesPolicy::load(path)?),
@@ -223,6 +250,25 @@ async fn main() -> anyhow::Result<()> {
                 }
                 None => Arc::new(NoChecks),
             };
+            if let Some(registry) = &platform {
+                let templates = pando_server::hosting::Templates {
+                    metadata: anyhow::Context::context(
+                        repos_metadata.clone(),
+                        "--platform needs --repos-metadata (e.g. sqlite:///var/lib/pando/repos/{repo}.db)",
+                    )?,
+                    objects: repos_objects.clone(),
+                };
+                let (f, p, c) = (flags.clone(), policy.clone(), checks.clone());
+                let build: pando_server::hosting::BuildRoutes =
+                    Arc::new(move |repo| authority_routes(repo, f.clone(), p.clone(), c.clone()));
+                hosting = Some(Arc::new(pando_server::hosting::Hosting::new(
+                    templates,
+                    pando_server::hosting::Registry::open(registry)?,
+                    build,
+                    platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect(),
+                )?));
+                tracing::info!(registry = %config::redact(registry), "hosting many repositories");
+            }
             (listen, authority_routes(repo, flags, policy, checks))
         }
         Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {
@@ -295,5 +341,5 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    serve(listener, routes, auth, tls, web, limits, shutdown_signal()).await
+    serve(listener, routes, auth, pando_server::ServeOptions { tls, web, limits, hosting }, shutdown_signal()).await
 }

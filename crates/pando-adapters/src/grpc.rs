@@ -38,21 +38,28 @@ pub fn status_err(s: tonic::Status) -> Error {
 
 impl GrpcObjects {
     /// Lazily connecting channel: the first request dials, and tonic reconnects on failure.
+    /// `url` may end in `/OWNER/NAME` to name a repository on a server that hosts many.
     pub fn connect(url: &str, token: Option<&str>) -> Result<Self> {
-        let channel = Endpoint::from_shared(url.to_owned())
+        let (base, repo) = pando_proto::split_repo_url(url);
+        let channel = Endpoint::from_shared(base)
             .map_err(storage_err)?
             .tcp_nodelay(true)
             .http2_adaptive_window(true)
             .connect_lazy();
-        Self::from_channel(channel, token)
+        let auth = BearerAuth::new(token).and_then(|a| a.with_repo(repo.as_deref())).map_err(status_err)?;
+        Ok(Self::with_auth(channel, auth))
     }
 
     pub fn from_channel(channel: Channel, token: Option<&str>) -> Result<Self> {
         let auth = BearerAuth::new(token).map_err(status_err)?;
+        Ok(Self::with_auth(channel, auth))
+    }
+
+    pub fn with_auth(channel: Channel, auth: BearerAuth) -> Self {
         let client = ObjectsClient::with_interceptor(channel, auth)
             .max_decoding_message_size(MAX_MESSAGE_BYTES)
             .max_encoding_message_size(MAX_MESSAGE_BYTES);
-        Ok(Self { client })
+        Self { client }
     }
 }
 

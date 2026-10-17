@@ -12,5 +12,6 @@ pub mod land;
 pub mod locks;
 pub mod merge_base;
 pub mod objects;
+pub mod platform;
 pub mod prefetch;
 pub mod refs;

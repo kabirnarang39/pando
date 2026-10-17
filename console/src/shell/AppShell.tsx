@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Dialog, Menu, MenuItem, MenuTrigger, Modal, ModalOverlay, Popover, Separator } from "react-aria-components";
 import { Mark, Wordmark } from "../brand";
 import { pendingServer, useConnection } from "../connection";
-import { isSingle, useInbox, useRepositories, useViewer } from "../platform-data";
+import { isSingle, useCapabilities, useInbox, useRepositories, useViewer } from "../platform-data";
 import { RepoProvider } from "../repo";
 import { Author, Icon } from "../ui";
 import type { MenuMode } from "./CommandMenu";
@@ -124,6 +124,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
   const viewer = useViewer();
   const repos = useRepositories();
   const inbox = useInbox();
+  const reviews = useCapabilities().data?.reviews ?? false;
   const navigate = useNavigate();
   const { label, target } = useConnection();
   const org = viewer.data?.organizations[0];
@@ -162,7 +163,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
           <Icon name="home" />
           <span className="label">Home</span>
         </Link>
-        {viewer.data?.platform !== false && (
+        {reviews && (
         <Link to="/inbox" className="side-link">
           <Icon name="inbox" />
           <span className="label">Inbox</span>

@@ -61,7 +61,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
 schemars = "1"
-tower = { version = "0.5", features = ["limit"] }
+tower = { version = "0.5", features = ["limit", "util"] }
 tower-http = { version = "0.6", features = ["cors"] }
 
 [profile.release]

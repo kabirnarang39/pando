@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod config;
 pub mod features;
+pub mod hosting;
 pub mod land_hook;
 pub mod oidc;
 mod status;
@@ -112,22 +113,34 @@ impl Default for Limits {
     }
 }
 
+/// How a server is exposed: TLS, browser access, limits, and the repositories it hosts.
+#[derive(Default)]
+pub struct ServeOptions {
+    pub tls: Option<ServerTlsConfig>,
+    pub web: WebAccess,
+    pub limits: Limits,
+    /// Many repositories (`--platform`); `None` serves the default repository only.
+    pub hosting: Option<Arc<hosting::Hosting>>,
+}
+
 /// Serve `routes` with auth, health checks, reflection, metrics and graceful shutdown.
 pub async fn serve(
     listener: TcpListener,
     routes: Routes,
     auth: Arc<dyn Authenticator>,
-    tls: Option<ServerTlsConfig>,
-    web: WebAccess,
-    limits: Limits,
+    options: ServeOptions,
     shutdown: impl Future<Output = ()> + Send,
 ) -> anyhow::Result<()> {
+    let ServeOptions { tls, web, limits, hosting } = options;
     let (health_reporter, health) = tonic_health::server::health_reporter();
     health_reporter.set_service_status("", tonic_health::ServingStatus::Serving).await;
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(pando_proto::FILE_DESCRIPTOR_SET)
         .build_v1()?;
-    let routes = routes.add_service(health).add_service(reflection);
+    let mut routes = routes.add_service(health).add_service(reflection);
+    if let Some(h) = &hosting {
+        routes = routes.add_service(features::platform::service(features::platform::Platform::new(h.clone())));
+    }
 
     let mut builder = Server::builder()
         .timeout(limits.request_timeout)
@@ -150,6 +163,8 @@ pub async fn serve(
         .layer(telemetry::MeteredLayer)
         .layer(InterceptorLayer::new(AuthInterceptor(auth)))
         .layer(telemetry::AuditLayer)
+        // Innermost: after authentication, so the principal is known before any repository opens.
+        .layer(hosting::HostingLayer(hosting))
         .add_routes(routes)
         .serve_with_incoming_shutdown(tokio_stream::wrappers::TcpListenerStream::new(listener), shutdown)
         .await?;
