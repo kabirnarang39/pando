@@ -45,7 +45,22 @@ cargo test --workspace
 * Keep commits focused; use [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `perf:`, `docs:`...).
 
+## Tests for new functionality
+
+Every new feature and every behaviour change lands with automated tests in the same pull
+request: unit tests next to the code, and an end-to-end test in `crates/*/tests/` for anything
+a user can run. A bug fix includes a test that fails without the fix. Changes are not merged
+without them. See [How Pando is tested](docs/testing.md).
+
+## Questions and discussion
+
+Ask questions and discuss ideas in
+[GitHub Discussions](https://github.com/kabirnarang39/pando/discussions); track bugs and
+feature requests as [issues](https://github.com/kabirnarang39/pando/issues). Both are public,
+searchable and open to anyone with a GitHub account. Issues, pull requests and code comments
+are in English.
+
 ## Reporting bugs
 
-Open an issue with the `pando --version` / `pando --version` output, the command, what
+Open an issue with the `pando --version` and `pandod --version` output, the command, what
 you expected and what happened. Security issues: see [SECURITY.md](SECURITY.md).
