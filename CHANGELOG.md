@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Console review comments on code: a "+" on every line, shift-click for a range of lines, a
+  Markdown editor with preview, suggested changes shown as a small diff of current and proposed
+  lines, ⌘/Ctrl+Enter to send, Escape to cancel, and resolved conversations collapsed.
 - One server, many repositories: `pandod server --platform REGISTRY --repos-metadata TEMPLATE
   [--repos-objects TEMPLATE] --platform-admins NAMES`. Each repository has its own storage and
   landing queues; clients address `SERVER/OWNER/NAME`; calls without a repository reach the
@@ -19,6 +22,9 @@ All notable changes to this project are documented here. The format follows
   deliberate `--listen 0.0.0.0:7420`.
 
 ### Fixed
+- Console: the phone code view cut off line numbers and the first characters of each line;
+  long titles no longer truncate to one line on phones; keys typed in a form never trigger
+  page shortcuts.
 - The web console kept one data cache across connections, so data from the demo or a previous
   server could appear after switching. Each connection now has its own cache.
 

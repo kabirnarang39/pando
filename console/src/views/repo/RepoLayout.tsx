@@ -8,7 +8,7 @@ import { Visibility } from "../../gen/pando_platform_pb";
 import { isSingle, useCapabilities, useRepository } from "../../platform-data";
 import { RepoProvider, useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
-import { ago, ErrorState, Icon, useNow, type IconName } from "../../ui";
+import { ago, Icon, LoadError, useNow, type IconName } from "../../ui";
 
 export function RepoLayout() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -36,7 +36,7 @@ function Layout() {
   const reviews = useCapabilities().data?.reviews ?? !single;
   const { label } = useConnection();
 
-  if (meta.error && !meta.data) return <ErrorState error={meta.error} title={`${owner}/${name} didn't load`} retry={() => meta.refetch()} />;
+  if (meta.error && !meta.data) return <LoadError error={meta.error} what={`repository called “${owner}/${name}”`} title={`${owner}/${name} didn't load`} retry={() => meta.refetch()} />;
   const r = meta.data;
 
   const tab = (to: string, label: string, icon: IconName, count?: number) => (
@@ -49,7 +49,7 @@ function Layout() {
 
   return (
     <div className="repo-layout">
-      <header className="repo-head" data-compact={compact || undefined}>
+      <header className="repo-head" data-compact={compact || undefined} data-section={section}>
         <div className="repo-title">
           <h1>
             {single ? (

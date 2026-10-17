@@ -37,7 +37,7 @@ export function useTheme(): [Theme, (t: Theme) => void] {
 export function typing(e: KeyboardEvent): boolean {
   const t = e.target;
   if (!(t instanceof HTMLElement)) return false;
-  return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !!t.closest("[role=dialog]");
+  return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !!t.closest("[role=dialog], form");
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);

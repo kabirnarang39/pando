@@ -128,7 +128,7 @@ export function ChangesView() {
                 }}
                 renderEmptyState={() => <Empty title="No changes match">Clear the filter to see every change.</Empty>}
               >
-                {(c) => <FeedRow change={c} fresh={!initial.has(c.id)} />}
+                {(c) => <FeedRow change={c} fresh={head !== null && !initial.has(c.id)} />}
               </GridList>
               {(older.hasNextPage || (shown.length >= 100 && !older.data)) && (
                 <button type="button" className="more" onClick={() => older.fetchNextPage()} disabled={older.isFetching}>

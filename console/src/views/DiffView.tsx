@@ -13,9 +13,12 @@ export interface Annotations {
   /** New-side line numbers that carry something (comments): they never fold away. */
   lines: Set<number>;
   /** What to show under a new-side line, if anything. */
-  render(line: number): ReactNode;
-  /** Start a comment on a new-side line. */
-  onLine?(line: number): void;
+  render(line: number, textOf: (a: number, b: number) => string): ReactNode;
+  /** Start a comment on a new-side line; `extend` (shift) grows the range from the last line
+   * picked. `textOf(a, b)` gives the current text of lines a..b, for suggestions. */
+  onLine?(line: number, extend: boolean, textOf: (a: number, b: number) => string): void;
+  /** New-side lines currently selected for a comment. */
+  selected?: [number, number];
 }
 
 export function FileDiff({
@@ -96,6 +99,14 @@ function Lines({ lines, layout, annotations }: { lines: Line[]; layout: Layout; 
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const keep = annotations?.lines;
   const rows = useMemo(() => fold(lines, 3, keep), [lines, keep]);
+  const textOf = (a: number, b: number) =>
+    lines
+      .filter((l) => l.new !== undefined && l.new >= a && l.new <= b)
+      .map((l) => l.text)
+      .join("\n");
+  const onLine = annotations?.onLine ? (n: number, extend: boolean) => annotations.onLine!(n, extend, textOf) : undefined;
+  const sel = annotations?.selected;
+  const inSel = (n?: number) => (sel && n !== undefined && n >= sel[0] && n <= sel[1]) || undefined;
   if (lines.length === 0) return <p className="notice">The file is empty.</p>;
   const groups: (Line[] | { fold: number; count: number })[] = [];
   for (const r of rows) {
@@ -115,15 +126,15 @@ function Lines({ lines, layout, annotations }: { lines: Line[]; layout: Layout; 
             layout === "split" ? (
               toSplit(g).map((r, k) => (
                 <Fragment key={`${i}-${k}`}>
-                  <SplitLine left={r.left} right={r.right} onLine={annotations?.onLine} />
-                  {r.right?.new !== undefined && annotations?.render(r.right.new)}
+                  <SplitLine left={r.left} right={r.right} onLine={onLine} picked={inSel(r.right?.new)} />
+                  {r.right?.new !== undefined && annotations?.render(r.right.new, textOf)}
                 </Fragment>
               ))
             ) : (
               g.map((l, k) => (
                 <Fragment key={`${i}-${k}`}>
-                  <UnifiedLine line={l} onLine={annotations?.onLine} />
-                  {l.new !== undefined && annotations?.render(l.new)}
+                  <UnifiedLine line={l} onLine={onLine} picked={inSel(l.new)} />
+                  {l.new !== undefined && annotations?.render(l.new, textOf)}
                 </Fragment>
               ))
             )
@@ -151,19 +162,22 @@ function Text({ line }: { line: Line }) {
   );
 }
 
-function NewNumber({ n, onLine, op }: { n: number | undefined; onLine?(line: number): void; op?: string }) {
+function NewNumber({ n, onLine, op }: { n: number | undefined; onLine?(line: number, extend: boolean): void; op?: string }) {
   if (n === undefined || !onLine) return <span className="dn num" data-op={op}>{n ?? ""}</span>;
   return (
-    <span className="dn num" data-op={op} data-commentable title="Comment on this line" onClick={() => onLine(n)}>
+    <span className="dn num" data-op={op} data-commentable title="Comment on this line (shift-click to choose several)" onClick={(e) => onLine(n, e.shiftKey)}>
+      <button type="button" className="add-comment" aria-label={`Comment on line ${n}`} onClick={(e) => (e.stopPropagation(), onLine(n, e.shiftKey))}>
+        +
+      </button>
       {n}
     </span>
   );
 }
 
-function UnifiedLine({ line, onLine }: { line: Line; onLine?(line: number): void }) {
+function UnifiedLine({ line, onLine, picked }: { line: Line; onLine?(line: number, extend: boolean): void; picked?: boolean }) {
   const op = line.op === "ctx" ? undefined : line.op;
   return (
-    <div className="drow" data-op={op}>
+    <div className="drow" data-op={op} data-picked={picked}>
       <span className="dn num">{line.old ?? ""}</span>
       <NewNumber n={line.new} onLine={onLine} />
       <span className="dm" aria-label={opLabel[line.op] || undefined}>
@@ -176,11 +190,11 @@ function UnifiedLine({ line, onLine }: { line: Line; onLine?(line: number): void
   );
 }
 
-function SplitLine({ left, right, onLine }: { left?: Line; right?: Line; onLine?(line: number): void }) {
+function SplitLine({ left, right, onLine, picked }: { left?: Line; right?: Line; onLine?(line: number, extend: boolean): void; picked?: boolean }) {
   const lo = left && left.op !== "ctx" ? left.op : undefined;
   const ro = right && right.op !== "ctx" ? right.op : undefined;
   return (
-    <div className="drow">
+    <div className="drow" data-picked={picked}>
       <span className="dn num" data-op={lo}>{left?.old ?? ""}</span>
       <span className="dm" data-op={lo} aria-label={lo ? opLabel[lo] : undefined}>
         {lo ? marker[lo] : ""}

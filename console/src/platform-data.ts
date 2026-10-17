@@ -93,7 +93,18 @@ export function useRepositories(owner = "") {
 export function useRepository(key: string) {
   const api = usePlatformApi();
   const { label } = useConnection();
-  return useQuery({ queryKey: ["repo", key], queryFn: () => or(api.platform.getRepository(ref(key)), singleRepository(label)), refetchInterval: 10_000, retry: false });
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["repo", key],
+    queryFn: async () => {
+      const r = await or(api.platform.getRepository(ref(key)), singleRepository(label));
+      // One number everywhere: the sidebar and organisation lists show this repository as just read.
+      qc.setQueriesData<Repository[]>({ queryKey: ["repos"] }, (list) => list?.map((x) => (x.owner === r.owner && x.name === r.name ? r : x)));
+      return r;
+    },
+    refetchInterval: 10_000,
+    retry: false,
+  });
 }
 
 export function useOrganization(login: string) {
@@ -188,8 +199,16 @@ export function useAddComment(key: string, number: bigint) {
   const api = usePlatformApi();
   const invalidate = useInvalidateReviews();
   return useMutation({
-    mutationFn: (c: { body: string; path?: string; line?: number; thread?: string; suggestion?: string }) =>
-      api.reviews.addComment({ ref: { repository: ref(key), number }, body: c.body, path: c.path ?? "", line: c.line ?? 0, thread: c.thread ?? "", suggestion: c.suggestion ?? "" }),
+    mutationFn: (c: { body: string; path?: string; line?: number; endLine?: number; thread?: string; suggestion?: string }) =>
+      api.reviews.addComment({
+        ref: { repository: ref(key), number },
+        body: c.body,
+        path: c.path ?? "",
+        line: c.line ?? 0,
+        endLine: c.endLine ?? 0,
+        thread: c.thread ?? "",
+        suggestion: c.suggestion ?? "",
+      }),
     onSuccess: invalidate,
   });
 }
