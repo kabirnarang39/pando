@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The web console (`console/`): browse code with blame and history, follow changes as they land
+  with word-level diffs, see who and which agent landed what on a live fleet timeline, find files
+  from a command menu, and see locks. Works with any `pandod`; a demo of the full platform (several
+  repositories, change requests, reviews, a land gate and rebase) runs in the browser. See
+  docs/console.md.
+- `pandod` accepts gRPC-Web from browsers (`web` feature flag, on by default) and allows the
+  origins in `--web-origins` / `PANDO_WEB_ORIGINS` to call it.
+- The platform contract, `pando_platform.proto`: organisations, repositories, accounts and agents,
+  tokens, change requests, reviews, comments, protected branches (ADR-021).
+
+### Changed
+- **Security (breaking):** without `PANDO_TOKENS` or an OIDC issuer, `pandod` refuses to listen on
+  a non-loopback address unless `--allow-anonymous` / `PANDO_ALLOW_ANONYMOUS=1` is set, so a server
+  is never open to a network by accident. The Docker image therefore needs a token:
+  `docker run -e PANDO_TOKENS=me:SECRET ...`.
+- Request limits: each call may run at most `--request-timeout` (600 s); beyond `--max-in-flight`
+  (4,096) calls in progress, new calls are refused with Unavailable instead of queueing; 256
+  concurrent calls per connection.
+- A new mark: the letter P drawn as a branch landing back on main.
+
 ## [2.4.0] - 2026-10-17
 
 ### Added

@@ -10,3 +10,5 @@ cp "$root/site/index.html" "$root/site/social-preview.png" "$out/"
 cp "$root/docs/assets/brand/mark.svg" "$out/mark.svg"
 cp "$root"/docs/assets/charts/*.svg "$out/charts/"
 "${MDBOOK:-mdbook}" build "$root/docs" -d "$out/docs"
+# The console, if built (console/dist): its demo runs entirely in the browser.
+if [ -d "$root/console/dist" ]; then cp -R "$root/console/dist" "$out/console"; fi

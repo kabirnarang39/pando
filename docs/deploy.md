@@ -17,6 +17,14 @@ pando clone http://localhost:7420 work --objects http://localhost:7422
 `--objects` sends file reads through the node daemon; commits and lands still go to the
 server.
 
+## For free, on one machine
+
+[`deploy/free-tier`](https://github.com/kabirnarang39/pando/tree/main/deploy/free-tier) sets up a
+production server on Oracle Cloud's Always Free ARM machine: HTTPS by Caddy, a hardened systemd
+service, and hourly incremental backups to a free Neon database and R2 bucket. It costs nothing
+until usage outgrows the free tiers, and moves to Postgres and object storage with `pandod copy`
+when it does.
+
 ## Roles
 
 | Process | Command | Runs where | State |
@@ -36,7 +44,9 @@ server changes them.
 |---|---|---|
 | Metadata store | `--metadata` / `PANDO_METADATA` | `sqlite://./pando-data/meta.db`; also `memory`, `postgres://…` |
 | Object store | `--objects` / `PANDO_OBJECTS` | `metadata` (in the metadata store); also `file:///…`, `s3://…`, `gs://…`, `az://…` |
-| Bearer tokens | `--tokens` / `PANDO_TOKENS` | none, which means no authentication; e.g. `alice:tok1,ci:tok2` |
+| Bearer tokens | `--tokens` / `PANDO_TOKENS` | none; e.g. `alice:tok1,ci:tok2`. Without tokens or OIDC, pandod listens only on a loopback address unless `--allow-anonymous` / `PANDO_ALLOW_ANONYMOUS=1` says otherwise |
+| Request limits | `--request-timeout` / `PANDO_REQUEST_TIMEOUT`, `--max-in-flight` / `PANDO_MAX_IN_FLIGHT` | 600 s per call; 4,096 calls in progress, beyond which calls are refused with Unavailable so clients back off; 256 per connection |
+| Browser access | `--web-origins` / `PANDO_WEB_ORIGINS` | same-origin only; list the sites that host the web console |
 | Single sign-on | `--oidc-issuer`, `--oidc-audience`, `--oidc-claim` | off; works with Okta, Entra ID, Google, Auth0, Keycloak |
 | Access rules | `--acl` / `PANDO_ACL` | allow everything |
 | Pre-land check | `--land-hook URL`, `--land-hook-token`, `--land-hook-timeout` | off |

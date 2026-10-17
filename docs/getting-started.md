@@ -14,8 +14,8 @@ Other ways:
 # macOS and Linux, verifies the release checksum
 curl -fsSL https://raw.githubusercontent.com/kabirnarang39/pando/main/install.sh | sh
 
-# Docker
-docker run -p 7420:7420 ghcr.io/kabirnarang39/pando:latest
+# Docker (a server on the network needs a token; pick your own secret)
+docker run -p 7420:7420 -e PANDO_TOKENS="me:$(openssl rand -hex 24)" ghcr.io/kabirnarang39/pando:latest
 
 # From source
 cargo install --git https://github.com/kabirnarang39/pando pando-vcs pando-server

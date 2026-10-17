@@ -1,0 +1,116 @@
+#cloud-config
+# A production Pando server on a free ARM virtual machine (Oracle Cloud Always Free, Ubuntu 24.04
+# aarch64): pandod behind Caddy for HTTPS, local SQLite and objects on the boot volume, hourly
+# incremental backups off the machine. Fill in the four values marked CHANGE before use.
+
+write_files:
+  - path: /etc/pando/pandod.env
+    permissions: "0600"
+    content: |
+      # CHANGE: one or more name:token pairs. Generate a token with: openssl rand -hex 32
+      PANDO_TOKENS=admin:CHANGE-ME
+      # CHANGE: the sites allowed to use this server from a browser (the hosted console).
+      PANDO_WEB_ORIGINS=https://kabirnarang39.github.io
+      PANDO_AUDIT_LOG=/var/log/pando/audit.log
+  - path: /etc/pando/backup.env
+    permissions: "0600"
+    content: |
+      # CHANGE: where backups go. Metadata to a free Neon Postgres, objects to a free R2 bucket.
+      BACKUP_METADATA=postgres://USER:PASSWORD@HOST/pando?sslmode=require
+      BACKUP_OBJECTS=s3://pando-backup
+      AWS_ACCESS_KEY_ID=CHANGE-ME
+      AWS_SECRET_ACCESS_KEY=CHANGE-ME
+      AWS_ENDPOINT=https://ACCOUNT_ID.r2.cloudflarestorage.com
+      AWS_REGION=auto
+  - path: /etc/caddy/Caddyfile
+    content: |
+      # CHANGE: the server's DNS name. Caddy gets and renews the certificate itself.
+      pando.example.com {
+        encode zstd gzip
+        # gRPC, git-remote-pando and the console's gRPC-Web all go to pandod over cleartext HTTP/2.
+        reverse_proxy h2c://127.0.0.1:7420
+        header {
+          Strict-Transport-Security "max-age=31536000; includeSubDomains"
+          X-Content-Type-Options nosniff
+        }
+      }
+  - path: /etc/systemd/system/pandod.service
+    content: |
+      [Unit]
+      Description=Pando server
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User=pando
+      EnvironmentFile=/etc/pando/pandod.env
+      ExecStart=/usr/local/bin/pandod server --listen 127.0.0.1:7420 \
+        --metadata sqlite:///var/lib/pando/meta.db --objects metadata --metrics 127.0.0.1:9420
+      Restart=always
+      RestartSec=2
+      LimitNOFILE=65536
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      PrivateTmp=yes
+      ProtectKernelTunables=yes
+      ProtectControlGroups=yes
+      RestrictSUIDSGID=yes
+      ReadWritePaths=/var/lib/pando /var/log/pando
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/pando-backup.service
+    content: |
+      [Unit]
+      Description=Pando backup (incremental, consistent while serving)
+      [Service]
+      Type=oneshot
+      User=pando
+      EnvironmentFile=/etc/pando/backup.env
+      ExecStart=/bin/sh -c 'exec /usr/local/bin/pandod copy --from-metadata sqlite:///var/lib/pando/meta.db --to-metadata "$BACKUP_METADATA" --to-objects "$BACKUP_OBJECTS"'
+  - path: /etc/systemd/system/pando-backup.timer
+    content: |
+      [Unit]
+      Description=Back up Pando every hour
+      [Timer]
+      OnCalendar=hourly
+      RandomizedDelaySec=300
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/pando-compact.timer
+    content: |
+      [Unit]
+      Description=Compact Pando's stored history weekly
+      [Timer]
+      OnCalendar=Sun 04:00
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/pando-compact.service
+    content: |
+      [Unit]
+      Description=Compact Pando's stored history
+      [Service]
+      Type=oneshot
+      User=pando
+      ExecStart=/usr/local/bin/pandod compact --metadata sqlite:///var/lib/pando/meta.db
+
+package_update: true
+packages: [curl, debian-keyring, debian-archive-keyring, apt-transport-https, gnupg, netfilter-persistent, iptables-persistent]
+
+runcmd:
+  - useradd --system --home /var/lib/pando --create-home --shell /usr/sbin/nologin pando
+  - install -d -o pando -g pando /var/lib/pando /var/log/pando
+  - curl -fsSL https://raw.githubusercontent.com/kabirnarang39/pando/main/install.sh | PANDO_INSTALL=/usr/local/bin sh
+  # Caddy from its official repository
+  - curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update && apt-get install -y caddy
+  # Oracle's Ubuntu images reject inbound traffic in iptables besides SSH; open HTTP and HTTPS.
+  - iptables -I INPUT 6 -p tcp --dport 80 -j ACCEPT
+  - iptables -I INPUT 6 -p tcp --dport 443 -j ACCEPT
+  - netfilter-persistent save
+  - systemctl daemon-reload
+  - systemctl enable --now pandod caddy pando-backup.timer pando-compact.timer

@@ -32,6 +32,21 @@ struct Cli {
     /// result) to this file. Off by default; it grows with every request.
     #[arg(long, global = true, env = "PANDO_AUDIT_LOG")]
     audit_log: Option<std::path::PathBuf>,
+    /// Comma-separated origins allowed to call this server from a browser on another site,
+    /// e.g. the web console's address; `*` allows any (development only).
+    #[arg(long, global = true, env = "PANDO_WEB_ORIGINS", value_delimiter = ',')]
+    web_origins: Vec<String>,
+    /// Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod
+    /// otherwise listens only on localhost, so a server is never open to a network by accident.
+    #[arg(long, global = true, env = "PANDO_ALLOW_ANONYMOUS", action = clap::ArgAction::SetTrue, value_parser = clap::builder::BoolishValueParser::new())]
+    allow_anonymous: bool,
+    /// Longest any one call may run, in seconds.
+    #[arg(long, global = true, env = "PANDO_REQUEST_TIMEOUT", default_value_t = 600)]
+    request_timeout: u64,
+    /// Calls in progress at once across all clients; beyond this, calls are refused with
+    /// Unavailable (clients retry) instead of queueing.
+    #[arg(long, global = true, env = "PANDO_MAX_IN_FLIGHT", default_value_t = 4096)]
+    max_in_flight: usize,
     /// Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only).
     #[arg(long, global = true, env = "PANDO_TOKENS", hide_env_values = true)]
     tokens: Option<String>,
@@ -154,6 +169,13 @@ async fn main() -> anyhow::Result<()> {
         telemetry::init_metrics(addr)?;
     }
     let flags = Arc::new(SpecFlags::from_env()?);
+    let web = pando_server::WebAccess {
+        enabled: flags.enabled(pando_core::flags::Flag::Web),
+        origins: cli.web_origins.iter().map(|o| o.trim().to_owned()).filter(|o| !o.is_empty()).collect(),
+    };
+    if web.origins.iter().any(|o| o == "*") {
+        tracing::warn!("PANDO_WEB_ORIGINS=*: any website can call this server from a browser; use only in development");
+    }
     let mut authenticators: Vec<Arc<dyn Authenticator>> = Vec::new();
     if let Some(t) = &cli.tokens {
         authenticators.push(Arc::new(StaticTokens::new(t.split(',').map(|s| s.trim().to_owned()))));
@@ -171,7 +193,8 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("--oidc-issuer ignored: feature `oidc` is disabled");
         }
     }
-    let auth: Arc<dyn Authenticator> = if authenticators.is_empty() {
+    let anonymous = authenticators.is_empty();
+    let auth: Arc<dyn Authenticator> = if anonymous {
         tracing::warn!("no PANDO_TOKENS or OIDC issuer set: authentication disabled");
         Arc::new(AllowAll)
     } else {
@@ -260,6 +283,17 @@ async fn main() -> anyhow::Result<()> {
             (listen, tier_routes(store, flags))
         }
     };
+    if anonymous && !listen.ip().is_loopback() && !cli.allow_anonymous {
+        anyhow::bail!(
+            "refusing to serve {listen} without authentication: anyone who can reach it could read and change the repository. \
+             Set PANDO_TOKENS (or --oidc-issuer), listen on 127.0.0.1, or set PANDO_ALLOW_ANONYMOUS=1 to accept anonymous access on purpose"
+        );
+    }
+    let limits = pando_server::Limits {
+        request_timeout: std::time::Duration::from_secs(cli.request_timeout),
+        max_in_flight: cli.max_in_flight.max(1),
+        ..Default::default()
+    };
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    serve(listener, routes, auth, tls, shutdown_signal()).await
+    serve(listener, routes, auth, tls, web, limits, shutdown_signal()).await
 }

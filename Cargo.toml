@@ -49,6 +49,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
 tonic-health = "0.14"
 tonic-reflection = "0.14"
+tonic-web = "0.14"
 mimalloc = "0.1"
 ignore = "0.4"
 url = "2"
@@ -60,7 +61,8 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
 schemars = "1"
-tower = "0.5"
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["cors"] }
 
 [profile.release]
 lto = "thin"

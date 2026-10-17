@@ -3,7 +3,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/**", "scripts/build-site.sh", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "console/**", "scripts/build-site.sh", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,13 @@ jobs:
         run: |
           curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C /usr/local/bin mdbook
           mdbook --version
+      - uses: pnpm/action-setup@v6
+        with: { package_json_file: console/package.json }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: console/pnpm-lock.yaml }
+      - name: Build the console (its demo runs at /console/)
+        working-directory: console
+        run: pnpm install --frozen-lockfile && pnpm build
       - name: Build site and docs
         run: scripts/build-site.sh _site
       - uses: actions/upload-pages-artifact@v5

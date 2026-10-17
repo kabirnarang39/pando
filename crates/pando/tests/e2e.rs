@@ -13,7 +13,7 @@ use pando_core::acl::{AccessPolicy, AllowAllPolicy};
 use pando_core::flags::FeatureFlags;
 use pando_core::ports::{LandCheck, NoChecks};
 use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
-use pando_server::{authority_routes, config, serve, tier_routes};
+use pando_server::{Limits, WebAccess, authority_routes, config, serve, tier_routes};
 use tokio::net::TcpListener;
 
 struct Cluster {
@@ -28,7 +28,8 @@ async fn spawn(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(serve(listener, routes, auth, None, async {
+    let web = WebAccess { enabled: true, origins: vec!["http://console.test".into()] };
+    tokio::spawn(serve(listener, routes, auth, None, web, Limits::default(), async {
         let _ = rx.await;
     }));
     (url, tx)
@@ -1408,4 +1409,48 @@ async fn locked_files_refuse_other_landers() {
     bob.unlock("art/hero.psd", true).await.unwrap();
     assert!(alice.locks("").await.unwrap().is_empty());
     land::run(bob.as_ref(), &mut wb).await.unwrap();
+}
+
+/// One raw HTTP/1.1 exchange, as a browser makes it; returns the response head and body.
+async fn http1(server: &str, request: &[u8]) -> (String, Vec<u8>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut s = tokio::net::TcpStream::connect(server.trim_start_matches("http://")).await.unwrap();
+    s.write_all(request).await.unwrap();
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).await.unwrap();
+    let split = out.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    (String::from_utf8_lossy(&out[..split]).to_lowercase(), out[split + 4..].to_vec())
+}
+
+/// Browsers reach the server through gRPC-Web, and only from allowed origins.
+#[tokio::test(flavor = "multi_thread")]
+async fn browsers_call_the_server_over_grpc_web() {
+    let c = start().await;
+    let host = c.server.trim_start_matches("http://").to_owned();
+    let preflight = |origin: &str| {
+        format!(
+            "OPTIONS /pando.v1.Refs/List HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\n\
+             Access-Control-Request-Method: POST\r\nAccess-Control-Request-Headers: content-type,x-grpc-web,authorization,x-pando-repo\r\n\
+             Connection: close\r\n\r\n"
+        )
+    };
+    let (head, _) = http1(&c.server, preflight("http://console.test").as_bytes()).await;
+    assert!(head.contains("access-control-allow-origin: http://console.test"), "{head}");
+    assert!(head.contains("authorization"), "the bearer token header must be allowed: {head}");
+    assert!(head.contains("x-pando-repo"), "the repository header must be allowed: {head}");
+    let (head, _) = http1(&c.server, preflight("http://evil.test").as_bytes()).await;
+    assert!(!head.contains("access-control-allow-origin"), "other origins get no permission: {head}");
+
+    // A gRPC-Web call: one data frame holding an empty message, answered with data and a
+    // trailer frame carrying the gRPC status.
+    let call = format!(
+        "POST /pando.v1.Refs/List HTTP/1.1\r\nHost: {host}\r\nOrigin: http://console.test\r\n\
+         Content-Type: application/grpc-web+proto\r\nX-Grpc-Web: 1\r\nContent-Length: 5\r\nConnection: close\r\n\r\n"
+    );
+    let mut req = call.into_bytes();
+    req.extend_from_slice(&[0, 0, 0, 0, 0]);
+    let (head, body) = http1(&c.server, &req).await;
+    assert!(head.starts_with("http/1.1 200"), "{head}");
+    assert!(head.contains("application/grpc-web"), "{head}");
+    assert!(String::from_utf8_lossy(&body).contains("grpc-status:0"), "{body:?}");
 }

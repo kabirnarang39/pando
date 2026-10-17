@@ -26,10 +26,11 @@ pub enum Flag {
     VirtualCheckout,
     LandChecks,
     Locks,
+    Web,
 }
 
 impl Flag {
-    pub const ALL: [Flag; 21] = [
+    pub const ALL: [Flag; 22] = [
         Flag::Objects,
         Flag::Changesets,
         Flag::Refs,
@@ -51,6 +52,7 @@ impl Flag {
         Flag::VirtualCheckout,
         Flag::LandChecks,
         Flag::Locks,
+        Flag::Web,
     ];
 
     pub fn key(self) -> &'static str {
@@ -76,6 +78,7 @@ impl Flag {
             Flag::VirtualCheckout => "virtual-checkout",
             Flag::LandChecks => "land-checks",
             Flag::Locks => "locks",
+            Flag::Web => "web",
         }
     }
 

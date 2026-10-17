@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Pando console: browse code, watch changes land and see locked files on a Pando server." />
+    <title>Pando console</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      // Apply the saved theme before first paint, so dark mode never flashes light.
+      try {
+        const t = localStorage.getItem("pando.console.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+    <style>
+      /* First paint, before any JavaScript: the app's frame in the right theme. */
+      html { background: #f4f5f2; color: #13202b; }
+      @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) { background: #0b141e; color: #e6ecf2; } }
+      html[data-theme="dark"] { background: #0b141e; color: #e6ecf2; }
+      body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      .first { display: grid; grid-template-columns: 252px 1fr; height: 100dvh; }
+      .first-side { border-right: 1px solid rgb(127 140 150 / 0.18); background: rgb(127 140 150 / 0.06); padding: 18px; }
+      .first-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+      .first-main { display: grid; place-items: center; color: rgb(127 140 150); font-size: 13px; }
+      @media (max-width: 860px) { .first { grid-template-columns: 1fr; } .first-side { display: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="first" aria-busy="true">
+        <div class="first-side">
+          <div class="first-brand">
+            <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><path d="M21 13h12.5a12.5 12.5 0 0 1 0 25H25" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/><path d="M21 10v44" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><circle cx="21" cy="38" r="6.2" fill="#F0B429"/></svg>
+            pando
+          </div>
+        </div>
+        <div class="first-main">Loading Pando…</div>
+      </div>
+    </div>
+    <noscript>The Pando console needs JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

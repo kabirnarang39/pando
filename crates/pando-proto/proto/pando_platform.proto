@@ -1,0 +1,457 @@
+syntax = "proto3";
+
+// Hosting: organisations, repositories, accounts, teams and tokens, and review (change requests,
+// comments, approvals, protected branches). Repository-scoped calls on the other services name
+// their repository with the `x-pando-repo: OWNER/NAME` request header; a call without it reaches
+// the server's default repository, so single-repository servers and older clients are unchanged.
+package pando.v1;
+
+import "pando.proto";
+
+// ---- accounts ----
+
+enum AccountKind {
+  ACCOUNT_KIND_UNSPECIFIED = 0;
+  ACCOUNT_KIND_PERSON = 1;
+  // An automated author. Agents are owned by a person or a team, who answer for them.
+  ACCOUNT_KIND_AGENT = 2;
+  ACCOUNT_KIND_ORGANIZATION = 3;
+}
+
+message Account {
+  string login = 1;
+  string display_name = 2;
+  AccountKind kind = 3;
+  // Agents only: the person or team that owns the agent.
+  string owner = 4;
+  string avatar_url = 5;
+  int64 created_at_ms = 6;
+  bool site_admin = 7;
+}
+
+// ---- repositories ----
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_PRIVATE = 1;
+  VISIBILITY_INTERNAL = 2;
+  VISIBILITY_PUBLIC = 3;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_READ = 1;
+  // May open change requests and comment; may not land on protected branches.
+  ROLE_TRIAGE = 2;
+  ROLE_WRITE = 3;
+  ROLE_MAINTAIN = 4;
+  ROLE_ADMIN = 5;
+}
+
+message Repository {
+  string owner = 1;
+  string name = 2;
+  string description = 3;
+  Visibility visibility = 4;
+  string default_branch = 5;
+  int64 created_at_ms = 6;
+  // The caller's role, so the app shows only what the caller may do.
+  Role viewer_role = 7;
+  bool archived = 8;
+  // Activity in the last 24 hours, for lists.
+  uint32 lands_24h = 9;
+  uint32 open_change_requests = 10;
+  bytes tip = 11;
+  int64 tip_at_ms = 12;
+  repeated string topics = 13;
+}
+
+message RepositoryRef {
+  string owner = 1;
+  string name = 2;
+}
+
+message ListRepositoriesRequest {
+  // Empty: every repository the caller can read.
+  string owner = 1;
+  string query = 2;
+  uint32 limit = 3;
+  string page_token = 4;
+}
+message ListRepositoriesResponse {
+  repeated Repository repositories = 1;
+  string next_page_token = 2;
+}
+
+message CreateRepositoryRequest {
+  string owner = 1;
+  string name = 2;
+  string description = 3;
+  Visibility visibility = 4;
+  string default_branch = 5;
+}
+
+message UpdateRepositoryRequest {
+  string owner = 1;
+  string name = 2;
+  // Only fields named in `fields` change (description, visibility, default_branch, archived, topics).
+  repeated string fields = 3;
+  string description = 4;
+  Visibility visibility = 5;
+  string default_branch = 6;
+  bool archived = 7;
+  repeated string topics = 8;
+}
+
+// ---- organisations, members and teams ----
+
+message Organization {
+  string login = 1;
+  string display_name = 2;
+  string description = 3;
+  int64 created_at_ms = 4;
+  Role viewer_role = 5;
+  uint32 repositories = 6;
+  uint32 members = 7;
+  uint32 agents = 8;
+}
+
+message Member {
+  Account account = 1;
+  Role role = 2;
+  repeated string teams = 3;
+}
+
+message Team {
+  string org = 1;
+  string slug = 2;
+  string name = 3;
+  string description = 4;
+  repeated string members = 5;
+}
+
+message Grant {
+  // A person, agent or team ("org/team-slug").
+  string principal = 1;
+  Role role = 2;
+}
+
+message OrgName { string login = 1; }
+message ListOrganizationsResponse { repeated Organization organizations = 1; }
+message CreateOrganizationRequest {
+  string login = 1;
+  string display_name = 2;
+  string description = 3;
+}
+message ListMembersResponse { repeated Member members = 1; }
+message SetMemberRequest {
+  string org = 1;
+  string login = 2;
+  // ROLE_UNSPECIFIED removes the member.
+  Role role = 3;
+}
+message ListTeamsResponse { repeated Team teams = 1; }
+message ListGrantsResponse { repeated Grant grants = 1; }
+message SetGrantRequest {
+  RepositoryRef repository = 1;
+  string principal = 2;
+  // ROLE_UNSPECIFIED removes the grant.
+  Role role = 3;
+}
+
+// ---- tokens ----
+
+message Token {
+  string id = 1;
+  string name = 2;
+  // For agent tokens, the agent the token acts as.
+  string acts_as = 3;
+  repeated string repositories = 4;
+  Role max_role = 5;
+  int64 created_at_ms = 6;
+  int64 expires_at_ms = 7;
+  int64 last_used_at_ms = 8;
+}
+message ListTokensResponse { repeated Token tokens = 1; }
+message CreateTokenRequest {
+  string name = 1;
+  string acts_as = 2;
+  repeated string repositories = 3;
+  Role max_role = 4;
+  int64 expires_at_ms = 5;
+}
+message CreateTokenResponse {
+  Token token = 1;
+  // Shown once; the server keeps only a hash.
+  string secret = 2;
+}
+message RevokeTokenRequest { string id = 1; }
+
+message ViewerResponse {
+  Account account = 1;
+  repeated Organization organizations = 2;
+}
+
+service Platform {
+  rpc Viewer(Empty) returns (ViewerResponse);
+  rpc GetAccount(OrgName) returns (Account);
+  rpc ListOrganizations(Empty) returns (ListOrganizationsResponse);
+  rpc GetOrganization(OrgName) returns (Organization);
+  rpc CreateOrganization(CreateOrganizationRequest) returns (Organization);
+  rpc ListMembers(OrgName) returns (ListMembersResponse);
+  rpc SetMember(SetMemberRequest) returns (Member);
+  rpc ListTeams(OrgName) returns (ListTeamsResponse);
+
+  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
+  rpc GetRepository(RepositoryRef) returns (Repository);
+  rpc CreateRepository(CreateRepositoryRequest) returns (Repository);
+  rpc UpdateRepository(UpdateRepositoryRequest) returns (Repository);
+  rpc ListGrants(RepositoryRef) returns (ListGrantsResponse);
+  rpc SetGrant(SetGrantRequest) returns (Grant);
+
+  rpc ListTokens(Empty) returns (ListTokensResponse);
+  rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse);
+  rpc RevokeToken(RevokeTokenRequest) returns (Empty);
+}
+
+// ---- review ----
+
+enum ChangeRequestState {
+  CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
+  CHANGE_REQUEST_STATE_OPEN = 1;
+  CHANGE_REQUEST_STATE_DRAFT = 2;
+  CHANGE_REQUEST_STATE_LANDED = 3;
+  CHANGE_REQUEST_STATE_CLOSED = 4;
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  VERDICT_COMMENTED = 1;
+  VERDICT_APPROVED = 2;
+  VERDICT_CHANGES_REQUESTED = 3;
+}
+
+enum CheckState {
+  CHECK_STATE_UNSPECIFIED = 0;
+  CHECK_STATE_PENDING = 1;
+  CHECK_STATE_PASSED = 2;
+  CHECK_STATE_FAILED = 3;
+  CHECK_STATE_SKIPPED = 4;
+}
+
+message Check {
+  string name = 1;
+  CheckState state = 2;
+  string summary = 3;
+  string details_url = 4;
+  int64 started_at_ms = 5;
+  int64 finished_at_ms = 6;
+}
+
+message ReviewSummary {
+  string reviewer = 1;
+  Verdict verdict = 2;
+  int64 at_ms = 3;
+  // The source tip the reviewer looked at; a newer tip makes the review stale.
+  bytes reviewed_tip = 4;
+}
+
+message ChangeRequest {
+  RepositoryRef repository = 1;
+  uint64 number = 2;
+  string title = 3;
+  string body = 4;
+  string author = 5;
+  ChangeRequestState state = 6;
+  string source = 7;
+  string target = 8;
+  bytes source_tip = 9;
+  bytes base = 10;
+  int64 created_at_ms = 11;
+  int64 updated_at_ms = 12;
+  repeated string requested_reviewers = 13;
+  repeated ReviewSummary reviews = 14;
+  repeated Check checks = 15;
+  uint32 comments = 16;
+  uint32 files = 17;
+  uint32 additions = 18;
+  uint32 deletions = 19;
+  // Paths that conflict with changes landed on the target since `base`, known before review.
+  repeated string conflicts = 20;
+  // Why it cannot land yet, in words ("needs 1 more approval"); empty when it can.
+  repeated string blockers = 21;
+  bytes landed_as = 22;
+  repeated string labels = 23;
+  // Opened automatically when an agent landed on a protected branch.
+  bool from_protected_land = 24;
+}
+
+message ListChangeRequestsRequest {
+  RepositoryRef repository = 1;
+  // Empty: all states.
+  repeated ChangeRequestState states = 2;
+  string author = 3;
+  string reviewer = 4;
+  // Qualifier syntax, e.g. `is:open author:agent/* review:required path:services/billing`.
+  string query = 5;
+  uint32 limit = 6;
+  string page_token = 7;
+}
+message ListChangeRequestsResponse {
+  repeated ChangeRequest change_requests = 1;
+  string next_page_token = 2;
+}
+
+message ChangeRequestRef {
+  RepositoryRef repository = 1;
+  uint64 number = 2;
+}
+
+message CreateChangeRequestRequest {
+  RepositoryRef repository = 1;
+  string source = 2;
+  string target = 3;
+  string title = 4;
+  string body = 5;
+  bool draft = 6;
+  repeated string reviewers = 7;
+}
+
+message UpdateChangeRequestRequest {
+  ChangeRequestRef ref = 1;
+  repeated string fields = 2;
+  string title = 3;
+  string body = 4;
+  ChangeRequestState state = 5;
+  repeated string reviewers = 6;
+  repeated string labels = 7;
+}
+
+message Comment {
+  string id = 1;
+  string author = 2;
+  string body = 3;
+  int64 created_at_ms = 4;
+  int64 edited_at_ms = 5;
+  // Line comments: the file, line and side they are attached to, and the tip they were made on.
+  string path = 6;
+  uint32 line = 7;
+  bool on_base = 8;
+  bytes at_tip = 9;
+  // Replies name the first comment of their thread.
+  string thread = 10;
+  bool resolved = 11;
+  // A suggested replacement for the commented lines, which the author can apply.
+  string suggestion = 12;
+  uint32 end_line = 13;
+}
+
+message ListCommentsResponse { repeated Comment comments = 1; }
+
+message AddCommentRequest {
+  ChangeRequestRef ref = 1;
+  string body = 2;
+  string path = 3;
+  uint32 line = 4;
+  uint32 end_line = 5;
+  bool on_base = 6;
+  string thread = 7;
+  string suggestion = 8;
+}
+
+message ResolveThreadRequest {
+  ChangeRequestRef ref = 1;
+  string thread = 2;
+  bool resolved = 3;
+}
+
+message SubmitReviewRequest {
+  ChangeRequestRef ref = 1;
+  Verdict verdict = 2;
+  string body = 3;
+}
+
+message LandChangeRequestResponse {
+  ChangeRequest change_request = 1;
+  bytes landed_as = 2;
+}
+
+message Protection {
+  RepositoryRef repository = 1;
+  // A branch name or pattern (`main`, `release/*`).
+  string pattern = 2;
+  uint32 required_approvals = 3;
+  repeated string required_checks = 4;
+  // Approvals go stale when the source changes.
+  bool dismiss_stale = 5;
+  // Agents may land directly; otherwise their land opens a change request.
+  bool agents_land_directly = 6;
+  // Who may land without review (admins, a team, a person).
+  repeated string bypass = 7;
+}
+message ListProtectionsResponse { repeated Protection protections = 1; }
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+  EVENT_KIND_LANDED = 1;
+  EVENT_KIND_CHANGE_REQUEST_OPENED = 2;
+  EVENT_KIND_REVIEWED = 3;
+  EVENT_KIND_COMMENTED_ON = 4;
+  EVENT_KIND_CHANGE_REQUEST_LANDED = 5;
+  EVENT_KIND_CHANGE_REQUEST_CLOSED = 6;
+  EVENT_KIND_LOCKED = 7;
+  EVENT_KIND_UNLOCKED = 8;
+  EVENT_KIND_REPOSITORY_CREATED = 9;
+}
+
+message Event {
+  string id = 1;
+  EventKind kind = 2;
+  string actor = 3;
+  RepositoryRef repository = 4;
+  int64 at_ms = 5;
+  uint64 change_request = 6;
+  bytes changeset = 7;
+  string summary = 8;
+}
+
+message InboxRequest { uint32 limit = 1; }
+message InboxItem {
+  ChangeRequest change_request = 1;
+  // Why it is in the inbox: "review requested", "changes requested on yours", "agent waiting".
+  string reason = 2;
+  bool unread = 3;
+}
+message InboxResponse { repeated InboxItem items = 1; }
+
+message ListEventsRequest {
+  // Empty: every repository the caller can read.
+  RepositoryRef repository = 1;
+  string actor = 2;
+  uint32 limit = 3;
+  string page_token = 4;
+}
+message ListEventsResponse {
+  repeated Event events = 1;
+  string next_page_token = 2;
+}
+
+service Reviews {
+  rpc ListChangeRequests(ListChangeRequestsRequest) returns (ListChangeRequestsResponse);
+  rpc GetChangeRequest(ChangeRequestRef) returns (ChangeRequest);
+  rpc CreateChangeRequest(CreateChangeRequestRequest) returns (ChangeRequest);
+  rpc UpdateChangeRequest(UpdateChangeRequestRequest) returns (ChangeRequest);
+  rpc ListComments(ChangeRequestRef) returns (ListCommentsResponse);
+  rpc AddComment(AddCommentRequest) returns (Comment);
+  rpc ResolveThread(ResolveThreadRequest) returns (Comment);
+  rpc SubmitReview(SubmitReviewRequest) returns (ChangeRequest);
+  rpc Land(ChangeRequestRef) returns (LandChangeRequestResponse);
+  // Re-applies the change on the target's tip. Edits that do not overlap what landed since are
+  // carried over; otherwise it fails with FAILED_PRECONDITION naming the files that conflict.
+  // Approvals made on the old version stop counting when the protection says so.
+  rpc Rebase(ChangeRequestRef) returns (ChangeRequest);
+  rpc ListProtections(RepositoryRef) returns (ListProtectionsResponse);
+  rpc SetProtection(Protection) returns (Protection);
+  rpc Inbox(InboxRequest) returns (InboxResponse);
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}

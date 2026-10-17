@@ -26,12 +26,18 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: Swatinem/rust-cache@v2
+        # v2: the earlier cache held target/package, which cargo package leaves behind and the
+        # cache action cannot restore.
+        with: { prefix-key: "v2-lint" }
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unused dependencies
         uses: bnjbvr/cargo-machete@v0.9.1
       - name: Crates package and build from their published tarballs
         run: cargo package --workspace --locked
+      - name: Keep packaged crates out of the cache
+        if: always()
+        run: rm -rf target/package
 
   test:
     strategy:
@@ -76,6 +82,37 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --locked -p pando-vcs -p pando-server
       - run: pwsh scripts/test-mount-windows.ps1 -Bin target\release
+
+  console:
+    # The web console: types, unit tests, generated code in sync with the protos, the build with
+    # its size budget, and end-to-end tests against a freshly built pandod.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p pando-vcs -p pando-server
+        working-directory: .
+      - uses: pnpm/action-setup@v6
+        with: { package_json_file: console/package.json }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: console/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - name: Generated code matches the protos
+        run: pnpm gen && git diff --exit-code src/gen
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with: { name: console-e2e, path: console/test-results }
 
   databases:
     # Same contract suite against real Postgres and CockroachDB (Postgres wire protocol).

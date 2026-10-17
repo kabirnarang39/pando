@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://kabirnarang39.github.io/pando/"><img src="docs/assets/brand/mark.svg" width="96" height="96" alt="Pando logo: aspen trunks rising from one shared root"></a>
+  <a href="https://kabirnarang39.github.io/pando/"><img src="docs/assets/brand/mark.svg" width="96" height="96" alt="Pando logo: the letter P drawn as a branch landing back on main"></a>
 </p>
 
 <h1 align="center">Pando</h1>
@@ -33,6 +33,12 @@
   </picture>
   <br>
   <sub>Both systems on one Apple M4 laptop, release builds. Reproduce with <a href="bench/run.sh"><code>bench/run.sh</code></a> and <a href="crates/pando/examples/land_load.rs"><code>examples/land_load.rs</code></a>.</sub>
+</p>
+
+
+<p align="center">
+  <a href="https://kabirnarang39.github.io/pando/console/"><b>Try the web console</b></a>: a whole organisation of agents landing
+  and reviewing changes, simulated in your browser.
 </p>
 
 ## Why Pando
