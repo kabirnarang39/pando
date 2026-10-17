@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-17
+
 ### Added
 - `pando mount` on macOS and Windows. macOS serves a read-only NFSv3 view on localhost and
   mounts it with the system `mount_nfs`: no kernel extension, nothing to install, no admin

@@ -1,6 +1,6 @@
 {
   "name": "pando-vcs",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "TypeScript/Node.js client for Pando, source control for monorepos at agent scale",
   "license": "Apache-2.0",
   "type": "module",
