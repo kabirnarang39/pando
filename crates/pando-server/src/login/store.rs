@@ -267,12 +267,13 @@ mod tests {
     fn sign_ins_in_progress_are_single_use_and_expire() {
         let r = Registry::open("memory").unwrap();
         let later = now_ms() + 60_000;
-        r.put_login_state(b"k1", "google", "n", "v", "/", later).unwrap();
+        let (n, v) = (super::super::random_hex().unwrap(), super::super::random_hex().unwrap());
+        r.put_login_state(b"k1", "google", &n, &v, "/", later).unwrap();
         assert!(r.take_login_state(b"k1", "other").unwrap().is_none(), "for another provider");
-        r.put_login_state(b"k2", "google", "n", "v", "/x", later).unwrap();
-        assert_eq!(r.take_login_state(b"k2", "google").unwrap(), Some(("n".into(), "v".into(), "/x".into())));
+        r.put_login_state(b"k2", "google", &n, &v, "/x", later).unwrap();
+        assert_eq!(r.take_login_state(b"k2", "google").unwrap(), Some((n.clone(), v.clone(), "/x".into())));
         assert!(r.take_login_state(b"k2", "google").unwrap().is_none(), "used");
-        r.put_login_state(b"k3", "google", "n", "v", "/", now_ms() - 1).unwrap();
+        r.put_login_state(b"k3", "google", &n, &v, "/", now_ms() - 1).unwrap();
         assert!(r.take_login_state(b"k3", "google").unwrap().is_none(), "expired");
 
         r.put_email_login(b"t1", "a@b.example", "/", later).unwrap();
