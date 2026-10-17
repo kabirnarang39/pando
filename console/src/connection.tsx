@@ -67,22 +67,29 @@ export function pendingServer(): string | null {
   }
 }
 
+/**
+ * The demo engine is its own chunk: only demo visitors download it. It boots once per page, while
+ * the app renders: calls made before it is ready simply wait for it.
+ */
+let demo: Promise<{ platform: DemoPlatform; transport: typeof import("./api/demo-platform").platformTransport }> | undefined;
+const bootDemo = () =>
+  (demo ??= import("./api/demo-platform").then(async (m) => ({ platform: await m.DemoPlatform.create(), transport: m.platformTransport })));
+
+/** A transport whose calls wait for the real one. */
+const deferred = (t: Promise<Transport>): Transport => ({
+  unary: async (...args) => (await t).unary(...args),
+  stream: async (...args) => (await t).stream(...args),
+});
+
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<Target>(initial);
-  // The demo engine is its own chunk: only demo visitors download it.
-  const [demo, setDemo] = useState<{ platform: DemoPlatform; transport: typeof import("./api/demo-platform").platformTransport } | null>(null);
+  // Start and stop the demo's live activity with the target; it boots once per page.
   useEffect(() => {
-    if (target.kind !== "demo") {
-      setDemo(null);
-      return;
-    }
+    if (target.kind !== "demo") return;
     let live = true;
     let stop: (() => void) | undefined;
-    void import("./api/demo-platform").then(async (m) => {
-      const platform = await m.DemoPlatform.create();
-      if (!live) return;
-      stop = platform.start();
-      setDemo({ platform, transport: m.platformTransport });
+    void bootDemo().then((d) => {
+      if (live) stop = d.platform.start();
     });
     return () => {
       live = false;
@@ -90,8 +97,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     };
   }, [target.kind]);
 
-  const value = useMemo<Connection | null>(() => {
-    if (target.kind === "demo" && !demo) return null;
+  const value = useMemo<Connection>(() => {
     const transports = new Map<string, Transport>();
     const transport = (repo?: string): Transport => {
       const key = repo ?? "";
@@ -99,7 +105,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       if (!t) {
         t =
           target.kind === "demo"
-            ? demo!.transport(demo!.platform, { interceptors: [repoInterceptor(repo)] })
+            ? deferred(bootDemo().then((d) => d.transport(d.platform, { interceptors: [repoInterceptor(repo)] })))
             : serverTransport(target.url, target.token, repo);
         transports.set(key, t);
       }
@@ -126,9 +132,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setTarget(next);
       },
     };
-  }, [target, demo]);
+  }, [target]);
 
-  if (!value) return <div className="boot" aria-busy="true" aria-label="Starting the demo" />;
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

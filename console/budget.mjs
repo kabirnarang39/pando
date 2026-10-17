@@ -3,7 +3,7 @@
 // is the app shell. Lower BUDGET_KB when the bundle shrinks; never raise it without a reason.
 import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
-const BUDGET_KB = 225;
+const BUDGET_KB = 170;
 const html = readFileSync("dist/index.html", "utf8");
 const files = [...new Set(html.match(/assets\/[^"]+\.js/g) ?? [])];
 const kb = files.reduce((sum, f) => sum + gzipSync(readFileSync(`dist/${f}`)).length, 0) / 1024;

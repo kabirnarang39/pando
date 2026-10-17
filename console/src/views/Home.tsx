@@ -1,6 +1,6 @@
 import { IssueInboxRow } from "../components/IssueParts";
 import { Link, Navigate } from "@tanstack/react-router";
-import { ChecksIcon, StateIcon } from "../components/ReviewParts";
+import { ChecksIcon, StateIcon } from "../components/StateIcons";
 import { EventKind } from "../gen/pando_platform_pb";
 import { SINGLE, useCapabilities, useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
 import { ago, Author, Empty, Icon, Skeleton, Time, useNow } from "../ui";

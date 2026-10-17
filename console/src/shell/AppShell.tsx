@@ -1,6 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Button, Dialog, Menu, MenuItem, MenuTrigger, Modal, ModalOverlay, Popover, Separator } from "react-aria-components";
 import { Mark, Wordmark } from "../brand";
 import { pendingServer, useConnection } from "../connection";
 import { isSingle, useCapabilities, useInbox, useRepositories, useViewer } from "../platform-data";
@@ -11,6 +10,8 @@ import { modKey, typing, useTheme } from "./hooks";
 
 // The command menu is its own chunk, fetched when idle or on first open.
 const CommandMenu = lazy(() => import("./CommandMenu").then((m) => ({ default: m.CommandMenu })));
+const AccountMenu = lazy(() => import("./AccountMenu").then((m) => ({ default: m.AccountMenu })));
+const Shortcuts = lazy(() => import("./AccountMenu").then((m) => ({ default: m.Shortcuts })));
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -73,8 +74,9 @@ export function AppShell() {
     if (menu) setMenuLoaded(true);
   }, [menu]);
   useEffect(() => {
-    const id = (window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)))(() => void import("./CommandMenu"));
-    return () => (window.cancelIdleCallback ?? clearTimeout)(id as number);
+    // Warm the command menu once the first screen is up, so it never competes with it.
+    const id = setTimeout(() => void import("./CommandMenu"), 3000);
+    return () => clearTimeout(id);
   }, []);
   useEffect(() => {
     if (!menu) setEarly("");
@@ -115,7 +117,11 @@ export function AppShell() {
       ) : (
         commandMenu
       )}
-      <Shortcuts open={keys} onClose={() => setKeys(false)} />
+      {keys && (
+        <Suspense>
+          <Shortcuts open onClose={() => setKeys(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -125,12 +131,32 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
   const repos = useRepositories();
   const inbox = useInbox();
   const reviews = useCapabilities().data?.reviews ?? false;
-  const navigate = useNavigate();
   const { label, target } = useConnection();
   const org = viewer.data?.organizations[0];
   const waiting = inbox.data?.length ?? 0;
   const unread = inbox.data?.filter((i) => i.unread).length ?? 0;
   const now = Date.now();
+  const me = (
+    <>
+      {viewer.data?.principal ? <Author author={viewer.data.principal} compact /> : <Icon name="users" />}
+      <span style={{ minWidth: 0 }}>
+        <span className="who-name">{viewer.data?.account?.displayName ?? (viewer.data?.principal || "Anonymous")}</span>
+        <span className="conn">{target.kind === "demo" ? "Demo data" : label}</span>
+      </span>
+    </>
+  );
+  // Swapping the button would drop keyboard focus, so a focused one waits for its click.
+  const [account, setAccount] = useState<"later" | "now" | "open">("later");
+  const plain = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const id = setTimeout(() => document.activeElement !== plain.current && setAccount((a) => (a === "later" ? "now" : a)), 3000);
+    return () => clearTimeout(id);
+  }, []);
+  const plainMe = (
+    <button ref={plain} type="button" className="me" aria-label="Account and settings" aria-haspopup="menu" onClick={() => setAccount("open")}>
+      {me}
+    </button>
+  );
 
   return (
     <nav className="sidebar" aria-label="Main">
@@ -188,36 +214,16 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
         {repos.isPending && <div className="side-link muted">Loading…</div>}
       </div>
       <div className="side-foot">
-        <MenuTrigger>
-          <Button className="me" aria-label="Account and settings">
-            {viewer.data?.principal ? <Author author={viewer.data.principal} compact /> : <Icon name="users" />}
-            <span style={{ minWidth: 0 }}>
-              <span className="who-name">{viewer.data?.account?.displayName ?? (viewer.data?.principal || "Anonymous")}</span>
-              <span className="conn">{target.kind === "demo" ? "Demo data" : label}</span>
-            </span>
-          </Button>
-          <Popover placement="top start" offset={6}>
-            <Menu
-              className="menu"
-              onAction={(k) => {
-                if (k === "tokens") navigate({ to: "/settings/tokens" });
-                else if (k === "connect") navigate({ to: "/connect" });
-                else if (k === "keys") showShortcuts();
-              }}
-            >
-              <MenuItem id="tokens" className="menu-item">
-                <Icon name="key" /> Tokens
-              </MenuItem>
-              <MenuItem id="connect" className="menu-item">
-                <Icon name="plug" /> Connection
-              </MenuItem>
-              <Separator className="menu-sep" />
-              <MenuItem id="keys" className="menu-item">
-                <Icon name="keyboard" /> Keyboard shortcuts
-              </MenuItem>
-            </Menu>
-          </Popover>
-        </MenuTrigger>
+        {/* The menu (and the accessibility library under it) loads after the first screen, or on first use. */}
+        {account === "later" ? (
+          plainMe
+        ) : (
+          <Suspense fallback={plainMe}>
+            <AccountMenu showShortcuts={showShortcuts} open={account === "open"}>
+              {me}
+            </AccountMenu>
+          </Suspense>
+        )}
         <button
           type="button"
           className="icon-button"
@@ -300,48 +306,5 @@ function TopBar({ onMenu }: { onMenu(): void }) {
         </button>
       )}
     </header>
-  );
-}
-
-const shortcuts: [string[], string][] = [
-  [[modKey, "K"], "Search or jump anywhere"],
-  [["/"], "Search"],
-  [["t"], "Go to a file in this repository"],
-  [["g", "h"], "Home"],
-  [["g", "i"], "Inbox"],
-  [["g", "c"], "Code"],
-  [["g", "l"], "Changes"],
-  [["g", "r"], "Reviews"],
-  [["g", "k"], "Locks"],
-  [["j", "k"], "Next and previous item"],
-  [["n", "p"], "Next and previous file in a review"],
-  [["a"], "Approve or review the change request"],
-  [["b"], "Show or hide blame"],
-  [["h"], "Show a file's history"],
-  [["u"], "Unified or split diff"],
-  [["?"], "This list"],
-];
-
-function Shortcuts({ open, onClose }: { open: boolean; onClose(): void }) {
-  return (
-    <ModalOverlay className="overlay" isDismissable isOpen={open} onOpenChange={(o) => !o && onClose()}>
-      <Modal>
-        <Dialog className="dialog" aria-labelledby="keys-title">
-          <h2 id="keys-title">Keyboard shortcuts</h2>
-          <dl className="keys">
-            {shortcuts.map(([k, what]) => (
-              <div key={what} style={{ display: "contents" }}>
-                <dt>
-                  {k.map((x) => (
-                    <kbd key={x}>{x}</kbd>
-                  ))}
-                </dt>
-                <dd>{what}</dd>
-              </div>
-            ))}
-          </dl>
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
   );
 }

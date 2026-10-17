@@ -1,10 +1,10 @@
 import { createHashHistory, createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { AppShell } from "./shell/AppShell";
 import { Empty, ErrorState } from "./ui";
-import { RepoLayout } from "./views/repo/RepoLayout";
 
 
 // Each screen is its own chunk, loaded on first visit (and preloaded on hover).
+const RepoLayout = lazyRouteComponent(() => import("./views/repo/RepoLayout"), "RepoLayout");
 const HomeView = lazyRouteComponent(() => import("./views/Home"), "HomeView");
 const InboxView = lazyRouteComponent(() => import("./views/Inbox"), "InboxView");
 const OrgView = lazyRouteComponent(() => import("./views/Org"), "OrgView");
