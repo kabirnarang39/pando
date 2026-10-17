@@ -65,20 +65,17 @@ jobs:
       - run: cargo build --release --locked -p pando-vcs -p pando-server
       - run: scripts/test-mount-macos.sh target/release
 
-  projfs-probe:
+  mount-windows:
+    # `pando mount` on Windows with the real Projected File System, compared with a checkout.
     runs-on: windows-latest
     steps:
-      - name: Can ProjFS be enabled without a reboot?
-        shell: pwsh
-        run: |
-          [System.Environment]::OSVersion.VersionString
-          Get-WindowsOptionalFeature -Online -FeatureName Client-ProjFS | Format-List FeatureName,State,RestartRequired
-          $r = Enable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS -NoRestart
-          $r | Format-List RestartNeeded
-          Get-WindowsOptionalFeature -Online -FeatureName Client-ProjFS | Format-List FeatureName,State
-          Test-Path C:\Windows\System32\ProjectedFSLib.dll
-          Get-Service prjflt -ErrorAction SilentlyContinue | Format-List Name,Status
-          fltmc filters
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p pando-vcs -p pando-server
+      - run: pwsh scripts/test-mount-windows.ps1 -Bin target\release
 
   databases:
     # Same contract suite against real Postgres and CockroachDB (Postgres wire protocol).

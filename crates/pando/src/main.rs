@@ -515,11 +515,26 @@ async fn run() -> Result<()> {
                     }
                 }
             }
-            #[cfg(not(unix))]
+            #[cfg(windows)]
+            {
+                anyhow::ensure!(!serve_only, "--serve-only is for macOS and Linux; Windows projects files directly");
+                let tree = Arc::new(pando::mount::VirtualTree::new(
+                    remote.objects(),
+                    tokio::runtime::Handle::current(),
+                    cs.root_tree,
+                    cache_mb << 20,
+                ));
+                let target = dir.clone();
+                let session = tokio::task::spawn_blocking(move || pando::mount::projfs::mount(tree, &target)).await??;
+                eprintln!("projecting {rev} into {}; Ctrl-C to stop (files already read stay on disk)", dir.display());
+                tokio::signal::ctrl_c().await?;
+                drop(session);
+            }
+            #[cfg(not(any(unix, windows)))]
             {
                 let _ = (dir, cs, cache_mb, serve_only);
                 anyhow::bail!(
-                    "`pando mount` is not supported on this platform yet; use `pando clone --path` for a sparse checkout"
+                    "`pando mount` is not supported on this platform; use `pando clone --path` for a sparse checkout"
                 );
             }
         }

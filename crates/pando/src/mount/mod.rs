@@ -12,6 +12,8 @@
 pub mod fuse;
 #[cfg(unix)]
 pub mod nfs;
+#[cfg(windows)]
+pub mod projfs;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
