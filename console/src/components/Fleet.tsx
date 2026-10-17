@@ -56,10 +56,8 @@ export function FleetLanes({ changes, minutes = 60, max = 10 }: { changes: Chang
             {cs.map((c) => {
               const x = 100 - ((now - c.time) / window) * 100;
               return (
-                <button
+                <span
                   key={c.id}
-                  type="button"
-                  tabIndex={-1}
                   aria-hidden="true"
                   className="tick"
                   data-latest={c.id === latest || undefined}
@@ -116,10 +114,8 @@ export function Trunk({ changes }: { changes: Change[] | undefined }) {
         {recent.map((c, i) => {
           const x = 100 - ((now - c.time) / window) * 100;
           return (
-            <button
+            <span
               key={c.id}
-              type="button"
-              tabIndex={-1}
               aria-hidden="true"
               className="tick"
               title={`${title(c.message)} (${c.author})`}

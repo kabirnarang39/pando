@@ -61,9 +61,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     }
     let live = true;
     let stop: (() => void) | undefined;
-    void import("./api/demo-platform").then((m) => {
+    void import("./api/demo-platform").then(async (m) => {
+      const platform = await m.DemoPlatform.create();
       if (!live) return;
-      const platform = new m.DemoPlatform();
       stop = platform.start();
       setDemo({ platform, transport: m.platformTransport });
     });

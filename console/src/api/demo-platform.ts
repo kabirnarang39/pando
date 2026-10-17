@@ -101,12 +101,34 @@ export class DemoPlatform {
   private nextComment = 1;
   private listeners = new Set<() => void>();
 
-  constructor(now = Date.now()) {
-    const seeds = [fleetSeed, webSeed, infraSeed, mlSeed];
-    const ages = [140, 96, 300, 61];
-    seeds.forEach((seed, i) => {
+  /** Builds the demo one repository per task, so the page stays responsive while it does. */
+  static async create(now = Date.now()): Promise<DemoPlatform> {
+    const p = new DemoPlatform(now, true);
+    for (const [i, seed] of DemoPlatform.seeds.entries()) {
+      await new Promise((r) => setTimeout(r, 0));
+      p.host(seed, DemoPlatform.ages[i]!, now);
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    p.seedChangeRequests(now);
+    p.advanceChecks(now);
+    return p;
+  }
+
+  private static seeds = [fleetSeed, webSeed, infraSeed, mlSeed];
+  private static ages = [140, 96, 300, 61];
+
+  constructor(now = Date.now(), empty = false) {
+    if (empty) return;
+    DemoPlatform.seeds.forEach((seed, i) => this.host(seed, DemoPlatform.ages[i]!, now));
+    this.seedChangeRequests(now);
+    this.advanceChecks(now);
+  }
+
+  private host(seed: RepoSeed, age: number, now: number) {
+    const i = DemoPlatform.seeds.indexOf(seed);
+    {
       const key = `${ORG}/${seed.name}`;
-      this.hosted.set(key, { seed, repo: new DemoRepo(seed, now), created: now - ages[i]! * 86_400_000, visibility: i === 2 ? Visibility.PRIVATE : Visibility.INTERNAL });
+      this.hosted.set(key, { seed, repo: new DemoRepo(seed, now), created: now - age * 86_400_000, visibility: i === 2 ? Visibility.PRIVATE : Visibility.INTERNAL });
       this.crs.set(key, []);
       this.protections.set(key, [
         create(ProtectionSchema, {
@@ -119,10 +141,8 @@ export class DemoPlatform {
           bypass: ["kabir"],
         }),
       ]);
-      this.events.push(create(EventSchema, { id: `e${this.events.length}`, kind: EventKind.REPOSITORY_CREATED, actor: seed.importer, repository: { owner: ORG, name: seed.name }, atMs: BigInt(now - ages[i]! * 86_400_000), summary: `created ${ORG}/${seed.name}` }));
-    });
-    this.seedChangeRequests(now);
-    this.advanceChecks(now);
+      this.events.push(create(EventSchema, { id: `e${this.events.length}`, kind: EventKind.REPOSITORY_CREATED, actor: seed.importer, repository: { owner: ORG, name: seed.name }, atMs: BigInt(now - age * 86_400_000), summary: `created ${ORG}/${seed.name}` }));
+    }
   }
 
   start(): () => void {

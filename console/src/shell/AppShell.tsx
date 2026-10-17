@@ -93,11 +93,14 @@ export function AppShell() {
 
   return (
     <div className="app" data-drawer={drawer || undefined}>
+      <button type="button" className="skip" onClick={() => document.getElementById("main")?.focus()}>
+        Skip to content
+      </button>
       <Sidebar onSearch={() => setMenu("all")} theme={theme} setTheme={setTheme} showShortcuts={() => setKeys(true)} />
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
       <div className="main">
         <TopBar onMenu={() => setDrawer(true)} />
-        <main className="content" id="main">
+        <main className="content" id="main" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

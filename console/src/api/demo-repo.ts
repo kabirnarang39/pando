@@ -403,7 +403,7 @@ export const fleetSeed: RepoSeed = {
   seed: 20261017,
   importer: "kabir",
   importMessage: "Import the Fleet monorepo",
-  historyHours: 6,
+  historyHours: 4,
   paceMs: 22_000,
   livePaceMs: 2200,
   branches: { "release/2.4": 40, "agent/perf-05/batching": 3 },

@@ -20,6 +20,14 @@ export function HomeView() {
   // A server that hosts one repository has nothing else to show: go straight to it.
   if (viewer.data && !viewer.data.platform) return <Navigate to="/$owner/$repo" params={{ owner: SINGLE.owner, repo: SINGLE.name }} replace />;
 
+  // Appear once, complete: panels filling in one by one push each other around on phones.
+  if (!inbox.data || !repos.data)
+    return (
+      <div className="page" aria-busy="true">
+        <Skeleton rows={14} />
+      </div>
+    );
+
   return (
     <div className="page">
       <div className="page-head">

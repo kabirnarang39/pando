@@ -339,7 +339,7 @@ function FileView({ rev, path, pinned }: { rev: string; path: string; pinned: bo
           )}
         </div>
       </div>
-      <div className="pane-body">
+      <div className="pane-body" tabIndex={0} aria-label={`${path}, scrollable`}>
         {history ? (
           <FileHistory rev={rev} path={path} />
         ) : text === null ? (

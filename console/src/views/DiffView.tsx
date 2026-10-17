@@ -109,7 +109,7 @@ function Lines({ lines, layout, annotations }: { lines: Line[]; layout: Layout; 
   }
   return (
     <div className="diff-scroll">
-      <div className="diff" data-layout={layout} role="table" aria-label="Changed lines">
+      <div className="diff" data-layout={layout} role="group" aria-label="Changed lines">
         {groups.map((g, i) =>
           Array.isArray(g) ? (
             layout === "split" ? (
@@ -152,9 +152,9 @@ function Text({ line }: { line: Line }) {
 }
 
 function NewNumber({ n, onLine, op }: { n: number | undefined; onLine?(line: number): void; op?: string }) {
-  if (n === undefined || !onLine) return <span className="dn num" data-op={op} role="cell">{n ?? ""}</span>;
+  if (n === undefined || !onLine) return <span className="dn num" data-op={op}>{n ?? ""}</span>;
   return (
-    <span className="dn num" data-op={op} role="cell" data-commentable title="Comment on this line" onClick={() => onLine(n)}>
+    <span className="dn num" data-op={op} data-commentable title="Comment on this line" onClick={() => onLine(n)}>
       {n}
     </span>
   );
@@ -163,13 +163,13 @@ function NewNumber({ n, onLine, op }: { n: number | undefined; onLine?(line: num
 function UnifiedLine({ line, onLine }: { line: Line; onLine?(line: number): void }) {
   const op = line.op === "ctx" ? undefined : line.op;
   return (
-    <div className="drow" data-op={op} role="row">
-      <span className="dn num" role="cell">{line.old ?? ""}</span>
+    <div className="drow" data-op={op}>
+      <span className="dn num">{line.old ?? ""}</span>
       <NewNumber n={line.new} onLine={onLine} />
-      <span className="dm" role="cell" aria-label={opLabel[line.op] || undefined}>
+      <span className="dm" aria-label={opLabel[line.op] || undefined}>
         {marker[line.op]}
       </span>
-      <span className="dsrc" role="cell">
+      <span className="dsrc">
         <Text line={line} />
       </span>
     </div>
@@ -180,19 +180,19 @@ function SplitLine({ left, right, onLine }: { left?: Line; right?: Line; onLine?
   const lo = left && left.op !== "ctx" ? left.op : undefined;
   const ro = right && right.op !== "ctx" ? right.op : undefined;
   return (
-    <div className="drow" role="row">
-      <span className="dn num" data-op={lo} role="cell">{left?.old ?? ""}</span>
-      <span className="dm" data-op={lo} role="cell" aria-label={lo ? opLabel[lo] : undefined}>
+    <div className="drow">
+      <span className="dn num" data-op={lo}>{left?.old ?? ""}</span>
+      <span className="dm" data-op={lo} aria-label={lo ? opLabel[lo] : undefined}>
         {lo ? marker[lo] : ""}
       </span>
-      <span className="dsrc" data-op={lo} role="cell">
+      <span className="dsrc" data-op={lo}>
         {left ? <Text line={left} /> : ""}
       </span>
       <NewNumber n={right?.new} onLine={onLine} op={ro} />
-      <span className="dm" data-op={ro} role="cell" aria-label={ro ? opLabel[ro] : undefined}>
+      <span className="dm" data-op={ro} aria-label={ro ? opLabel[ro] : undefined}>
         {ro ? marker[ro] : ""}
       </span>
-      <span className="dsrc" data-op={ro} role="cell">
+      <span className="dsrc" data-op={ro}>
         {right ? <Text line={right} /> : ""}
       </span>
     </div>
