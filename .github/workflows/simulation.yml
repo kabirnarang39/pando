@@ -13,7 +13,7 @@ permissions:
 jobs:
   simulate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90  # 50,000 seeds took 48 minutes for 3.3.0
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
