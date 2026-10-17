@@ -214,6 +214,15 @@ pub fn options(port: u16) -> String {
     format!("nolocks,noresvport,nosuid,nodev,vers=3,tcp,rdonly,rsize=1048576,actimeo=120,port={port},mountport={port}")
 }
 
+/// The command that mounts the server on `port` at `dir` on this platform.
+pub fn mount_command(port: u16, dir: &std::path::Path) -> String {
+    if cfg!(target_os = "macos") {
+        format!("mount_nfs -o {} localhost:/ {}", options(port), dir.display())
+    } else {
+        format!("sudo mount -t nfs -o ro,nolock,vers=3,tcp,port={port},mountport={port} 127.0.0.1:/ {}", dir.display())
+    }
+}
+
 pub fn unmount(dir: &std::path::Path) -> anyhow::Result<()> {
     let status = std::process::Command::new("umount").arg(dir).status()?;
     anyhow::ensure!(status.success(), "umount {} failed ({status})", dir.display());

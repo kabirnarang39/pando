@@ -158,8 +158,9 @@ enum Cmd {
         /// In-memory cache for file contents.
         #[arg(long, default_value_t = 256)]
         cache_mb: u64,
-        /// macOS: run the NFS server and print the mount command instead of mounting (for
-        /// Macs whose policy only lets an administrator mount, or to mount elsewhere).
+        /// Serve the checkout over NFS on localhost and print the command that mounts it,
+        /// instead of mounting (for machines where only an administrator may mount, or
+        /// Linux machines without FUSE).
         #[arg(long)]
         serve_only: bool,
     },
@@ -479,20 +480,7 @@ async fn run() -> Result<()> {
             pando_core::flags::require(&flags, pando_core::flags::Flag::VirtualCheckout)?;
             let remote = connect(&server_for(server)?, objects.as_deref(), token)?;
             let cs = remote.changeset(&rev).await?;
-            #[cfg(target_os = "linux")]
-            {
-                let tree = Arc::new(pando::mount::VirtualTree::new(
-                    remote.objects(),
-                    tokio::runtime::Handle::current(),
-                    cs.root_tree,
-                    cache_mb << 20,
-                ));
-                let session = pando::mount::fuse::mount(tree, &dir)?;
-                eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
-                tokio::signal::ctrl_c().await?;
-                session.umount_and_join()?;
-            }
-            #[cfg(target_os = "macos")]
+            #[cfg(unix)]
             {
                 use std::os::unix::fs::MetadataExt;
                 let meta = std::fs::metadata(&dir)
@@ -503,24 +491,36 @@ async fn run() -> Result<()> {
                     cs.root_tree,
                     cache_mb << 20,
                 ));
-                let port = pando::mount::nfs::serve(tree, meta.uid(), meta.gid()).await?;
-                if serve_only {
-                    eprintln!("serving {rev} over NFS on 127.0.0.1:{port}; mount it with:");
-                    println!("mount_nfs -o {} localhost:/ {}", pando::mount::nfs::options(port), dir.display());
+                if serve_only || cfg!(target_os = "macos") {
+                    let port = pando::mount::nfs::serve(tree, meta.uid(), meta.gid()).await?;
+                    if serve_only {
+                        eprintln!("serving {rev} over NFS on 127.0.0.1:{port}; mount it with:");
+                        println!("{}", pando::mount::nfs::mount_command(port, &dir));
+                        tokio::signal::ctrl_c().await?;
+                        return Ok(());
+                    }
+                    let target = dir.clone();
+                    tokio::task::spawn_blocking(move || pando::mount::nfs::mount(port, &target)).await??;
+                    eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
                     tokio::signal::ctrl_c().await?;
-                    return Ok(());
+                    let target = dir.clone();
+                    tokio::task::spawn_blocking(move || pando::mount::nfs::unmount(&target)).await??;
+                } else {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let session = pando::mount::fuse::mount(tree, &dir)?;
+                        eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
+                        tokio::signal::ctrl_c().await?;
+                        session.umount_and_join()?;
+                    }
                 }
-                let target = dir.clone();
-                tokio::task::spawn_blocking(move || pando::mount::nfs::mount(port, &target)).await??;
-                eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
-                tokio::signal::ctrl_c().await?;
-                let target = dir.clone();
-                tokio::task::spawn_blocking(move || pando::mount::nfs::unmount(&target)).await??;
             }
-            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            #[cfg(not(unix))]
             {
                 let _ = (dir, cs, cache_mb, serve_only);
-                anyhow::bail!("`pando mount` needs Linux or macOS; use `pando clone --path` for a sparse checkout");
+                anyhow::bail!(
+                    "`pando mount` is not supported on this platform yet; use `pando clone --path` for a sparse checkout"
+                );
             }
         }
         Cmd::Mcp { server } => {
