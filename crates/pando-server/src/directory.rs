@@ -163,6 +163,10 @@ impl Registry {
     // ---- accounts ----
 
     pub fn account(&self, login: &str) -> anyhow::Result<Option<AccountRec>> {
+        self.cached(format!("account:{login}"), || self.account_uncached(login))
+    }
+
+    fn account_uncached(&self, login: &str) -> anyhow::Result<Option<AccountRec>> {
         let db = self.db.lock().unwrap();
         let mut st =
             db.prepare_cached("SELECT login, display_name, kind, owner, created_at_ms FROM accounts WHERE login = ?1")?;
@@ -186,6 +190,10 @@ impl Registry {
             "INSERT OR IGNORE INTO accounts (login, display_name, kind, owner, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
             (login, display, kind_of(login) as i32, owner, now_ms()),
         )?;
+        drop(db);
+        if n == 1 {
+            self.invalidate();
+        }
         Ok(n == 1)
     }
 
@@ -208,6 +216,7 @@ impl Registry {
 
     /// Adds an organisation; false if it already exists.
     pub fn create_organization(&self, org: &OrgRec) -> anyhow::Result<bool> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         let n = db.execute(
             "INSERT OR IGNORE INTO organizations (login, display_name, description, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
@@ -226,6 +235,7 @@ impl Registry {
 
     /// Sets a member's role; `Role::Unspecified` removes the member and their team places.
     pub fn set_member(&self, org: &str, login: &str, role: Role) -> anyhow::Result<()> {
+        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         if role == Role::Unspecified {
@@ -273,6 +283,7 @@ impl Registry {
 
     /// Creates or replaces a team. Every member must already belong to the organisation.
     pub fn set_team(&self, team: &TeamRec) -> anyhow::Result<()> {
+        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         tx.execute(
@@ -290,6 +301,7 @@ impl Registry {
 
     /// Removes a team, its members and its grants; false if there was no such team.
     pub fn delete_team(&self, org: &str, slug: &str) -> anyhow::Result<bool> {
+        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         let n = tx.execute("DELETE FROM teams WHERE org = ?1 AND slug = ?2", (org, slug))?;
@@ -310,6 +322,10 @@ impl Registry {
 
     /// Whether `login` belongs to the team `org/slug`.
     pub fn in_team(&self, login: &str, team: &str) -> anyhow::Result<bool> {
+        self.cached(format!("team:{login}:{team}"), || self.in_team_uncached(login, team))
+    }
+
+    fn in_team_uncached(&self, login: &str, team: &str) -> anyhow::Result<bool> {
         let Some((org, slug)) = team.split_once('/') else { return Ok(false) };
         let db = self.db.lock().unwrap();
         Ok(db.query_row(
@@ -331,6 +347,7 @@ impl Registry {
 
     /// Grants `role` on a repository; `Role::Unspecified` removes the grant.
     pub fn set_grant(&self, key: &RepoKey, principal: &str, role: Role) -> anyhow::Result<()> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         if role == Role::Unspecified {
             db.execute(
@@ -351,6 +368,10 @@ impl Registry {
     /// grants and teams. Visibility, site administrators, agents' owners and token limits are
     /// applied by [`crate::permissions::Access`].
     pub fn held_role(&self, login: &str, repo: &RepoKey) -> anyhow::Result<Role> {
+        self.cached(format!("role:{login}:{repo}"), || self.held_role_uncached(login, repo))
+    }
+
+    fn held_role_uncached(&self, login: &str, repo: &RepoKey) -> anyhow::Result<Role> {
         let db = self.db.lock().unwrap();
         let best: Option<i32> = db
             .prepare_cached(
@@ -533,6 +554,17 @@ mod tests {
         assert_eq!(r.held_role("mira", &fleet).unwrap(), Role::Write, "direct grants stay until removed");
         assert!(r.delete_team("lumen", "platform").unwrap());
         assert!(r.grants(&web).unwrap().is_empty(), "a deleted team's grants go with it");
+    }
+
+    #[test]
+    fn cached_roles_change_the_moment_access_changes() {
+        let r = registry();
+        let fleet = RepoKey::parse("lumen/fleet").unwrap();
+        assert_eq!(r.held_role("mira", &fleet).unwrap(), Role::Unspecified);
+        r.set_member("lumen", "mira", Role::Write).unwrap();
+        assert_eq!(r.held_role("mira", &fleet).unwrap(), Role::Write, "granted: seen at once");
+        r.set_member("lumen", "mira", Role::Unspecified).unwrap();
+        assert_eq!(r.held_role("mira", &fleet).unwrap(), Role::Unspecified, "revoked: seen at once");
     }
 
     #[test]

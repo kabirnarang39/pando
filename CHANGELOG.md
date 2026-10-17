@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Platform servers no longer slow landing down: access answers are cached per process (cleared
+  by every write that changes them) and push events are prepared off the landing path only when
+  a webhook wants them. With 200 agents on one branch, p99 latency through a hosted repository
+  went from 2.8–3.8 s to 0.22–0.25 s, matching a server without the platform (ADR-029).
+
 ### Added
 - `pando migrate FROM --to SERVER/OWNER/NAME` (ADR-028, `docs/migrate.md`): moves a repository
   from GitHub, GitLab, Bitbucket or any git host with its full history on every branch; from

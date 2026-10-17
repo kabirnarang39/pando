@@ -108,7 +108,14 @@ pub struct RepoRecord {
 /// Which repositories exist. SQLite, one small table; writes are rare (creating a repository).
 pub struct Registry {
     pub(crate) db: Mutex<rusqlite::Connection>,
+    /// Answers to the reads every request makes (a repository, a role, branch protection),
+    /// dropped by any write that could change them (ADR-029).
+    cache: quick_cache::sync::Cache<String, (Instant, Arc<dyn std::any::Any + Send + Sync>)>,
 }
+
+/// How long a cached answer may be used: writes in this process clear the cache at once; this
+/// bounds how long another replica's write can go unseen.
+const CACHE_TTL: Duration = Duration::from_secs(5);
 
 impl Registry {
     /// `sqlite:///abs/path.db`, `sqlite://rel/path.db` or `memory`.
@@ -138,9 +145,31 @@ impl Registry {
                PRIMARY KEY (owner, name)
              );",
         )?;
-        let reg = Self { db: Mutex::new(conn) };
+        let reg = Self { db: Mutex::new(conn), cache: quick_cache::sync::Cache::new(100_000) };
         reg.migrate()?;
         Ok(reg)
+    }
+
+    /// `load()`, or its answer from the last few seconds.
+    pub(crate) fn cached<T: Clone + Send + Sync + 'static>(
+        &self,
+        key: String,
+        load: impl FnOnce() -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        if let Some((at, v)) = self.cache.get(&key)
+            && at.elapsed() < CACHE_TTL
+            && let Some(v) = v.downcast_ref::<T>()
+        {
+            return Ok(v.clone());
+        }
+        let v = load()?;
+        self.cache.insert(key, (Instant::now(), Arc::new(v.clone())));
+        Ok(v)
+    }
+
+    /// Forgets every cached answer; called by every write that changes who may do what.
+    pub(crate) fn invalidate(&self) {
+        self.cache.clear();
     }
 
     /// Brings the schema up to date: accounts, organisations, teams, grants and tokens.
@@ -167,6 +196,10 @@ impl Registry {
     }
 
     pub fn get(&self, key: &RepoKey) -> anyhow::Result<Option<RepoRecord>> {
+        self.cached(format!("repo:{key}"), || self.get_uncached(key))
+    }
+
+    fn get_uncached(&self, key: &RepoKey) -> anyhow::Result<Option<RepoRecord>> {
         let db = self.db.lock().unwrap();
         let mut st = db.prepare_cached(
             "SELECT owner, name, description, visibility, default_branch, created_at_ms, archived, topics
@@ -189,6 +222,7 @@ impl Registry {
 
     /// Replaces a repository's settings (everything but its name and creation time).
     pub fn update(&self, rec: &RepoRecord) -> anyhow::Result<()> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "UPDATE repositories SET description = ?3, visibility = ?4, default_branch = ?5, archived = ?6, topics = ?7
@@ -208,6 +242,7 @@ impl Registry {
 
     /// Adds a repository; false if it already exists.
     pub fn create(&self, rec: &RepoRecord) -> anyhow::Result<bool> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         let n = db.execute(
             "INSERT OR IGNORE INTO repositories (owner, name, description, visibility, default_branch, created_at_ms, archived, topics)
