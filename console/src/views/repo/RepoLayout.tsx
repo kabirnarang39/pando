@@ -46,7 +46,8 @@ function Layout() {
     show();
     return router.subscribe("onRendered", () => requestAnimationFrame(show));
   });
-  const compact = section === "code" || section === "changes" || (section === "reviews" && !!pathname.split("/")[4]);
+  // Pages about one thing (a file, a change, a review, an issue) get the room.
+  const compact = section === "code" || section === "changes" || ((section === "reviews" || section === "issues") && !!pathname.split("/")[4]);
   const now = useNow();
   const rp = { owner, repo: name };
   const single = isSingle(key);

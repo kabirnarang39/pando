@@ -31,7 +31,7 @@ export function OrgView() {
     <div className="page">
       <div className="page-head">
         <span className="org-avatar" style={{ width: 52, height: 52, borderRadius: 14, fontSize: 22 }} aria-hidden="true">
-          {org.data?.displayName.slice(0, 1) ?? ""}
+          {org.data?.displayName.slice(0, 1).toUpperCase() ?? ""}
         </span>
         <div>
           <h1>{org.data?.displayName ?? owner}</h1>
@@ -87,12 +87,19 @@ export function OrgView() {
               </tr>
             </thead>
             <tbody>
+              {(tab === "people" ? people : agents).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    {tab === "people" ? "No members yet. Add people below; they see the organisation's repositories with the role you give them." : "No agents have their own role here. An agent works with the role of the person it answers to."}
+                  </td>
+                </tr>
+              )}
               {(tab === "people" ? people : agents).map((m) => (
                 <tr key={m.account!.login}>
                   <td>
                     <span className="row-side" style={{ gap: 10, color: "inherit", fontSize: "var(--t-sm)" }}>
                       <Author author={m.account!.login} />
-                      {tab === "people" && <span className="muted">{m.account!.displayName}</span>}
+                      {tab === "people" && m.account!.displayName !== m.account!.login && <span className="muted hide-small">{m.account!.displayName}</span>}
                     </span>
                   </td>
                   {tab === "agents" && (

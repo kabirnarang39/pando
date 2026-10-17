@@ -80,7 +80,7 @@ export function NewChangeRequest({ onCancel }: { onCancel(): void }) {
         <button type="button" className="button button-quiet" onClick={onCancel}>
           Cancel
         </button>
-        <button type="submit" className="button" data-primary="" disabled={!title.trim() || !from || create.isPending}>
+        <button type="submit" className="button" data-primary="" disabled={conn.kind === "demo" || !title.trim() || !from || create.isPending}>
           {create.isPending ? "Opening…" : "Open change request"}
         </button>
       </div>

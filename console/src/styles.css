@@ -3065,3 +3065,13 @@ del {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- UX pass 3 ---- */
+
+/* Tables scroll inside their panel instead of being cut off on narrow screens. */
+.panel:has(> .table) {
+  overflow-x: auto;
+}
+.issue-side .button-quiet {
+  padding-left: 0;
+}

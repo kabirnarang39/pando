@@ -41,6 +41,7 @@ export function useNow() {
 }
 
 export function ago(ms: number, at: number): string {
+  if (ms <= 0) return "never";
   const s = Math.max(0, Math.round((at - ms) / 1000));
   if (s < 45) return "just now";
   const m = Math.round(s / 60);
