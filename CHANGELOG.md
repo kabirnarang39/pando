@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-17
+
 ### Added
 - The web console (`console/`): browse code with blame and history, follow changes as they land
   with word-level diffs, see who and which agent landed what on a live fleet timeline, find files

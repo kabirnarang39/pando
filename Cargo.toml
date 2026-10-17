@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "2.4.0"
+version = "3.0.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/kabirnarang39/pando"
@@ -14,10 +14,10 @@ keywords = ["vcs", "source-control", "monorepo", "git", "agents"]
 categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-pando-core = { path = "crates/pando-core", version = "2" }
-pando-adapters = { path = "crates/pando-adapters", version = "2" }
-pando-proto = { path = "crates/pando-proto", version = "2" }
-pando-server = { path = "crates/pando-server", version = "2" }
+pando-core = { path = "crates/pando-core", version = "3" }
+pando-adapters = { path = "crates/pando-adapters", version = "3" }
+pando-proto = { path = "crates/pando-proto", version = "3" }
+pando-server = { path = "crates/pando-server", version = "3" }
 anyhow = "1"
 async-trait = "0.1"
 blake3 = "1"
