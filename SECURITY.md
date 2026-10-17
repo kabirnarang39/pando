@@ -4,13 +4,21 @@
 
 | Version | Supported |
 |---|---|
-| 1.x | ✅ |
+| 3.x (latest release) | ✅ |
+| < 3.0 | ❌ (upgrade to the latest release) |
 
 ## Reporting a vulnerability
 
 Please **do not** open a public issue. Use GitHub's
 [private vulnerability reporting](https://github.com/kabirnarang39/pando/security/advisories/new).
-You will receive an acknowledgement within 72 hours and a fix timeline after triage.
+You will receive an acknowledgement within 72 hours (and in any case within 14 days) and a
+fix timeline after triage.
+
+Please include the affected version (`pando --version`), the component (client, server,
+SDK, console), steps to reproduce and the impact you expect. We fix confirmed medium or
+higher severity issues within 60 days, coordinate the disclosure date with the reporter,
+publish a GitHub security advisory, and list the fix, with its CVE or advisory id, under
+**Security** in [CHANGELOG.md](CHANGELOG.md) and the release notes.
 
 ## Security model (v1)
 
