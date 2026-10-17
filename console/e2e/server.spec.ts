@@ -3,7 +3,11 @@ import { SERVER } from "./setup";
 
 // The console against a real pandod that has no platform service: one repository, no reviews.
 test.beforeEach(async ({ page }) => {
+  // A link to a server opens the connection screen; nothing is sent until the person confirms.
   await page.goto(`/?server=${encodeURIComponent(SERVER)}#/`);
+  await expect(page.getByText(/A link asked to connect to/)).toBeVisible();
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Code" })).toBeVisible();
 });
 
 test("opens the server's repository and browses its files", async ({ page }) => {

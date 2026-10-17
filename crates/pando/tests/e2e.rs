@@ -13,7 +13,7 @@ use pando_core::acl::{AccessPolicy, AllowAllPolicy};
 use pando_core::flags::FeatureFlags;
 use pando_core::ports::{LandCheck, NoChecks};
 use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
-use pando_server::{WebAccess, authority_routes, config, serve, tier_routes};
+use pando_server::{Limits, WebAccess, authority_routes, config, serve, tier_routes};
 use tokio::net::TcpListener;
 
 struct Cluster {
@@ -29,7 +29,7 @@ async fn spawn(
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = tokio::sync::oneshot::channel();
     let web = WebAccess { enabled: true, origins: vec!["http://console.test".into()] };
-    tokio::spawn(serve(listener, routes, auth, None, web, async {
+    tokio::spawn(serve(listener, routes, auth, None, web, Limits::default(), async {
         let _ = rx.await;
     }));
     (url, tx)

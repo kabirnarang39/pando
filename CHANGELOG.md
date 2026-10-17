@@ -18,6 +18,13 @@ All notable changes to this project are documented here. The format follows
   tokens, change requests, reviews, comments, protected branches (ADR-021).
 
 ### Changed
+- **Security (breaking):** without `PANDO_TOKENS` or an OIDC issuer, `pandod` refuses to listen on
+  a non-loopback address unless `--allow-anonymous` / `PANDO_ALLOW_ANONYMOUS=1` is set, so a server
+  is never open to a network by accident. The Docker image therefore needs a token:
+  `docker run -e PANDO_TOKENS=me:SECRET ...`.
+- Request limits: each call may run at most `--request-timeout` (600 s); beyond `--max-in-flight`
+  (4,096) calls in progress, new calls are refused with Unavailable instead of queueing; 256
+  concurrent calls per connection.
 - A new mark: the letter P drawn as a branch landing back on main.
 
 ## [2.4.0] - 2026-10-17

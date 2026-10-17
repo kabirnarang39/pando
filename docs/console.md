@@ -14,7 +14,7 @@ seconds, change requests with reviews, checks and conflicts. Nothing leaves your
 1. Allow the site that serves the console to call your server:
 
    ```sh
-   pandod server --listen 0.0.0.0:7440 --web-origins https://console.example.com
+   PANDO_TOKENS="me:SECRET" pandod server --listen 0.0.0.0:7440 --web-origins https://console.example.com
    ```
 
    `--web-origins` (or `PANDO_WEB_ORIGINS`) takes a comma-separated list. Browser access is

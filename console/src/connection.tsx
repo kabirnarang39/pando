@@ -38,16 +38,33 @@ function write(storage: () => Storage, key: string, value: unknown) {
   }
 }
 
-/** The saved target. A token is kept for this tab only unless the person chose to remember it. */
+/** Tokens are stored per server, so a token is only ever sent to the server it was entered for. */
+const tokenKey = (url: string) => `${KEY}.token:${url}`;
+
+/**
+ * The saved target. A token is kept for this tab only unless the person chose to remember it.
+ * A `?server=` link is only a suggestion: it is never connected to, and never sent a token,
+ * without the person confirming it (see `pendingServer`).
+ */
 function initial(): Target {
-  const param = new URLSearchParams(location.search).get("server");
-  if (param) return { kind: "server", url: param, token: read<string>(() => sessionStorage, KEY + ".token"), remember: false };
   const saved = read<Target>(() => localStorage, KEY);
   if (saved?.kind === "server") {
-    const token = saved.remember ? saved.token : read<string>(() => sessionStorage, KEY + ".token");
+    const token = saved.remember ? saved.token : read<string>(() => sessionStorage, tokenKey(saved.url));
     return { ...saved, token };
   }
   return { kind: "demo" };
+}
+
+/** A server suggested by a link, waiting for the person to confirm it. */
+export function pendingServer(): string | null {
+  const s = new URLSearchParams(location.search).get("server");
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.origin + u.pathname.replace(/\/+$/, "") : null;
+  } catch {
+    return null;
+  }
 }
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
@@ -102,7 +119,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       connect(next) {
         if (next.kind === "server") {
           write(() => localStorage, KEY, { ...next, token: next.remember ? next.token : null });
-          write(() => sessionStorage, KEY + ".token", next.token);
+          write(() => sessionStorage, tokenKey(next.url), next.token);
         } else {
           write(() => localStorage, KEY, null);
         }

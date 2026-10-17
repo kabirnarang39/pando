@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Checkbox, FieldError, Form, Input, Label, Text, TextField } from "react-aria-components";
 import { explain, makeApi, serverTransport } from "../api/client";
-import { useConnection } from "../connection";
+import { pendingServer, useConnection } from "../connection";
 import { Icon } from "../ui";
 
 type Check = { kind: "ok"; text: string } | { kind: "error"; text: string } | null;
@@ -10,7 +10,8 @@ type Check = { kind: "ok"; text: string } | { kind: "error"; text: string } | nu
 export function ConnectView() {
   const { target, connect } = useConnection();
   const navigate = useNavigate();
-  const [url, setUrl] = useState(target.kind === "server" ? target.url : "");
+  const suggested = pendingServer();
+  const [url, setUrl] = useState(suggested ?? (target.kind === "server" ? target.url : ""));
   const [token, setToken] = useState(target.kind === "server" ? (target.token ?? "") : "");
   const [remember, setRemember] = useState(target.kind === "server" && target.remember);
   const [busy, setBusy] = useState(false);
@@ -31,6 +32,8 @@ export function ConnectView() {
       const text = await test();
       setCheck({ kind: "ok", text });
       connect({ kind: "server", url: url.trim(), token: token || null, remember });
+      // Drop ?server= so a reload does not ask again.
+      history.replaceState(null, "", location.pathname + location.hash.replace(/^#\/connect.*/, "#/"));
       navigate({ to: "/" });
     } catch (e) {
       setCheck({ kind: "error", text: explain(e, url) });
@@ -47,6 +50,12 @@ export function ConnectView() {
           The console reads one Pando server. It runs in your browser and talks to the server directly; nothing passes through anyone
           else.
         </p>
+        {suggested && (
+          <p className="status" data-kind="ok" role="status">
+            A link asked to connect to <strong className="mono">{suggested}</strong>. Connect only if you trust it: the console sends it your
+            token.
+          </p>
+        )}
         <div className="choices">
           <section className="panel panel-body" aria-labelledby="server-title">
             <h2 id="server-title">Your server</h2>

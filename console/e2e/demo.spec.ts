@@ -26,3 +26,17 @@ test("every page has no horizontal scroll at phone width", async ({ page }) => {
     expect(wide, path).toBe(false);
   }
 });
+
+test("the built app runs under its Content Security Policy without violations", async ({ page }) => {
+  const violations: string[] = [];
+  page.on("console", (m) => {
+    if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text());
+  });
+  await page.goto("/#/lumen/fleet/code/services/billing/src/lib.rs");
+  await expect(page.getByLabel("File contents")).toContainText("PAYMENT_TERMS_DAYS");
+  await page.goto("/#/lumen/fleet/reviews");
+  await page.getByRole("list", { name: "Change requests" }).getByRole("link").first().click();
+  await page.waitForTimeout(500);
+  expect(await page.locator('meta[http-equiv="Content-Security-Policy"]').count()).toBe(1);
+  expect(violations).toEqual([]);
+});

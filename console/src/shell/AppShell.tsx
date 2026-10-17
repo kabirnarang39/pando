@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/rea
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Dialog, Menu, MenuItem, MenuTrigger, Modal, ModalOverlay, Popover, Separator } from "react-aria-components";
 import { Mark, Wordmark } from "../brand";
-import { useConnection } from "../connection";
+import { pendingServer, useConnection } from "../connection";
 import { isSingle, useInbox, useRepositories, useViewer } from "../platform-data";
 import { RepoProvider } from "../repo";
 import { Author, Icon } from "../ui";
@@ -25,6 +25,10 @@ export function AppShell() {
   const menuOpen = useRef(false);
   menuOpen.current = menu !== null || keys;
   const location = useLocation();
+  // A `?server=` link opens the connection screen first: nothing is sent until the person confirms.
+  useEffect(() => {
+    if (pendingServer() && location.pathname !== "/connect") navigate({ to: "/connect", replace: true });
+  }, [location.pathname, navigate]);
   useEffect(() => {
     setDrawer(false);
   }, [location.pathname]);
