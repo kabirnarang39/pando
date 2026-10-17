@@ -141,7 +141,7 @@ async fn world() -> World {
 
     // The platform server that accepts the tokens sign-in hands out.
     let dir = tempfile::tempdir().unwrap();
-    let access = Arc::new(Access { open: false, admins: vec!["root".into()] });
+    let access = Arc::new(Access { open: false, admins: vec!["root".into()], ..Default::default() });
     let build: BuildRoutes = Arc::new(move |_, repo| {
         let policy: Arc<dyn AccessPolicy> = Arc::new(AllowAllPolicy);
         RepoServices {
