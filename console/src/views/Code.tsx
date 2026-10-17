@@ -37,6 +37,15 @@ export function CodeView() {
       <nav className="pane" aria-label="Files">
         <div className="pane-head">
           <h1>Files</h1>
+          <button
+            type="button"
+            className="copy"
+            style={{ fontFamily: "var(--sans)" }}
+            onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "t" }))}
+            title="Go to file (t)"
+          >
+            <Icon name="search" size={12} /> Go to file <kbd>t</kbd>
+          </button>
           {at ? (
             <span className="muted" style={{ fontSize: "var(--t-xs)" }}>
               at <span className="mono">{at.slice(0, 12)}</span>{" "}

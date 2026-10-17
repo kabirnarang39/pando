@@ -47,6 +47,8 @@ function Page() {
     staleTime: Infinity,
   });
   const [composing, setComposing] = useState<{ path: string; line: number } | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
 
   // Threads by file and line, and the conversation (comments not on a line).
   const { byLine, conversation } = useMemo(() => {
@@ -179,14 +181,25 @@ function Page() {
                 </Button>
               )}
               <ReviewButton repo={key} cr={cr} />
-              <TooltipTrigger delay={200} isDisabled={ready}>
-                <Button className="button" data-primary="" isDisabled={!ready || land.isPending} onPress={() => land.mutate()}>
-                  <Icon name="merge" size={15} /> {land.isPending ? "Landing…" : "Land"}
-                </Button>
-                <Tooltip className="tooltip" offset={6}>
-                  {cr.blockers.join(". ")}
-                </Tooltip>
-              </TooltipTrigger>
+              {confirming ? (
+                <>
+                  <Button className="button button-quiet" onPress={() => setConfirming(false)}>
+                    Cancel
+                  </Button>
+                  <Button className="button" data-primary="" autoFocus isDisabled={land.isPending} onPress={() => land.mutate(undefined, { onSettled: () => setConfirming(false) })}>
+                    <Icon name="merge" size={15} /> {land.isPending ? "Landing…" : `Land into ${cr.target}`}
+                  </Button>
+                </>
+              ) : (
+                <TooltipTrigger delay={200} isDisabled={ready}>
+                  <Button className="button" data-primary="" isDisabled={!ready} onPress={() => setConfirming(true)}>
+                    <Icon name="merge" size={15} /> Land
+                  </Button>
+                  <Tooltip className="tooltip" offset={6}>
+                    {cr.blockers.join(". ")}
+                  </Tooltip>
+                </TooltipTrigger>
+              )}
             </div>
           )}
         </section>
@@ -258,8 +271,15 @@ function Page() {
               from={base}
               to={tip}
               layout={layout}
-              open
-              onToggle={() => {}}
+              open={!collapsed.has(f.path)}
+              onToggle={(o) =>
+                setCollapsed((c) => {
+                  const next = new Set(c);
+                  if (o) next.delete(f.path);
+                  else next.add(f.path);
+                  return next;
+                })
+              }
               annotations={{
                 lines: keep,
                 onLine: open ? (line) => setComposing({ path: f.path, line }) : undefined,

@@ -35,8 +35,9 @@ export function useTheme(): [Theme, (t: Theme) => void] {
 
 /** Whether focus is in a place where typing means text, not a shortcut. */
 export function typing(e: KeyboardEvent): boolean {
-  const t = e.target as HTMLElement | null;
-  return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !!t.closest("[role=dialog]"));
+  const t = e.target;
+  if (!(t instanceof HTMLElement)) return false;
+  return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !!t.closest("[role=dialog]");
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);

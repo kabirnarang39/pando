@@ -2433,6 +2433,9 @@ del {
   .lane .who-name {
     font-size: var(--t-2xs);
   }
+  .lane .who-name .ns {
+    display: none;
+  }
   .split,
   .review {
     grid-template-columns: minmax(0, 1fr);

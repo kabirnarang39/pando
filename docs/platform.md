@@ -64,6 +64,28 @@ demo that runs in the browser.
 5. **Issues and releases** *(documented flows)*. Issues with the same live lists, labels and
    linking to change requests; releases with notes and assets.
 
+## UX audit of the web app (2026-10-17)
+
+Fixed in this round: the review page can collapse files; landing asks for confirmation and names
+the branch; a conflict offers a rebase, which re-applies the change when edits don't overlap
+and otherwise names the files; errors start with a capital and say what to do next; the code
+view has a visible "Go to file"; live views load an hour of history; the command menu no longer
+loses the first key typed; effects can no longer hand React a Promise as cleanup.
+
+Still open, in priority order:
+
+1. **Open a change request from the app.** Compare two branches and open one (GitHub's
+   "Compare & pull request"). Today agents open them by landing on a protected branch.
+2. **Profiles.** Clicking a person or agent should open their page: activity, repositories,
+   owned agents.
+3. **Create a repository and an organisation** from the app.
+4. **Mark files as viewed** in a review, with progress, so large reviews can be resumed.
+5. **Syntax highlighting inside diffs.**
+6. **Search inside files.** The server's `Find` matches paths only.
+7. **Edit settings** (protection, access) once the server implements them; the demo shows them
+   read-only.
+8. **Notifications** beyond the inbox: email or webhook delivery.
+
 ## The web app's foundation
 
 React 19 with the React Compiler, React Aria for accessible components, TanStack Router and Query,
