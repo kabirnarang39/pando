@@ -7,12 +7,19 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `pandod server --multi-tenant` (`PANDO_MULTI_TENANT`) for servers that strangers share:
+  internal repositories are for the owning organisation's members, members and grants must name
+  existing accounts, and any person may create up to `--max-orgs-per-account` (default 3)
+  organisations, in a namespace shared with logins and with service names reserved (ADR-032).
 - Browser sign-in for platform servers (`pandod server --login-listen`): Google and any OpenID
   Connect provider (`--oidc ID=ISSUER`), and single-use email links (`--smtp-url`,
   `--mail-from`, optional Cloudflare Turnstile). A sign-in creates a 30-day platform token for
   the console; first sign-ins create an account if `--signup` allows (default: a waitlist,
   managed with `pando admin signup allow|remove|list`). `pando admin identity link` lets an
   existing account, such as the first administrator, sign in from a browser (ADR-031).
+
+### Changed
+- Looking up one organisation reads only that organisation.
 
 ### Security
 - Protected branches: a change's author can no longer approve it through an agent they mint,
@@ -35,6 +42,16 @@ All notable changes to this project are documented here. The format follows
   are printed without credentials, and the mirror clone goes to a private, randomly named
   directory.
 
+- Platform servers refuse repository calls that name no repository. Before, such a call reached
+  the server's own `--metadata` repository with no access check, so any signed-in caller (or any
+  token, however limited) could read and write it. A non-UTF-8 `x-pando-repo` header is refused.
+- Webhooks no longer call loopback, private networks (RFC 1918, 100.64.0.0/10, fc00::/7) or cloud
+  metadata (including 100.100.100.200, fd00:ec2::254 and IPv4 written as IPv6: mapped, NAT64,
+  6to4). Start with `--webhook-allow-private` to let a self-hosted server call its internal
+  network (metadata stays refused). The address is checked when a webhook is saved and at every
+  delivery, deliveries connect only to the checked address (no DNS rebinding), DNS lookups time
+  out after 5 s, proxies from the environment are ignored, and a failed delivery or ping reports
+  only the HTTP status or "unreachable", never why.
 ### Added
 - `pandod backup` snapshots a platform server's registry and every repository's database to a
   directory or object store while it runs; `docs/deploy.md` documents the restore.
