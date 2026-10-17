@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-17
+
 ### Added
 - File locking for files that cannot be merged: `pando lock`, `pando unlock [--force]`,
   `pando locks`. A land that changes a file someone else has locked is refused. Locks
@@ -288,6 +290,7 @@ covered by SemVer from this release on.
 - `sap mcp`: Model Context Protocol server so AI agents can read, commit and land natively.
 - Parallel status hashing, batched and pipelined object fetches, symlink-safe working-copy writes.
 
+[2.3.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.3.0
 [2.2.0]: https://github.com/kabirnarang39/pando/releases/tag/v2.2.0
 [2.1.3]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.3
 [2.1.2]: https://github.com/kabirnarang39/pando/releases/tag/v2.1.2
