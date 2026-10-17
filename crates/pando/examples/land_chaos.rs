@@ -198,7 +198,9 @@ async fn check(r: &GrpcRemote, start: Id, attempts: &[Attempt]) -> Result<()> {
     for a in attempts {
         if let Some(id) = a.landed {
             ensure!(position.contains_key(&id), "acknowledged land `{}` ({id}) is not in history", a.msg);
-            let at = *by_msg.get(a.msg.as_str()).with_context(|| format!("acknowledged change `{}` is not in history", a.msg))?;
+            let at = *by_msg
+                .get(a.msg.as_str())
+                .with_context(|| format!("acknowledged change `{}` is not in history", a.msg))?;
             landed.push((at, a));
         }
     }

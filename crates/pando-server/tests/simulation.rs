@@ -330,12 +330,15 @@ async fn check(seed: u64, truth: &Repo, attempts: &[Attempt]) {
     // 1. Every acknowledged land is in history: the id the server answered with, and the
     // change itself. They differ when a retried change was already there (its reply had been
     // lost): the server answers with the tip that holds it, and the change sits earlier.
-    let by_msg: HashMap<&str, usize> = history.iter().enumerate().map(|(i, (_, cs))| (cs.message.as_str(), i)).collect();
+    let by_msg: HashMap<&str, usize> =
+        history.iter().enumerate().map(|(i, (_, cs))| (cs.message.as_str(), i)).collect();
     let mut landed = Vec::new();
     for a in attempts {
         if let Some(id) = a.landed {
             assert!(position.contains_key(&id), "seed {seed}: acknowledged land {id} is not in history");
-            let at = *by_msg.get(a.msg.as_str()).unwrap_or_else(|| panic!("seed {seed}: acknowledged change `{}` is not in history", a.msg));
+            let at = *by_msg
+                .get(a.msg.as_str())
+                .unwrap_or_else(|| panic!("seed {seed}: acknowledged change `{}` is not in history", a.msg));
             landed.push((at, a));
         }
     }
