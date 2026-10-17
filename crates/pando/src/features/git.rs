@@ -217,7 +217,8 @@ pub async fn import_commit(
                     continue;
                 };
                 let DataRef::Mark(m) = data else { bail!("{path}: blob by sha is unsupported") };
-                components(path).with_context(|| format!("git path `{path}` is not representable"))?;
+                // `.git` / `.pando` paths (any case or Windows alias) are refused by name, not skipped.
+                components(path).map_err(|e| anyhow::anyhow!("can't import git path `{path}`: {e}"))?;
                 files.insert(
                     path.clone(),
                     Some((mode, *blobs.get(m).with_context(|| format!("unknown blob mark :{m}"))?)),

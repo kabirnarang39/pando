@@ -712,6 +712,25 @@ mod tests {
         assert!(write_file(root.path(), ".pando/config.json", Mode::File, b"x").is_err());
     }
 
+    /// Regression (security review H3): a checkout never writes git hooks or config, nor
+    /// pando's own config under another spelling, whatever the server sends.
+    #[test]
+    fn checkout_refuses_git_and_pando_dirs() {
+        let root = tempfile::tempdir().unwrap();
+        for bad in [
+            ".git/hooks/post-checkout",
+            ".GIT/config",
+            "sub/.git/config",
+            "GIT~1/config",
+            ".git./config",
+            ".PANDO/config.json",
+        ] {
+            assert!(write_file(root.path(), bad, Mode::Exec, b"#!/bin/sh\n").is_err(), "{bad}");
+        }
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0, "nothing was written");
+        write_file(root.path(), ".gitignore", Mode::File, b"target\n").unwrap();
+    }
+
     #[test]
     fn remove_prunes_empty_dirs() {
         let root = tempfile::tempdir().unwrap();

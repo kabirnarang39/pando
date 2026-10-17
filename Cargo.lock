@@ -2083,6 +2083,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mimalloc",
+ "object_store",
  "pando-adapters",
  "pando-core",
  "pando-proto",
@@ -2106,6 +2107,7 @@ dependencies = [
  "tower-http 0.7.1",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

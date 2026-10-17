@@ -427,3 +427,27 @@ second and p99 latency rose from 0.3 s to 2.8–3.8 s. With the cache and the pu
 within five seconds on others. Webhook lists in the console are read uncached, so delivery
 status stays current.
 
+## ADR-030: Reviews and checks come from someone else; platform servers are single-node
+
+**Decision.** A change request's author, the person an agent author answers to (followed up any
+chain of agents), and every agent that person answers for count as one person. That person
+can't approve or request changes on the change, their approvals don't count towards a protected
+branch, and they can't report the change's checks. Checks are otherwise reported by anyone with
+Write, so CI runs as its own account or agent. `--oidc-require CLAIM=VALUE` binds single sign-on
+to a tenant, and pandod refuses to start with a multi-tenant issuer (GitHub Actions, Google)
+without such a rule; single sign-on can't claim a platform administrator's login (unless listed
+with `--oidc-admin`) or an `agent/` or `bot/` login. Paths named `.git` or `.pando` in any case
+or Windows spelling are invalid everywhere. A platform server is one process over one SQLite
+registry, backed up with `pandod backup` and restored by copying back while stopped.
+
+**Why.** A production review showed a single developer token could ship to a protected branch:
+mint an agent, approve as the agent, report `build: passed`. Agents already record their owner,
+so the rule needs no new state. OIDC issuers such as GitHub Actions sign tokens for anyone with
+a workflow, so validating `iss`/`aud` alone admits the internet. A tracked `.git/hooks` file
+runs code on the next `git` command in a colocated checkout (git's own CVE-2014-9390).
+
+**Trade-offs.** An agent's work needs a human other than its owner to approve it, and a team of
+one can't use required approvals. Checks aren't bound to a named reporter yet; naming one per
+required check (`build@bot/ci`) is the next step if CI identities need pinning. Existing history
+with `.git` or `.pando` paths can't be read or checked out. Scaling a platform server out needs a
+shared registry (Postgres), which doesn't exist yet.

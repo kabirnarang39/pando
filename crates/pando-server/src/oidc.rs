@@ -8,6 +8,11 @@
 //! * `iss`, `aud` and `exp` are required; `nbf` is honoured; 60 s clock-skew leeway.
 //! * The principal is a configurable claim (default `sub`), which the access policy maps
 //!   to per-directory and per-ref permissions.
+//! * `require` claims (`--oidc-require CLAIM=VALUE`) must all match. Issuers that sign tokens
+//!   for anyone on the internet (GitHub Actions, Google) are refused without one that binds a
+//!   tenant, such as `repository_owner=acme` or `hd=corp.example`.
+//! * A token can't sign in as a platform administrator (unless the operator lists that login
+//!   with `--oidc-admin`) or as an `agent/` or `bot/` account.
 
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -22,14 +27,59 @@ use crate::auth::Authenticator;
 
 /// How often keys are re-fetched even if nothing looks wrong (providers rotate keys).
 const REFRESH_EVERY: Duration = Duration::from_secs(600);
+/// Fewest seconds between two key fetches, so tokens naming unknown key ids can't make us
+/// hammer the provider.
+const MIN_REFETCH: Duration = Duration::from_secs(60);
 const LEEWAY_SECS: u64 = 60;
 
-#[derive(Debug, Clone)]
+/// Issuers whose tokens anyone can obtain, and the claims that bind one tenant of them.
+const MULTI_TENANT: &[(&str, &[&str])] = &[
+    (
+        "https://token.actions.githubusercontent.com",
+        &["repository_owner", "repository_owner_id", "repository", "repository_id", "enterprise", "enterprise_id"],
+    ),
+    ("https://accounts.google.com", &["hd"]),
+    ("accounts.google.com", &["hd"]),
+];
+
+#[derive(Debug, Clone, Default)]
 pub struct OidcConfig {
     pub issuer: String,
     pub audience: String,
     /// Claim used as the principal name, e.g. `sub`, `email`, `preferred_username`.
     pub principal_claim: String,
+    /// Claims every token must carry with exactly this value (`email_verified=true`, `hd=corp.com`).
+    pub require: Vec<(String, String)>,
+    /// Logins a token may never sign in as (platform administrators).
+    pub reserved: Vec<String>,
+}
+
+impl OidcConfig {
+    /// Parses one `CLAIM=VALUE` rule.
+    pub fn parse_require(rule: &str) -> anyhow::Result<(String, String)> {
+        match rule.split_once('=') {
+            Some((c, v)) if !c.trim().is_empty() && !v.trim().is_empty() => {
+                Ok((c.trim().to_owned(), v.trim().to_owned()))
+            }
+            _ => bail!("--oidc-require takes CLAIM=VALUE, e.g. repository_owner=acme; got `{rule}`"),
+        }
+    }
+
+    /// Refuses a configuration that would accept tokens from anyone (a multi-tenant issuer
+    /// with nothing binding the tenant).
+    pub fn check(&self) -> anyhow::Result<()> {
+        let issuer = self.issuer.trim_end_matches('/');
+        if let Some((_, tenant)) = MULTI_TENANT.iter().find(|(i, _)| *i == issuer)
+            && !self.require.iter().any(|(c, _)| tenant.contains(&c.as_str()))
+        {
+            bail!(
+                "{issuer} issues tokens to anyone; bind your tenant with --oidc-require (one of {}), e.g. --oidc-require {}=YOUR_ORG",
+                tenant.join(", "),
+                tenant[0]
+            );
+        }
+        Ok(())
+    }
 }
 
 pub struct OidcAuthenticator {
@@ -56,6 +106,7 @@ impl OidcAuthenticator {
 
     /// Discover the JWKS endpoint from the issuer and keep keys fresh in the background.
     pub async fn discover(cfg: OidcConfig) -> anyhow::Result<Self> {
+        cfg.check()?;
         // reqwest uses rustls without a bundled provider; use ring, as the gRPC server does.
         let _ = rustls::crypto::ring::default_provider().install_default();
         let http = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
@@ -77,13 +128,14 @@ impl OidcAuthenticator {
         let shared = keys.clone();
         tokio::spawn(async move {
             loop {
-                // Wake on schedule or when an unknown key id was seen (rate-limited by the
-                // 1-slot channel and the fetch itself).
+                // Wake on schedule or when an unknown key id was seen; the 1-slot channel
+                // folds a burst into one fetch, and the pause after it keeps fetches a minute apart.
                 let _ = tokio::time::timeout(REFRESH_EVERY, rx.recv()).await;
                 match fetch_jwks(&http, &jwks_uri).await {
                     Ok(set) => *shared.write().expect("jwks lock") = set,
                     Err(e) => tracing::warn!(error = %e, "OIDC key refresh failed; keeping previous keys"),
                 }
+                tokio::time::sleep(MIN_REFETCH).await;
             }
         });
         Ok(Self { cfg, keys, refresh: Some(tx) })
@@ -124,10 +176,23 @@ impl OidcAuthenticator {
         v.validate_nbf = true;
         v.leeway = LEEWAY_SECS;
         let claims = decode::<serde_json::Value>(token, &key, &v).map_err(|e| reject(&e.to_string()))?.claims;
+        for (claim, want) in &self.cfg.require {
+            let ok = match &claims[claim] {
+                serde_json::Value::String(s) => s == want,
+                serde_json::Value::Null => false,
+                other => serde_json::from_str::<serde_json::Value>(want).is_ok_and(|w| &w == other),
+            };
+            if !ok {
+                return Err(reject(&format!("`{claim}` is not `{want}`")));
+            }
+        }
         let who = claims[&self.cfg.principal_claim]
             .as_str()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| reject(&format!("missing `{}` claim", self.cfg.principal_claim)))?;
+        if who.starts_with("agent/") || who.starts_with("bot/") || self.cfg.reserved.iter().any(|r| r == who) {
+            return Err(reject(&format!("`{who}` is reserved and can't sign in with single sign-on")));
+        }
         Ok(Principal(who.to_owned()))
     }
 }

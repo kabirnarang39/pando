@@ -61,6 +61,16 @@ struct Cli {
     /// Claim used as the principal for access rules (sub, email, preferred_username...).
     #[arg(long, global = true, env = "PANDO_OIDC_CLAIM", default_value = "sub")]
     oidc_claim: String,
+    /// CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g.
+    /// `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers
+    /// that serve anyone (GitHub Actions, Google).
+    #[arg(long = "oidc-require", global = true, env = "PANDO_OIDC_REQUIRE", value_delimiter = ',')]
+    oidc_require: Vec<String>,
+    /// Platform administrators who may sign in through OIDC (repeatable). Any other
+    /// `--platform-admins` login is refused from an OIDC token, so an identity provider that
+    /// lets users pick their name can't make someone an administrator.
+    #[arg(long = "oidc-admin", global = true, env = "PANDO_OIDC_ADMINS", value_delimiter = ',')]
+    oidc_admins: Vec<String>,
     /// PEM certificate and key for TLS.
     #[arg(long, global = true, env = "PANDO_TLS_CERT", requires = "tls_key")]
     tls_cert: Option<std::path::PathBuf>,
@@ -122,6 +132,23 @@ enum Role {
         /// Days until it expires (1–366).
         #[arg(long, default_value_t = 30)]
         expires_days: i64,
+    },
+    /// Back up a platform server while it runs: a consistent snapshot of the registry and of
+    /// every hosted repository's metadata database, with a manifest of where each belongs and
+    /// where objects live. Restore by copying back while stopped (docs/deploy.md).
+    Backup {
+        #[arg(long, env = "PANDO_PLATFORM", hide_env_values = true)]
+        platform: String,
+        #[arg(long, env = "PANDO_REPOS_METADATA", hide_env_values = true)]
+        repos_metadata: String,
+        #[arg(long, env = "PANDO_REPOS_OBJECTS", hide_env_values = true, default_value = "metadata")]
+        repos_objects: String,
+        /// The server's default repository, backed up too when it is SQLite.
+        #[arg(long, env = "PANDO_METADATA", hide_env_values = true)]
+        metadata: Option<String>,
+        /// A new or empty directory, or an object store URL (s3://BUCKET/PREFIX, gs://, az://).
+        #[arg(long)]
+        to: String,
     },
     /// Delta-compress stored blob versions (single writer; safe to run while serving).
     Compact {
@@ -228,6 +255,19 @@ async fn main() -> anyhow::Result<()> {
     if let Role::Token { platform, account, name, expires_days } = &cli.role {
         return create_token(platform, account, name, *expires_days);
     }
+    if let Role::Backup { platform, repos_metadata, repos_objects, metadata, to } = &cli.role {
+        let templates =
+            pando_server::hosting::Templates { metadata: repos_metadata.clone(), objects: repos_objects.clone() };
+        templates.validate()?;
+        let s = pando_server::backup::backup(platform, &templates, metadata.as_deref(), to).await?;
+        println!(
+            "backed up the registry and {} repositories to {}: {}",
+            s.repositories,
+            config::redact(to),
+            s.files.join(", ")
+        );
+        return Ok(());
+    }
     let flags = Arc::new(SpecFlags::from_env()?);
     let web = pando_server::WebAccess {
         enabled: flags.enabled(pando_core::flags::Flag::Web),
@@ -238,14 +278,25 @@ async fn main() -> anyhow::Result<()> {
     }
     let mut authenticators: Vec<Arc<dyn Authenticator>> = Vec::new();
     if let Some(t) = &cli.tokens {
+        pando_server::auth::check_static_tokens(t)?;
         authenticators.push(Arc::new(StaticTokens::new(t.split(',').map(|s| s.trim().to_owned()))));
     }
     if let (Some(issuer), Some(audience)) = (&cli.oidc_issuer, &cli.oidc_audience) {
         if flags.enabled(Flag::Oidc) {
+            let admins = match &cli.role {
+                Role::Server { platform_admins, .. } => platform_admins.as_slice(),
+                _ => &[],
+            };
             let cfg = OidcConfig {
                 issuer: issuer.clone(),
                 audience: audience.clone(),
                 principal_claim: cli.oidc_claim.clone(),
+                require: cli.oidc_require.iter().map(|r| OidcConfig::parse_require(r)).collect::<Result<_, _>>()?,
+                reserved: admins
+                    .iter()
+                    .map(|a| a.trim().to_owned())
+                    .filter(|a| !a.is_empty() && !cli.oidc_admins.iter().any(|o| o.trim() == a))
+                    .collect(),
             };
             authenticators.push(Arc::new(OidcAuthenticator::discover(cfg).await?));
             tracing::info!(%issuer, "OIDC authentication enabled");
@@ -333,7 +384,7 @@ async fn main() -> anyhow::Result<()> {
             }
             (listen, authority_routes(repo, flags, policy, checks))
         }
-        Role::Token { .. } => unreachable!("handled before authentication is set up"),
+        Role::Token { .. } | Role::Backup { .. } => unreachable!("handled before authentication is set up"),
         Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {
             let from = config::open_storage(&from_metadata, &from_objects).await?;
             let to = config::open_storage(&to_metadata, &to_objects).await?;

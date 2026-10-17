@@ -36,6 +36,7 @@ mimalloc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 similar.workspace = true
+tempfile.workspace = true
 prost.workspace = true
 quick_cache.workspace = true
 reqwest.workspace = true
@@ -59,4 +60,3 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 jsonwebtoken = { workspace = true, features = ["use_pem"] }
 pando-server.workspace = true
 serde_json.workspace = true
-tempfile.workspace = true

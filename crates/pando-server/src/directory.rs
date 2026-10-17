@@ -216,12 +216,12 @@ impl Registry {
 
     /// Adds an organisation; false if it already exists.
     pub fn create_organization(&self, org: &OrgRec) -> anyhow::Result<bool> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         let n = db.execute(
             "INSERT OR IGNORE INTO organizations (login, display_name, description, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
             (&org.login, &org.display_name, &org.description, org.created_at_ms),
         )?;
+        self.invalidate();
         Ok(n == 1)
     }
 
@@ -235,7 +235,6 @@ impl Registry {
 
     /// Sets a member's role; `Role::Unspecified` removes the member and their team places.
     pub fn set_member(&self, org: &str, login: &str, role: Role) -> anyhow::Result<()> {
-        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         if role == Role::Unspecified {
@@ -249,6 +248,7 @@ impl Registry {
             )?;
         }
         tx.commit()?;
+        self.invalidate();
         Ok(())
     }
 
@@ -283,7 +283,6 @@ impl Registry {
 
     /// Creates or replaces a team. Every member must already belong to the organisation.
     pub fn set_team(&self, team: &TeamRec) -> anyhow::Result<()> {
-        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         tx.execute(
@@ -296,18 +295,19 @@ impl Registry {
             tx.execute("INSERT INTO team_members (org, slug, login) VALUES (?1, ?2, ?3)", (&team.org, &team.slug, m))?;
         }
         tx.commit()?;
+        self.invalidate();
         Ok(())
     }
 
     /// Removes a team, its members and its grants; false if there was no such team.
     pub fn delete_team(&self, org: &str, slug: &str) -> anyhow::Result<bool> {
-        self.invalidate();
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         let n = tx.execute("DELETE FROM teams WHERE org = ?1 AND slug = ?2", (org, slug))?;
         tx.execute("DELETE FROM team_members WHERE org = ?1 AND slug = ?2", (org, slug))?;
         tx.execute("DELETE FROM grants WHERE principal = ?1", [format!("{org}/{slug}")])?;
         tx.commit()?;
+        self.invalidate();
         Ok(n == 1)
     }
 
@@ -347,7 +347,6 @@ impl Registry {
 
     /// Grants `role` on a repository; `Role::Unspecified` removes the grant.
     pub fn set_grant(&self, key: &RepoKey, principal: &str, role: Role) -> anyhow::Result<()> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         if role == Role::Unspecified {
             db.execute(
@@ -361,6 +360,7 @@ impl Registry {
                 (&key.owner, &key.name, principal, role as i32),
             )?;
         }
+        self.invalidate();
         Ok(())
     }
 
