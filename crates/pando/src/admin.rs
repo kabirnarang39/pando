@@ -1,4 +1,4 @@
-//! `pando org`, `pando team`, `pando token` and `pando repo grant`: who may use a server that
+//! `pando org`, `pando team`, `pando token`, `pando repo grant` and `pando admin`: who may use a server that
 //! hosts many repositories (`pandod server --platform`).
 
 use anyhow::{Context, Result, anyhow};
@@ -7,7 +7,7 @@ use pando::remote::Ch;
 use pando_proto::platform_client::PlatformClient;
 use pando_proto::{
     CreateOrganizationRequest, CreateTokenRequest, Empty, OrgName, RepositoryRef, RevokeTokenRequest, Role,
-    SetGrantRequest, SetMemberRequest, Team, TeamRef,
+    SetGrantRequest, SetMemberRequest, SetSignupAllowRequest, Team, TeamRef,
 };
 
 fn now_ms() -> i64 {
@@ -136,6 +136,28 @@ pub enum TokenCmd {
     },
     /// Revoke a token by its id.
     Revoke { id: String },
+}
+
+#[derive(Subcommand)]
+pub enum AdminCmd {
+    /// Who may create an account by signing in (`pandod server --signup waitlist`).
+    Signup {
+        #[command(subcommand)]
+        action: SignupCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SignupCmd {
+    /// Let an email address, or everyone at `@domain`, create an account.
+    Allow {
+        entry: String,
+    },
+    /// Take an entry off the list (accounts already created stay).
+    Remove {
+        entry: String,
+    },
+    List,
 }
 
 fn explain(s: tonic::Status) -> anyhow::Error {
@@ -355,6 +377,28 @@ pub async fn webhook(mut p: PlatformClient<Ch>, cmd: WebhookCmd) -> Result<()> {
         WebhookCmd::Remove { id } => {
             p.delete_webhook(WebhookRef { id: id.clone() }).await.map_err(explain)?;
             println!("removed webhook {id}");
+        }
+    }
+    Ok(())
+}
+
+pub async fn admin(mut p: PlatformClient<Ch>, cmd: AdminCmd) -> Result<()> {
+    let AdminCmd::Signup { action } = cmd;
+    match action {
+        SignupCmd::Allow { entry } => {
+            p.set_signup_allow(SetSignupAllowRequest { entry: entry.clone(), allowed: true }).await.map_err(explain)?;
+            println!("{entry} may sign up");
+        }
+        SignupCmd::Remove { entry } => {
+            p.set_signup_allow(SetSignupAllowRequest { entry: entry.clone(), allowed: false })
+                .await
+                .map_err(explain)?;
+            println!("removed {entry}");
+        }
+        SignupCmd::List => {
+            for e in p.list_signup_allow(Empty {}).await.map_err(explain)?.into_inner().entries {
+                println!("{e}");
+            }
         }
     }
     Ok(())
