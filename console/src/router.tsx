@@ -16,6 +16,8 @@ const LocksView = lazyRouteComponent(() => import("./views/Locks"), "LocksView")
 const OverviewView = lazyRouteComponent(() => import("./views/repo/Overview"), "OverviewView");
 const ReviewView = lazyRouteComponent(() => import("./views/repo/Review"), "ReviewView");
 const ReviewsView = lazyRouteComponent(() => import("./views/repo/Reviews"), "ReviewsView");
+const IssuesView = lazyRouteComponent(() => import("./views/repo/Issues"), "IssuesView");
+const IssueView = lazyRouteComponent(() => import("./views/repo/Issue"), "IssueView");
 const RepoSettingsView = lazyRouteComponent(() => import("./views/repo/Settings"), "RepoSettingsView");
 const ConnectView = lazyRouteComponent(() => import("./views/Connect"), "ConnectView");
 
@@ -80,6 +82,8 @@ const review = createRoute({
   component: ReviewView,
 });
 
+const issues = createRoute({ getParentRoute: () => repo, path: "/issues", component: IssuesView });
+const issue = createRoute({ getParentRoute: () => repo, path: "/issues/$number", component: IssueView });
 const locks = createRoute({ getParentRoute: () => repo, path: "/locks", component: LocksView });
 const agents = createRoute({ getParentRoute: () => repo, path: "/agents", component: AgentsView });
 const settings = createRoute({ getParentRoute: () => repo, path: "/settings", component: RepoSettingsView });
@@ -92,7 +96,7 @@ export const router = createRouter({
     connect,
     tokens,
     org,
-    repo.addChildren([overview, changes, code, reviews, review, locks, agents, settings]),
+    repo.addChildren([overview, changes, code, reviews, review, issues, issue, locks, agents, settings]),
   ]),
   history: createHashHistory(),
   defaultPreload: "intent",

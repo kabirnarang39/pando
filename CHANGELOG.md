@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Issues (ADR-027): open, discuss, label and assign issues to people or agents, in the console
+  (Issues tab), the CLI (`pando issue`) and over MCP (`pando_issues`, `pando_issue`,
+  `pando_open_issue`, `pando_comment_on_issue`, `pando_update_issue`). Issues and change
+  requests share numbers; a change request saying "fixes #N" closes the issue when it lands.
+  Issues assigned to you are in your inbox; `issue` webhook events let an agent runner start work
+  as soon as an issue is assigned.
 - Remote MCP (ADR-026): `pando mcp --http ADDR --server URL` serves a whole server to agents
   anywhere over the stateless MCP 2026-07-28 protocol. With a URL and a token an agent reads,
   writes and lands files, opens, reviews and lands change requests, reports checks and reads its

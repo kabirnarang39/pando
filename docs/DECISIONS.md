@@ -369,3 +369,22 @@ container). Changesets with no author are attributed to the authenticated caller
 still claim another author name, as in git, which a later change will restrict on platform
 servers.
 
+## ADR-027: Issues share numbering with change requests and close from "fixes #N"
+
+**Decision.** Issues live in the platform registry beside change requests and take numbers from
+the same per-repository sequence, so `#12` names one thing. Anyone who can read a repository
+may open an issue and comment; assigning, labelling and closing someone else's issue take
+triage, as on GitHub. A change request whose title or description says "fixes", "closes" or
+"resolves" `#N` closes that issue as done when it lands. Issues assigned to you are in your
+inbox, and `issue` webhook events (opened, assigned, closed, reopened) let an agent runner start
+work the moment an issue is assigned to an agent.
+
+**Why.** The agent loop (assign, work, propose, review, land, done) needs no glue: an agent reads
+its inbox over MCP, opens a change request that fixes the issue, and landing it closes the loop.
+Shared numbers and GitHub's keywords keep habits and links working for people moving from
+GitHub.
+
+**Trade-offs.** No milestones, projects or issue templates yet; labels are free text. Which
+change requests fix an issue is worked out when the issue is read, by scanning the repository's
+change requests, which a link table will replace if repositories reach many thousands of them.
+

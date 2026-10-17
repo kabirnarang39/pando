@@ -8,6 +8,7 @@ pub mod compact;
 pub mod copy;
 pub mod diff;
 pub mod history;
+pub mod issues;
 pub mod land;
 pub mod locks;
 pub mod merge_base;

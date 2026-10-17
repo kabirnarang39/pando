@@ -66,6 +66,6 @@ describe("demo platform", () => {
 
   it("puts requested reviews in the viewer's inbox", () => {
     expect(p.inbox().length).toBeGreaterThan(0);
-    expect(p.inbox().every((i) => i.changeRequest.state === ChangeRequestState.OPEN)).toBe(true);
+    expect(p.inbox().every((i) => (i.changeRequest ? i.changeRequest.state === ChangeRequestState.OPEN : i.issue?.assignees.includes("kabir")))).toBe(true);
   });
 });

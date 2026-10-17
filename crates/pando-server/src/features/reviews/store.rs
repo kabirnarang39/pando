@@ -171,11 +171,7 @@ impl Registry {
     pub fn create_change_request(&self, cr: &CrRec) -> anyhow::Result<u64> {
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
-        let next: i64 = tx.query_row(
-            "SELECT COALESCE(MAX(number), 0) + 1 FROM change_requests WHERE owner = ?1 AND name = ?2",
-            (&cr.key.owner, &cr.key.name),
-            |r| r.get(0),
-        )?;
+        let next = Self::next_number(&tx, &cr.key)?;
         tx.execute(
             &format!("INSERT INTO change_requests ({CR_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, NULL, ?16, ?17, ?18, ?19)"),
             rusqlite::params![

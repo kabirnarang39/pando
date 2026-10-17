@@ -3007,3 +3007,61 @@ del {
   border-top: 1px solid var(--line);
   font-size: var(--t-sm);
 }
+
+/* ---- issues ---- */
+
+.issue-state[data-state="open"] {
+  color: var(--ok);
+}
+.issue-state[data-state="done"] {
+  color: var(--link);
+}
+.issue-state[data-state="dropped"] {
+  color: var(--ink-3);
+}
+.issue-state {
+  display: inline-flex;
+}
+.issue-head {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0 16px;
+}
+.issue-head h1 {
+  margin: 0;
+  text-wrap: balance;
+}
+.issue-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 20px;
+  align-items: start;
+}
+.issue-side {
+  display: grid;
+  gap: 18px;
+}
+.issue-side > div {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.issue-side h2 {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.tag {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--select);
+  color: var(--link);
+  font-size: var(--t-xs);
+  line-height: 20px;
+}
+@media (max-width: 860px) {
+  .issue-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

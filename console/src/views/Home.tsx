@@ -1,3 +1,4 @@
+import { IssueInboxRow } from "../components/IssueParts";
 import { Link, Navigate } from "@tanstack/react-router";
 import { ChecksIcon, StateIcon } from "../components/ReviewParts";
 import { EventKind } from "../gen/pando_platform_pb";
@@ -66,7 +67,14 @@ export function HomeView() {
             ) : (
               <ul className="list">
                 {inbox.data.slice(0, 6).map((i) => {
-                  const cr = i.changeRequest!;
+                  if (!i.changeRequest) {
+                    return (
+                      <li key={`issue-${i.issue?.repository?.name}#${i.issue?.number}`}>
+                        <IssueInboxRow item={i} showReason />
+                      </li>
+                    );
+                  }
+                  const cr = i.changeRequest;
                   return (
                     <li key={`${cr.repository?.name}#${cr.number}`}>
                       <Link to="/$owner/$repo/reviews/$number" params={{ owner: cr.repository!.owner, repo: cr.repository!.name, number: String(cr.number) }} className="inbox-row">

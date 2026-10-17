@@ -1,5 +1,6 @@
 mod admin;
 mod cr;
+mod issue;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -208,6 +209,15 @@ enum Cmd {
         #[command(subcommand)]
         action: cr::CrCmd,
     },
+    /// Issues: work to do, assigned to people or agents; "fixes #N" in a change request closes
+    /// one when it lands.
+    Issue {
+        /// The repository, SERVER/OWNER/NAME; defaults to the workspace's.
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: issue::IssueCmd,
+    },
     /// Protected branches: changes land on them only through a reviewed change request.
     Protect {
         #[arg(long, global = true)]
@@ -337,6 +347,7 @@ fn review_target(server: Option<String>, token: Option<&str>) -> Result<cr::Targ
     let (owner, name) = repo.split_once('/').context("give the repository as OWNER/NAME")?;
     Ok(cr::Target {
         client: GrpcRemote::connect(&base, None, token)?.reviews(),
+        issues: GrpcRemote::connect(&base, None, token)?.issues(),
         repo: pando_proto::RepositoryRef { owner: owner.into(), name: name.into() },
         branch: workspace().ok().map(|ws| ws.config.ref_name),
     })
@@ -699,6 +710,10 @@ async fn run() -> Result<()> {
         Cmd::Org { server, action } => admin::org(platform_client(server, token)?, action).await?,
         Cmd::Team { server, action } => admin::team(platform_client(server, token)?, action).await?,
         Cmd::Cr { server, action } => cr::cr(review_target(server, token)?, action).await?,
+        Cmd::Issue { server, action } => {
+            let t = review_target(server, token)?;
+            issue::issue(t.issues, t.repo, action).await?
+        }
         Cmd::Protect { server, action } => cr::protect(review_target(server, token)?, action).await?,
         Cmd::Webhook { server, action } => admin::webhook(platform_client(server, token)?, action).await?,
         Cmd::Token { server, action } => admin::token(platform_client(server, token)?, action).await?,

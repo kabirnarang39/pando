@@ -195,6 +195,56 @@ pub struct CheckArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct Nothing {}
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct IssuesArgs {
+    pub repo: String,
+    /// open (default), closed or all.
+    #[serde(default)]
+    pub state: String,
+    /// Only issues assigned to this login.
+    #[serde(default)]
+    pub assignee: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct IssueArg {
+    pub repo: String,
+    pub number: u64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct OpenIssueArgs {
+    pub repo: String,
+    pub title: String,
+    /// What and why (Markdown).
+    #[serde(default)]
+    pub body: String,
+    /// People or agents to work on it.
+    #[serde(default)]
+    pub assignees: Vec<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct IssueCommentArgs {
+    pub repo: String,
+    pub number: u64,
+    pub body: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct IssueUpdateArgs {
+    pub repo: String,
+    pub number: u64,
+    /// open, completed or not_planned; empty to leave as is.
+    #[serde(default)]
+    pub state: String,
+    /// Replace the assignees with these; omit to leave them.
+    #[serde(default)]
+    pub assignees: Option<Vec<String>>,
+}
+
 type ToolResult = Result<String, String>;
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -693,8 +743,140 @@ impl RemoteMcp {
         Ok(describe(&cr))
     }
 
+    #[tool(description = "List issues in a repository: work to do, and who it is assigned to.")]
+    async fn pando_issues(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(a): Parameters<IssuesArgs>,
+    ) -> ToolResult {
+        use pando_proto::IssueState as S;
+        let states = match a.state.as_str() {
+            "" | "open" => vec![S::Open as i32],
+            "closed" => vec![S::Completed as i32, S::NotPlanned as i32],
+            "all" => vec![S::Open as i32, S::Completed as i32, S::NotPlanned as i32],
+            other => return Err(format!("`{other}` is not a state: open, closed or all")),
+        };
+        let list = self
+            .server(&parts)?
+            .issues()
+            .list_issues(pando_proto::ListIssuesRequest {
+                repository: Some(split(&a.repo)?),
+                states,
+                assignee: a.assignee,
+                ..Default::default()
+            })
+            .await
+            .map_err(status)?
+            .into_inner();
+        if list.issues.is_empty() {
+            return Ok("no issues".into());
+        }
+        Ok(list
+            .issues
+            .iter()
+            .map(|i| {
+                format!(
+                    "#{} {}{}",
+                    i.number,
+                    i.title,
+                    if i.assignees.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" (assigned to {})", i.assignees.join(", "))
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+
+    #[tool(description = "Read an issue with its discussion, to start work on it.")]
+    async fn pando_issue(&self, Extension(parts): Extension<Parts>, Parameters(a): Parameters<IssueArg>) -> ToolResult {
+        let mut c = self.server(&parts)?.issues();
+        let r = pando_proto::IssueRef { repository: Some(split(&a.repo)?), number: a.number };
+        let i = c.get_issue(r.clone()).await.map_err(status)?.into_inner();
+        let comments = c.list_issue_comments(r).await.map_err(status)?.into_inner().comments;
+        Ok(issue_text(&i, &comments))
+    }
+
+    #[tool(description = "Open an issue: work to do, optionally assigned to people or agents.")]
+    async fn pando_open_issue(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(a): Parameters<OpenIssueArgs>,
+    ) -> ToolResult {
+        let i = self
+            .server(&parts)?
+            .issues()
+            .create_issue(pando_proto::CreateIssueRequest {
+                repository: Some(split(&a.repo)?),
+                title: a.title,
+                body: a.body,
+                labels: a.labels,
+                assignees: a.assignees,
+            })
+            .await
+            .map_err(status)?
+            .into_inner();
+        Ok(issue_text(&i, &[]))
+    }
+
+    #[tool(description = "Comment on an issue.")]
+    async fn pando_comment_on_issue(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(a): Parameters<IssueCommentArgs>,
+    ) -> ToolResult {
+        self.server(&parts)?
+            .issues()
+            .add_issue_comment(pando_proto::AddIssueCommentRequest {
+                r#ref: Some(pando_proto::IssueRef { repository: Some(split(&a.repo)?), number: a.number }),
+                body: a.body,
+            })
+            .await
+            .map_err(status)?;
+        Ok(format!("commented on #{}", a.number))
+    }
+
+    #[tool(description = "Close, reopen or reassign an issue.")]
+    async fn pando_update_issue(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(a): Parameters<IssueUpdateArgs>,
+    ) -> ToolResult {
+        use pando_proto::IssueState as S;
+        let mut fields = Vec::new();
+        let state = match a.state.as_str() {
+            "" => S::Unspecified,
+            "open" => S::Open,
+            "completed" | "done" => S::Completed,
+            "not_planned" => S::NotPlanned,
+            other => return Err(format!("`{other}` is not a state: open, completed or not_planned")),
+        };
+        if state != S::Unspecified {
+            fields.push("state".to_owned());
+        }
+        if a.assignees.is_some() {
+            fields.push("assignees".to_owned());
+        }
+        let i = self
+            .server(&parts)?
+            .issues()
+            .update_issue(pando_proto::UpdateIssueRequest {
+                r#ref: Some(pando_proto::IssueRef { repository: Some(split(&a.repo)?), number: a.number }),
+                fields,
+                state: state as i32,
+                assignees: a.assignees.unwrap_or_default(),
+                ..Default::default()
+            })
+            .await
+            .map_err(status)?
+            .into_inner();
+        Ok(issue_text(&i, &[]))
+    }
+
     #[tool(
-        description = "What needs you: reviews requested from you, changes requested on yours, your agents' work ready to land."
+        description = "What needs you: issues assigned to you, reviews requested from you, changes requested on yours, your agents' work ready to land."
     )]
     async fn pando_inbox(&self, Extension(parts): Extension<Parts>, Parameters(_): Parameters<Nothing>) -> ToolResult {
         let inbox = self.server(&parts)?.reviews().inbox(InboxRequest::default()).await.map_err(status)?.into_inner();
@@ -705,13 +887,50 @@ impl RemoteMcp {
             .items
             .iter()
             .filter_map(|i| {
-                let c = i.change_request.as_ref()?;
-                let repo = c.repository.as_ref().map(|r| format!("{}/{}", r.owner, r.name)).unwrap_or_default();
-                Some(format!("{}: {repo}#{} {} by {}", i.reason, c.number, c.title, c.author))
+                if let Some(c) = &i.change_request {
+                    let repo = c.repository.as_ref().map(|r| format!("{}/{}", r.owner, r.name)).unwrap_or_default();
+                    return Some(format!("{}: {repo}#{} {} by {}", i.reason, c.number, c.title, c.author));
+                }
+                let x = i.issue.as_ref()?;
+                let repo = x.repository.as_ref().map(|r| format!("{}/{}", r.owner, r.name)).unwrap_or_default();
+                Some(format!("{}: issue {repo}#{} {}", i.reason, x.number, x.title))
             })
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+fn issue_text(i: &pando_proto::Issue, comments: &[pando_proto::Comment]) -> String {
+    let state = match pando_proto::IssueState::try_from(i.state).unwrap_or(pando_proto::IssueState::Unspecified) {
+        pando_proto::IssueState::Open => "open",
+        pando_proto::IssueState::Completed => "done",
+        pando_proto::IssueState::NotPlanned => "not planned",
+        pando_proto::IssueState::Unspecified => "unknown",
+    };
+    let mut out = format!("#{} {} [{state}]\nopened by {}", i.number, i.title, i.author);
+    if !i.assignees.is_empty() {
+        out.push_str(&format!(", assigned to {}", i.assignees.join(", ")));
+    }
+    if !i.labels.is_empty() {
+        out.push_str(&format!("\nlabels: {}", i.labels.join(", ")));
+    }
+    if !i.fixed_by.is_empty() {
+        out.push_str(&format!(
+            "\nfixed by change requests: {}",
+            i.fixed_by.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    if !i.body.trim().is_empty() {
+        out.push_str(&format!("\n\n{}", i.body.trim()));
+    }
+    for c in comments {
+        out.push_str(&format!("\n\n{} commented:\n{}", c.author, c.body));
+    }
+    out.push_str(&format!(
+        "\n\nTo fix it, open a change request whose description says \"Fixes #{}\": landing it closes the issue.",
+        i.number
+    ));
+    out
 }
 
 fn hex_short(bytes: &[u8]) -> String {

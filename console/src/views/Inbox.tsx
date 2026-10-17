@@ -1,3 +1,4 @@
+import { IssueInboxRow } from "../components/IssueParts";
 import { Link } from "@tanstack/react-router";
 import { ChecksIcon, ReviewBadge, StateIcon } from "../components/ReviewParts";
 import { useInbox } from "../platform-data";
@@ -34,7 +35,14 @@ export function InboxView() {
               </div>
               <ul className="list">
                 {items.map((i) => {
-                  const cr = i.changeRequest!;
+                  if (!i.changeRequest) {
+                    return (
+                      <li key={`issue-${i.issue?.repository?.name}#${i.issue?.number}`}>
+                        <IssueInboxRow item={i} />
+                      </li>
+                    );
+                  }
+                  const cr = i.changeRequest;
                   return (
                     <li key={`${cr.repository?.name}#${cr.number}`}>
                       <Link to="/$owner/$repo/reviews/$number" params={{ owner: cr.repository!.owner, repo: cr.repository!.name, number: String(cr.number) }} className="inbox-row">

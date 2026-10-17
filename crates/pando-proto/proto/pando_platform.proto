@@ -469,6 +469,8 @@ enum EventKind {
   EVENT_KIND_LOCKED = 7;
   EVENT_KIND_UNLOCKED = 8;
   EVENT_KIND_REPOSITORY_CREATED = 9;
+  EVENT_KIND_ISSUE_OPENED = 10;
+  EVENT_KIND_ISSUE_CLOSED = 11;
 }
 
 message Event {
@@ -484,7 +486,9 @@ message Event {
 
 message InboxRequest { uint32 limit = 1; }
 message InboxItem {
+  // One of the two: a change request, or an issue assigned to you.
   ChangeRequest change_request = 1;
+  Issue issue = 4;
   // Why it is in the inbox: "review requested", "changes requested on yours", "agent waiting".
   string reason = 2;
   bool unread = 3;
@@ -501,6 +505,85 @@ message ListEventsRequest {
 message ListEventsResponse {
   repeated Event events = 1;
   string next_page_token = 2;
+}
+
+// ---- issues ----
+
+enum IssueState {
+  ISSUE_STATE_UNSPECIFIED = 0;
+  ISSUE_STATE_OPEN = 1;
+  // Done, by hand or by a change request that said "fixes #N" landing.
+  ISSUE_STATE_COMPLETED = 2;
+  ISSUE_STATE_NOT_PLANNED = 3;
+}
+
+// Issues and change requests share one numbering per repository, so `#12` names one thing.
+message Issue {
+  RepositoryRef repository = 1;
+  uint64 number = 2;
+  string title = 3;
+  string body = 4;
+  string author = 5;
+  IssueState state = 6;
+  repeated string labels = 7;
+  // People or agents working on it.
+  repeated string assignees = 8;
+  int64 created_at_ms = 9;
+  int64 updated_at_ms = 10;
+  int64 closed_at_ms = 11;
+  uint32 comments = 12;
+  // Change requests that say they fix it.
+  repeated uint64 fixed_by = 13;
+}
+
+message IssueRef {
+  RepositoryRef repository = 1;
+  uint64 number = 2;
+}
+
+message ListIssuesRequest {
+  RepositoryRef repository = 1;
+  // Empty: open issues.
+  repeated IssueState states = 2;
+  string assignee = 3;
+  string label = 4;
+  // Words in the title or description.
+  string query = 5;
+  uint32 limit = 6;
+}
+message ListIssuesResponse { repeated Issue issues = 1; }
+
+message CreateIssueRequest {
+  RepositoryRef repository = 1;
+  string title = 2;
+  string body = 3;
+  repeated string labels = 4;
+  repeated string assignees = 5;
+}
+
+message UpdateIssueRequest {
+  IssueRef ref = 1;
+  // Only fields named here change: title, body, state, labels, assignees.
+  repeated string fields = 2;
+  string title = 3;
+  string body = 4;
+  IssueState state = 5;
+  repeated string labels = 6;
+  repeated string assignees = 7;
+}
+
+message AddIssueCommentRequest {
+  IssueRef ref = 1;
+  string body = 2;
+}
+
+service Issues {
+  rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
+  rpc GetIssue(IssueRef) returns (Issue);
+  rpc CreateIssue(CreateIssueRequest) returns (Issue);
+  rpc UpdateIssue(UpdateIssueRequest) returns (Issue);
+  rpc ListIssueComments(IssueRef) returns (ListCommentsResponse);
+  rpc AddIssueComment(AddIssueCommentRequest) returns (Comment);
 }
 
 service Reviews {

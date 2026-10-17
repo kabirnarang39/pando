@@ -150,7 +150,8 @@ pub async fn serve(
         tokio::spawn(webhooks::run(h.registry.clone()));
         routes = routes
             .add_service(features::platform::service(features::platform::Platform::new(h.clone())))
-            .add_service(features::reviews::service(features::reviews::Reviews::new(h.clone())));
+            .add_service(features::reviews::service(features::reviews::Reviews::new(h.clone())))
+            .add_service(features::issues::service(features::issues::Issues::new(h.clone())));
     }
 
     let mut builder = Server::builder()
