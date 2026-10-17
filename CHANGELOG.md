@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Change requests and review on platform servers (ADR-024): open a change request from a branch,
+  comment on lines with suggestions, approve or request changes, report CI checks, and land it as
+  one changeset once nothing blocks it; `pando cr rebase` replays it on its target. Protected
+  branches (`pando protect`, or repository Settings in the console) require approvals and passing
+  checks, make approvals stale on a new push, and refuse direct lands except for those allowed to
+  bypass review. An inbox (review requested, changes requested, agents' changes ready) and an
+  activity feed. CLI: `pando cr create|list|view|comment|review|check|land|rebase|ready|close|reopen`.
+- The web console's review screens work against a platform server, and admins protect branches
+  from repository Settings.
+
 ## [3.2.0] - 2026-10-17
 
 ### Added

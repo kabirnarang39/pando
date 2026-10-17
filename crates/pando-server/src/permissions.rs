@@ -9,13 +9,13 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use pando_core::acl::Principal;
-use pando_proto::{Role, Visibility};
+use pando_core::acl::{AccessPolicy, Principal};
+use pando_proto::{AccountKind, Protection, Role, Visibility};
 use tonic::Status;
 
 use crate::auth::{Authenticator, TokenScope};
-use crate::directory::TOKEN_PREFIX;
-use crate::hosting::{Registry, RepoRecord};
+use crate::directory::{TOKEN_PREFIX, kind_of};
+use crate::hosting::{Registry, RepoKey, RepoRecord};
 
 /// Methods that only read a repository. Everything else needs Write, so a method added later
 /// is protected until it is listed here.
@@ -187,6 +187,64 @@ impl Authenticator for PlatformAuth {
         let (who, scope) = self.inner.identify(bearer)?;
         self.record(&who);
         Ok((who, scope))
+    }
+}
+
+/// Protected branches (ADR-024): a branch with a protection is updated only by those it lets
+/// bypass review (people, teams `org/team`, or `admins` for the repository's administrators),
+/// or by agents when it lets agents land directly. Everyone else lands through a change request,
+/// whose review is the gate.
+pub struct ProtectedRefs {
+    pub inner: Arc<dyn AccessPolicy>,
+    pub registry: Arc<Registry>,
+    pub key: RepoKey,
+    pub access: Arc<Access>,
+}
+
+impl ProtectedRefs {
+    fn may_bypass(&self, who: &Principal, p: &Protection) -> bool {
+        if self.access.is_admin(who) || (p.agents_land_directly && kind_of(&who.0) == AccountKind::Agent) {
+            return true;
+        }
+        p.bypass.iter().any(|b| {
+            b == &who.0
+                || (b == "admins" && self.registry.held_role(&who.0, &self.key).is_ok_and(|r| r >= Role::Admin))
+                || (b.contains('/') && self.registry.in_team(&who.0, b).unwrap_or(false))
+        })
+    }
+}
+
+impl AccessPolicy for ProtectedRefs {
+    fn can_write(&self, who: &Principal, path: &str) -> bool {
+        self.inner.can_write(who, path)
+    }
+
+    fn can_update_ref(&self, who: &Principal, ref_name: &str) -> bool {
+        if !self.inner.can_update_ref(who, ref_name) {
+            return false;
+        }
+        match self.registry.protection_for(&self.key, ref_name) {
+            Ok(Some(p)) => self.may_bypass(who, &p),
+            Ok(None) => true,
+            Err(e) => {
+                tracing::warn!(error = %e, "reading branch protection; refusing the update");
+                false
+            }
+        }
+    }
+
+    fn read_scope(&self, who: &Principal) -> pando_core::acl::ReadScope {
+        self.inner.read_scope(who)
+    }
+
+    fn why_not_ref(&self, who: &Principal, ref_name: &str) -> Option<String> {
+        if !self.inner.can_update_ref(who, ref_name) {
+            return self.inner.why_not_ref(who, ref_name);
+        }
+        Some(format!(
+            "`{ref_name}` is protected: land on a branch and open a change request \
+             (pando checkout -b NAME && pando land && pando cr create --title \"…\")"
+        ))
     }
 }
 

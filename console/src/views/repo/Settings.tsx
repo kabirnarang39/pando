@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { AddPrincipal, RoleSelect, roleNames } from "../../components/Access";
+import { ProtectionForm } from "../../components/ProtectionForm";
 import { useConnection } from "../../connection";
 import { Role } from "../../gen/pando_platform_pb";
-import { useGrants, useProtections, useRepository, useSetGrant } from "../../platform-data";
+import { useDeleteProtection, useGrants, useProtections, useRepository, useSetGrant } from "../../platform-data";
 import { useRepo } from "../../repo";
 import { Author, Empty, ErrorState, Icon, Skeleton } from "../../ui";
 
@@ -14,14 +16,23 @@ export function RepoSettingsView() {
   const repo = useRepository(key);
   const setGrant = useSetGrant(key);
   const admin = (repo.data?.viewerRole ?? Role.UNSPECIFIED) >= Role.ADMIN;
+  const removeProtection = useDeleteProtection(key);
+  // The branch whose protection is being edited; "" for a new one.
+  const [editing, setEditing] = useState<string | null>(null);
   return (
     <div className="page page-narrow">
-      {target.kind === "demo" && <p className="status" data-kind="info">In the demo, changes to access stay in this browser tab. Branch protection is shown read-only.</p>}
+      {target.kind === "demo" && <p className="status" data-kind="info">In the demo, changes here stay in this browser tab.</p>}
       <section className="panel" aria-labelledby="protect-title" style={{ margin: "20px 0" }}>
         <div className="panel-head">
           <Icon name="shield" />
           <h2 id="protect-title">Protected branches</h2>
+          {admin && editing === null && (
+            <button type="button" className="button" style={{ marginLeft: "auto" }} onClick={() => setEditing("")}>
+              Protect a branch
+            </button>
+          )}
         </div>
+        {editing === "" && <ProtectionForm repo={key} onDone={() => setEditing(null)} />}
         {protections.isPending ? (
           <Skeleton />
         ) : protections.error ? (
@@ -31,7 +42,7 @@ export function RepoSettingsView() {
         ) : (
           <ul className="list">
             {protections.data.map((p) => (
-              <li key={p.pattern} className="row" style={{ gridTemplateColumns: "auto minmax(0,1fr)" }}>
+              <li key={p.pattern} className="row" style={{ gridTemplateColumns: "auto minmax(0,1fr) auto", alignItems: "start" }}>
                 <span className="branch">{p.pattern}</span>
                 <div className="row-main">
                   <div className="row-meta" style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)" }}>
@@ -43,7 +54,18 @@ export function RepoSettingsView() {
                     <span>{p.agentsLandDirectly ? "Agents land directly" : "An agent's land opens a change request"}</span>
                     {p.bypass.length > 0 && <span>May land without review: {p.bypass.join(", ")}</span>}
                   </div>
+                  {editing === p.pattern && <ProtectionForm repo={key} existing={p} onDone={() => setEditing(null)} />}
                 </div>
+                {admin && editing !== p.pattern && (
+                  <span className="confirm">
+                    <button type="button" className="button button-quiet" onClick={() => setEditing(p.pattern)} aria-label={`Edit protection of ${p.pattern}`}>
+                      Edit
+                    </button>
+                    <button type="button" className="button button-quiet" disabled={removeProtection.isPending} onClick={() => removeProtection.mutate(p.pattern)} aria-label={`Stop protecting ${p.pattern}`}>
+                      Remove
+                    </button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>

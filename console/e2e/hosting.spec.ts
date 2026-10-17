@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { HOSTING } from "./setup";
 
-// The console against a real pandod that hosts many repositories but has no review service yet.
+// The console against a real pandod that hosts many repositories, with change requests.
 test.beforeEach(async ({ page }) => {
   await page.goto(`/?server=${encodeURIComponent(HOSTING)}#/`);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
@@ -10,11 +10,8 @@ test.beforeEach(async ({ page }) => {
 test("lists the server's repositories and opens one", async ({ page }) => {
   await expect(page.getByRole("link", { name: "lumen/fleet" })).toBeVisible();
   await expect(page.getByRole("link", { name: "lumen/web" })).toBeVisible();
-  // No review service on this server: no inbox, no reviews.
-  await expect(page.getByRole("link", { name: /^Inbox/ })).toHaveCount(0);
   await page.getByRole("link", { name: "lumen/fleet" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("fleet");
-  await expect(page.getByRole("navigation", { name: "Repository" }).getByRole("link", { name: /Reviews/ })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Repository" }).getByRole("link", { name: "Code" }).click();
   await page.getByRole("row", { name: /services/ }).getByRole("link").click();
   await page.getByRole("link", { name: "billing/" }).click();
@@ -35,5 +32,36 @@ test("data from one connection never shows on another", async ({ page }) => {
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("link", { name: "lumen/fleet" })).toBeVisible();
   await expect(page.getByText("Lumen Labs")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /^Inbox/ })).toHaveCount(0);
+  await expect(page.getByText("Lower PAYMENT_TERMS_DAYS")).toHaveCount(0);
+});
+
+test("a change request from the server: diff, a line comment, blockers", async ({ page }) => {
+  await page.getByRole("link", { name: "lumen/fleet" }).click();
+  await expect(page.getByRole("navigation", { name: "Repository" }).getByRole("link", { name: /Reviews/ })).toContainText("1");
+  await page.getByRole("navigation", { name: "Repository" }).getByRole("link", { name: /Reviews/ }).click();
+  await page.getByRole("button", { name: /^Open/ }).click();
+  await page.getByRole("link", { name: /Lower the tax rate to 17%/ }).click();
+  await expect(page.getByRole("heading", { name: /Lower the tax rate to 17%/ })).toBeVisible();
+  await expect(page.getByText("Matches the new regulation.")).toBeVisible();
+  await expect(page.locator(".drow[data-op=add]", { hasText: "1700" })).toBeVisible();
+  // Comment on the changed line; it is stored on the server and survives a reload.
+  await page.locator(".drow:has(.add-comment)", { hasText: "1700" }).locator(".add-comment").click();
+  await page.keyboard.type("Is this the rate from January?");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.locator(".comment-body", { hasText: "Is this the rate from January?" })).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".comment-body", { hasText: "Is this the rate from January?" })).toBeVisible();
+});
+
+test("protecting the target blocks the change request until it is approved", async ({ page }) => {
+  await page.goto("/#/lumen/fleet/settings");
+  await page.getByRole("button", { name: "Protect a branch" }).click();
+  await page.getByRole("form", { name: "Protect a branch" }).getByRole("button", { name: "Protect" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "1 approval required" })).toBeVisible();
+  await page.goto("/#/lumen/fleet/reviews/1");
+  await expect(page.getByText("Needs 1 more approval")).toBeVisible();
+  // The author can't approve their own change.
+  await page.goto("/#/lumen/fleet/settings");
+  await page.getByRole("button", { name: "Stop protecting main" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "1 approval required" })).toHaveCount(0);
 });

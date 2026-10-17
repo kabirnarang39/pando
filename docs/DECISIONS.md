@@ -305,3 +305,28 @@ no authentication at all stay open, for local development, as before. Repositori
 phase 1 become private to their organisation's members: administrators add members after
 upgrading.
 
+## ADR-024: Change requests land as one rebased changeset; protection is an access policy
+
+**Decision.** A change request proposes a branch (the source) for a target. It records the
+source's merge base with the target, follows the source branch as it moves, and lands as one
+changeset: everything the source changed since its base, landed through the same server-side,
+per-file rebase as any other land. Reviews, comments, checks, protections and an activity log
+live in the platform registry beside accounts and grants.
+
+Branch protection is an access policy wrapped around each repository's own: updating a protected
+branch is allowed only to those it lets bypass review (and to agents when it lets agents land
+directly). Change requests land through a separate land path without that wrapper, so their
+review is the gate. Checks are recorded per version of the source, so a new push starts with
+none; approvals made on an older version stop counting when the protection says so.
+
+**Why.** Landing a single rebased changeset needs no new merge machinery and inherits the
+landing guarantees already tested by simulation and chaos runs. Putting protection in the access
+policy covers every way to move a branch (land and compare-and-swap) with one check, and the
+refusal says how to proceed.
+
+**Trade-offs.** The landed changeset is a squash: the branch's own changesets are not replayed
+one by one. Conflicts are computed from two tree diffs on each read of an open change request,
+proportional to what changed; a cache comes if listings of hundreds of open requests get slow.
+An agent's land on a protected branch is refused rather than turned into a change request
+automatically; `pando cr create` is one command away.
+

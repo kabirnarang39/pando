@@ -1,0 +1,276 @@
+//! Change requests end to end (ADR-024): protected branches refuse direct lands, a change
+//! request collects comments, reviews and checks, lands as one changeset once nothing blocks it,
+//! loses stale approvals when its branch moves, and is rebased onto its target unless they
+//! changed the same files.
+
+use std::sync::Arc;
+
+use pando::remote::{GrpcRemote, Remote};
+use pando_adapters::flags::SpecFlags;
+use pando_core::Id;
+use pando_core::acl::{AccessPolicy, AllowAllPolicy};
+use pando_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
+use pando_core::ports::NoChecks;
+use pando_proto::{
+    AddCommentRequest, ChangeRequestRef, ChangeRequestState, Check, CheckState, CreateChangeRequestRequest,
+    CreateRepositoryRequest, InboxRequest, ListChangeRequestsRequest, ListEventsRequest, Protection,
+    ReportCheckRequest, RepositoryRef, Role, SetMemberRequest, SubmitReviewRequest, Verdict,
+};
+use pando_server::auth::StaticTokens;
+use pando_server::features::land::Land;
+use pando_server::hosting::{BuildRoutes, Hosting, Registry, RepoServices, Templates};
+use pando_server::permissions::{Access, ProtectedRefs};
+use pando_server::{ServeOptions, WebAccess, authority_routes, config, serve};
+use tokio::net::TcpListener;
+use tonic::Code;
+
+struct Server {
+    url: String,
+    _dir: tempfile::TempDir,
+    _stop: tokio::sync::oneshot::Sender<()>,
+}
+
+async fn start() -> Server {
+    let dir = tempfile::tempdir().unwrap();
+    let flags = Arc::new(SpecFlags::all_on());
+    let policy: Arc<dyn AccessPolicy> = Arc::new(AllowAllPolicy);
+    let checks = Arc::new(NoChecks);
+    let registry = Arc::new(Registry::open("memory").unwrap());
+    let access = Arc::new(Access { open: false, admins: vec!["admin".into()] });
+    let (reg, acc) = (registry.clone(), access.clone());
+    let build: BuildRoutes = Arc::new(move |key, repo| {
+        let protected: Arc<dyn AccessPolicy> = Arc::new(ProtectedRefs {
+            inner: policy.clone(),
+            registry: reg.clone(),
+            key: key.clone(),
+            access: acc.clone(),
+        });
+        RepoServices {
+            routes: authority_routes(repo.clone(), flags.clone(), protected, checks.clone()),
+            review_land: Some(Land::new(repo, flags.clone(), policy.clone(), checks.clone())),
+        }
+    });
+    let templates = Templates {
+        metadata: format!("sqlite://{}/repos/{{repo}}.db", dir.path().display()),
+        objects: "metadata".into(),
+    };
+    let hosting = Hosting::new(templates, registry, build, access).unwrap();
+    let default = config::open_repo("memory", "metadata").await.unwrap();
+    let routes = authority_routes(default, Arc::new(SpecFlags::all_on()), Arc::new(AllowAllPolicy), Arc::new(NoChecks));
+    let tokens = ["admin", "dev", "mira", "eve", "agent/fix-01"].map(|w| format!("{w}:{}-token", w.replace('/', "-")));
+    let auth = Arc::new(StaticTokens::new(tokens));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let web = WebAccess { enabled: false, origins: vec![] };
+    tokio::spawn(serve(
+        listener,
+        routes,
+        auth,
+        ServeOptions { web, hosting: Some(Arc::new(hosting)), ..Default::default() },
+        async {
+            let _ = rx.await;
+        },
+    ));
+    Server { url, _dir: dir, _stop: tx }
+}
+
+fn as_(s: &Server, who: &str) -> GrpcRemote {
+    GrpcRemote::connect(&format!("{}/lumen/fleet", s.url), None, Some(&format!("{}-token", who.replace('/', "-"))))
+        .unwrap()
+}
+
+/// A changeset on top of `parent` writing `files`.
+async fn changeset(r: &GrpcRemote, parent: Option<Id>, files: &[(&str, &str)], message: &str) -> Id {
+    let mut changes = Vec::new();
+    for (path, body) in files {
+        let (blob, payload) = encode_object(Kind::Blob, body.as_bytes());
+        r.objects().put_many(vec![(blob, payload)]).await.unwrap();
+        changes.push(FileChange::upsert(*path, Mode::File, blob));
+    }
+    r.create_changeset(Changeset {
+        parents: parent.iter().map(|p| p.0.to_vec()).collect(),
+        changes,
+        author: "dev".into(),
+        message: message.into(),
+        timestamp_ms: pando_server::hosting::now_ms(),
+    })
+    .await
+    .unwrap()
+    .id
+}
+
+/// Moves (or creates) `branch` to a new changeset on its current tip, or on `from` when new.
+async fn push(r: &GrpcRemote, branch: &str, from: &str, files: &[(&str, &str)]) -> Id {
+    let tip = r.get_ref(branch).await.unwrap();
+    let parent = match tip {
+        Some(t) => Some(t),
+        None => r.get_ref(from).await.unwrap(),
+    };
+    let cs = changeset(r, parent, files, &format!("Update {branch}")).await;
+    assert!(r.compare_and_swap(branch, tip, cs).await.unwrap(), "{branch} moved");
+    cs
+}
+
+fn repo() -> Option<RepositoryRef> {
+    Some(RepositoryRef { owner: "lumen".into(), name: "fleet".into() })
+}
+
+fn cr_ref(number: u64) -> ChangeRequestRef {
+    ChangeRequestRef { repository: repo(), number }
+}
+
+fn open(source: &str, title: &str, reviewers: &[&str]) -> CreateChangeRequestRequest {
+    CreateChangeRequestRequest {
+        repository: repo(),
+        source: source.into(),
+        target: "main".into(),
+        title: title.into(),
+        reviewers: reviewers.iter().map(|r| r.to_string()).collect(),
+        ..Default::default()
+    }
+}
+
+fn verdict(number: u64, v: Verdict) -> SubmitReviewRequest {
+    SubmitReviewRequest { r#ref: Some(cr_ref(number)), verdict: v as i32, body: String::new() }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn change_requests_gate_protected_branches() {
+    let s = start().await;
+    let admin = as_(&s, "admin");
+    admin
+        .platform()
+        .create_repository(CreateRepositoryRequest {
+            owner: "lumen".into(),
+            name: "fleet".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    for (who, role) in [("dev", Role::Write), ("mira", Role::Write)] {
+        let m = SetMemberRequest { org: "lumen".into(), login: who.into(), role: role as i32 };
+        admin.platform().set_member(m).await.unwrap();
+    }
+    let (dev, mira, eve) = (as_(&s, "dev"), as_(&s, "mira"), as_(&s, "eve"));
+    let first =
+        changeset(&dev, None, &[("billing/tax.rs", "rate = 19\n"), ("billing/refund.rs", "window = 30\n")], "Start")
+            .await;
+    assert!(dev.compare_and_swap("main", None, first).await.unwrap());
+
+    // Protect main: one approval and a passing build, and agents go through review too.
+    admin
+        .reviews()
+        .set_protection(Protection {
+            repository: repo(),
+            pattern: "main".into(),
+            required_approvals: 1,
+            required_checks: vec!["build".into()],
+            dismiss_stale: true,
+            agents_land_directly: false,
+            bypass: vec!["admins".into()],
+        })
+        .await
+        .unwrap();
+    let direct = changeset(&dev, Some(first), &[("billing/tax.rs", "rate = 20\n")], "Direct").await;
+    let e = dev.land("main", direct).await.unwrap_err();
+    assert!(format!("{e:#}").contains("`main` is protected"), "a protected branch refuses a direct land: {e:#}");
+
+    // Open a change request from a branch.
+    push(&dev, "tax-20", "main", &[("billing/tax.rs", "rate = 20\n")]).await;
+    let cr = dev
+        .reviews()
+        .create_change_request(open("tax-20", "Raise the tax rate to 20", &["mira"]))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(cr.number, 1);
+    assert_eq!((cr.files, cr.additions, cr.deletions), (1, 1, 1));
+    assert_eq!(cr.blockers, vec!["Needs 1 more approval", "Waiting for check build"]);
+    let dup = dev.reviews().create_change_request(open("tax-20", "Again", &[])).await.unwrap_err();
+    assert_eq!(dup.code(), Code::AlreadyExists);
+
+    // Mira is asked; she comments on a line and approves. Dev can't approve their own.
+    let inbox = mira.reviews().inbox(InboxRequest::default()).await.unwrap().into_inner();
+    assert_eq!(inbox.items.len(), 1);
+    assert_eq!(inbox.items[0].reason, "Review requested");
+    let own = dev.reviews().submit_review(verdict(1, Verdict::Approved)).await.unwrap_err();
+    assert_eq!(own.code(), Code::FailedPrecondition);
+    mira.reviews()
+        .add_comment(AddCommentRequest {
+            r#ref: Some(cr_ref(1)),
+            body: "Is 20 the new statutory rate?".into(),
+            path: "billing/tax.rs".into(),
+            line: 1,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let cr = mira.reviews().submit_review(verdict(1, Verdict::Approved)).await.unwrap().into_inner();
+    assert_eq!(cr.comments, 1);
+    assert_eq!(cr.blockers, vec!["Waiting for check build"]);
+    assert!(
+        mira.reviews().inbox(InboxRequest::default()).await.unwrap().into_inner().items.is_empty(),
+        "reviewed: out of the inbox"
+    );
+
+    // CI reports the build; nothing blocks it any more, and it lands as one changeset.
+    let check = |state: CheckState| ReportCheckRequest {
+        r#ref: Some(cr_ref(1)),
+        check: Some(Check { name: "build".into(), state: state as i32, ..Default::default() }),
+    };
+    let cr = dev.reviews().report_check(check(CheckState::Failed)).await.unwrap().into_inner();
+    assert_eq!(cr.blockers, vec!["Check build failed"]);
+    let e = dev.reviews().land(cr_ref(1)).await.unwrap_err();
+    assert!(e.message().contains("Check build failed"), "{e:?}");
+    let cr = dev.reviews().report_check(check(CheckState::Passed)).await.unwrap().into_inner();
+    assert!(cr.blockers.is_empty(), "{:?}", cr.blockers);
+    let landed = dev.reviews().land(cr_ref(1)).await.unwrap().into_inner();
+    assert_eq!(landed.change_request.unwrap().state, ChangeRequestState::Landed as i32);
+    assert_eq!(pando::features::browse::cat(&dev, "main", "billing/tax.rs").await.unwrap(), b"rate = 20\n");
+    let log = dev.log("main", "", 1).await.unwrap();
+    assert!(
+        log[0].changeset.message.starts_with("Raise the tax rate to 20 (#1)")
+            && log[0].changeset.message.contains("Approved by mira")
+    );
+
+    // A new push makes the approval stale.
+    push(&dev, "refund-45", "main", &[("billing/refund.rs", "window = 45\n")]).await;
+    dev.reviews().create_change_request(open("refund-45", "Longer refund window", &["mira"])).await.unwrap();
+    mira.reviews().submit_review(verdict(2, Verdict::Approved)).await.unwrap();
+    push(&dev, "refund-45", "main", &[("billing/refund.rs", "window = 60\n")]).await;
+    let cr = dev.reviews().get_change_request(cr_ref(2)).await.unwrap().into_inner();
+    assert!(cr.blockers.contains(&"Needs 1 more approval".to_string()), "{:?}", cr.blockers);
+
+    // The target moved: a change to other files rebases; one to the same file is a conflict.
+    push(&dev, "docs", "main", &[("README.md", "Billing\n")]).await;
+    dev.reviews().create_change_request(open("docs", "Add a README", &[])).await.unwrap();
+    let other =
+        changeset(&admin, admin.get_ref("main").await.unwrap(), &[("billing/refund.rs", "window = 50\n")], "Admin fix")
+            .await;
+    admin.land("main", other).await.expect("administrators bypass the protection");
+    let cr = dev.reviews().get_change_request(cr_ref(2)).await.unwrap().into_inner();
+    assert_eq!(cr.conflicts, vec!["billing/refund.rs"]);
+    let e = dev.reviews().rebase(cr_ref(2)).await.unwrap_err();
+    assert!(e.message().contains("billing/refund.rs"), "{e:?}");
+    let cr = dev.reviews().rebase(cr_ref(3)).await.unwrap().into_inner();
+    assert_eq!(cr.base, admin.get_ref("main").await.unwrap().unwrap().0.to_vec(), "rebased onto main");
+    assert_eq!(pando::features::browse::cat(&dev, "docs", "billing/refund.rs").await.unwrap(), b"window = 50\n");
+
+    // Activity, and strangers.
+    let events = dev
+        .reviews()
+        .list_events(ListEventsRequest { repository: repo(), ..Default::default() })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(events.events.len() >= 5, "{:?}", events.events);
+    let e = eve
+        .reviews()
+        .list_change_requests(ListChangeRequestsRequest { repository: repo(), ..Default::default() })
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), Code::NotFound);
+    let all = eve.reviews().list_events(ListEventsRequest::default()).await.unwrap().into_inner();
+    assert!(all.events.is_empty(), "a stranger sees no activity");
+}

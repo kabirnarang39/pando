@@ -146,7 +146,9 @@ pub async fn serve(
         None => auth,
     };
     if let Some(h) = &hosting {
-        routes = routes.add_service(features::platform::service(features::platform::Platform::new(h.clone())));
+        routes = routes
+            .add_service(features::platform::service(features::platform::Platform::new(h.clone())))
+            .add_service(features::reviews::service(features::reviews::Reviews::new(h.clone())));
     }
 
     let mut builder = Server::builder()

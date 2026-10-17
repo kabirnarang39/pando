@@ -145,7 +145,9 @@ impl Registry {
 
     /// Brings the schema up to date: accounts, organisations, teams, grants and tokens.
     pub(crate) fn migrate(&self) -> anyhow::Result<()> {
-        self.db.lock().unwrap().execute_batch(crate::directory::SCHEMA)?;
+        let db = self.db.lock().unwrap();
+        db.execute_batch(crate::directory::SCHEMA)?;
+        db.execute_batch(crate::features::reviews::store::SCHEMA)?;
         Ok(())
     }
 
@@ -223,12 +225,20 @@ impl Registry {
     }
 }
 
-/// Builds one repository's services from its storage.
-pub type BuildRoutes = Arc<dyn Fn(Repo) -> Routes + Send + Sync>;
+/// One repository's services, as [`BuildRoutes`] makes them.
+pub struct RepoServices {
+    /// Everything clients call on the repository.
+    pub routes: Routes,
+    /// Landing for change requests: their review is the gate, so it skips branch protection.
+    pub review_land: Option<crate::features::land::Land>,
+}
+
+/// Builds one repository's services from its name and storage.
+pub type BuildRoutes = Arc<dyn Fn(&RepoKey, Repo) -> RepoServices + Send + Sync>;
 
 struct Hosted {
     repo: Repo,
-    routes: Routes,
+    services: RepoServices,
 }
 
 /// Activity figures for listings, cached briefly: they walk history.
@@ -247,7 +257,7 @@ pub struct Hosting {
     open: Mutex<HashMap<RepoKey, Arc<OnceCell<Hosted>>>>,
     stats: Mutex<HashMap<RepoKey, (Instant, RepoStats)>>,
     /// Who may do what.
-    pub access: crate::permissions::Access,
+    pub access: Arc<crate::permissions::Access>,
 }
 
 impl Hosting {
@@ -255,7 +265,7 @@ impl Hosting {
         templates: Templates,
         registry: Arc<Registry>,
         build: BuildRoutes,
-        access: crate::permissions::Access,
+        access: Arc<crate::permissions::Access>,
     ) -> anyhow::Result<Self> {
         templates.validate()?;
         Ok(Self {
@@ -303,7 +313,7 @@ impl Hosting {
                 .await
                 .map_err(|e| Status::unavailable(format!("opening storage for `{key}`: {e:#}")))?;
             tracing::info!(repo = %key, "opened repository");
-            Ok::<_, Status>(Hosted { routes: (self.build)(repo.clone()), repo })
+            Ok::<_, Status>(Hosted { services: (self.build)(key, repo.clone()), repo })
         })
         .await?;
         Ok(cell)
@@ -312,7 +322,14 @@ impl Hosting {
     /// The services for `key`, opening its storage the first time.
     pub async fn routes(&self, key: &RepoKey) -> Result<Routes, Status> {
         let cell = self.hosted(key).await?;
-        Ok(cell.get().expect("initialised above").routes.clone())
+        Ok(cell.get().expect("initialised above").services.routes.clone())
+    }
+
+    /// The repository's storage and its change-request landing, opening it the first time.
+    pub async fn open_repo(&self, key: &RepoKey) -> Result<(Repo, Option<crate::features::land::Land>), Status> {
+        let cell = self.hosted(key).await?;
+        let h = cell.get().expect("initialised above");
+        Ok((h.repo.clone(), h.services.review_land.clone()))
     }
 
     /// Creates the repository's storage and records it. Idempotent for an existing repository
@@ -404,7 +421,11 @@ where
     }
 
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
-        let named = req.headers().get(REPO_HEADER).and_then(|v| v.to_str().ok()).map(str::to_owned);
+        // Platform and review calls name their repository in the request itself.
+        let central =
+            req.uri().path().starts_with("/pando.v1.Platform/") || req.uri().path().starts_with("/pando.v1.Reviews/");
+        let named =
+            req.headers().get(REPO_HEADER).and_then(|v| v.to_str().ok()).filter(|_| !central).map(str::to_owned);
         match (self.hosting.clone(), named) {
             (Some(hosting), Some(name)) => Box::pin(async move {
                 let who = req

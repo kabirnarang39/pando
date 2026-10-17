@@ -87,6 +87,32 @@ pando token create perf-fleet --as agent/perf-05 --repo lumen/fleet --role write
   development; it refuses to listen beyond 127.0.0.1 that way unless `PANDO_ALLOW_ANONYMOUS=1`.
 - Caches and node daemons serve the default repository only.
 
+### Change requests and protected branches
+
+```sh
+pando protect set main --approvals 1 --check build --bypass admins   # repository admins
+pando checkout -b lower-rate && $EDITOR tax.rs && pando commit -m "Lower the rate" && pando land
+pando cr create --title "Lower the tax rate" --reviewer mira@lumen.dev
+pando cr review 7 approve -m "Matches the regulation"                # mira
+pando cr check 7 build passed --url https://ci.example.com/runs/91   # CI, with a write token
+pando cr land 7
+```
+
+- A protected branch is updated only by those its protection lets bypass review (a login, a team
+  `org/team`, or `admins`), and by agents when it lets agents land directly. Everyone else lands
+  through a change request; a direct land is refused with a message saying so.
+- A change request lands when nothing blocks it: enough approvals from people other than its
+  author, every required check passed, no requested changes, no conflicts, not a draft. Each
+  blocker is shown in words. With "a new version needs new approvals" (the default), pushing to
+  the branch makes earlier approvals and requested changes stale.
+- It lands as one changeset, rebased onto the target's tip file by file like any other land, with
+  the title, description and approvers in its message. `pando cr rebase` replays a change request
+  on its target's tip when they changed different files.
+- Checks belong to a version of the change: CI reports them with `pando cr check` (or the
+  `ReportCheck` call) and a new push starts with none.
+- Reading needs Read; commenting needs Read; opening a change request needs Triage; approving,
+  requesting changes, reporting checks and landing need Write; protecting branches needs Admin.
+
 ## Roles
 
 | Process | Command | Runs where | State |

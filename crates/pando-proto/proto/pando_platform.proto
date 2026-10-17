@@ -397,6 +397,15 @@ message Protection {
   repeated string bypass = 7;
 }
 message ListProtectionsResponse { repeated Protection protections = 1; }
+message ProtectionRef {
+  RepositoryRef repository = 1;
+  string pattern = 2;
+}
+// A CI result for the change request's current version; a new version starts with none.
+message ReportCheckRequest {
+  ChangeRequestRef ref = 1;
+  Check check = 2;
+}
 
 enum EventKind {
   EVENT_KIND_UNSPECIFIED = 0;
@@ -459,6 +468,8 @@ service Reviews {
   rpc Rebase(ChangeRequestRef) returns (ChangeRequest);
   rpc ListProtections(RepositoryRef) returns (ListProtectionsResponse);
   rpc SetProtection(Protection) returns (Protection);
+  rpc DeleteProtection(ProtectionRef) returns (Empty);
+  rpc ReportCheck(ReportCheckRequest) returns (ChangeRequest);
   rpc Inbox(InboxRequest) returns (InboxResponse);
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
 }

@@ -15,3 +15,4 @@ pub mod objects;
 pub mod platform;
 pub mod prefetch;
 pub mod refs;
+pub mod reviews;

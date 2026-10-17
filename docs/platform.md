@@ -58,7 +58,7 @@ demo that runs in the browser.
    supported), personal and agent tokens, organisation members, teams, and per-repository roles
    (read, write, maintain, admin). Agents are accounts marked as agents and owned by a person or
    team.
-4. **Change requests and review.** Open a change request from a branch, review with comments on
+4. **Change requests and review** (done in 3.3, ADR-024). Open a change request from a branch, review with comments on
    lines, suggestions, approvals and requests for changes; merge by landing. Protected branches
    with required approvals and checks; an agent's land on a protected branch becomes a change
    request automatically.

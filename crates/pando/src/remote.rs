@@ -151,6 +151,10 @@ impl GrpcRemote {
     pub fn platform(&self) -> pando_proto::platform_client::PlatformClient<Ch> {
         pando_proto::platform_client::PlatformClient::new(self.ch())
     }
+
+    pub fn reviews(&self) -> pando_proto::reviews_client::ReviewsClient<Ch> {
+        pando_proto::reviews_client::ReviewsClient::new(self.ch())
+    }
 }
 
 fn st(s: tonic::Status) -> anyhow::Error {
