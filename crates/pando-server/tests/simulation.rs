@@ -181,6 +181,7 @@ fn start_replica(inner: &Arc<MemoryStore>, rng: &Arc<Mutex<Rng>>) -> Replica {
 
 /// A change a client asked to land, and what the server answered.
 struct Attempt {
+    msg: String,
     base: Id,
     path: String,
     blob: Id,
@@ -284,7 +285,7 @@ async fn simulate(seed: u64) -> HashMap<Outcome, usize> {
                     }
                     which = rng.lock().unwrap().below(3) as usize;
                 }
-                attempts.lock().unwrap().push(Attempt { base, path, blob, landed, outcome });
+                attempts.lock().unwrap().push(Attempt { msg: format!("{c}/{j}"), base, path, blob, landed, outcome });
             }
         }));
     }
@@ -326,12 +327,18 @@ async fn check(seed: u64, truth: &Repo, attempts: &[Attempt]) {
         );
     }
 
-    // 1. Every acknowledged land is in history.
+    // 1. Every acknowledged land is in history: the id the server answered with, and the
+    // change itself. They differ when a retried change was already there (its reply had been
+    // lost): the server answers with the tip that holds it, and the change sits earlier.
+    let by_msg: HashMap<&str, usize> =
+        history.iter().enumerate().map(|(i, (_, cs))| (cs.message.as_str(), i)).collect();
     let mut landed = Vec::new();
     for a in attempts {
         if let Some(id) = a.landed {
-            let at =
-                *position.get(&id).unwrap_or_else(|| panic!("seed {seed}: acknowledged land {id} is not in history"));
+            assert!(position.contains_key(&id), "seed {seed}: acknowledged land {id} is not in history");
+            let at = *by_msg
+                .get(a.msg.as_str())
+                .unwrap_or_else(|| panic!("seed {seed}: acknowledged change `{}` is not in history", a.msg));
             landed.push((at, a));
         }
     }
@@ -355,10 +362,10 @@ async fn check(seed: u64, truth: &Repo, attempts: &[Attempt]) {
     // 3. A later change to a path someone else changed must have been based on that change.
     landed.sort_by_key(|(at, _)| *at);
     for (i, (at_b, b)) in landed.iter().enumerate() {
-        for (_, a) in &landed[..i] {
+        for (_at_a, a) in &landed[..i] {
             if a.path == b.path && a.blob != b.blob {
                 assert!(
-                    truth.is_ancestor(a.landed.unwrap(), b.base).await.unwrap(),
+                    truth.is_ancestor(history[*_at_a].0, b.base).await.unwrap(),
                     "seed {seed}: change at position {at_b} to `{}` landed over a change it never saw",
                     b.path
                 );
