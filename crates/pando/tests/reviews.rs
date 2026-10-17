@@ -466,15 +466,20 @@ async fn authors_cannot_approve_or_check_their_own_change_through_agents() {
 #[tokio::test(flavor = "multi_thread")]
 async fn changesets_cannot_carry_git_or_pando_dirs() {
     let s = start().await;
-    let eve = GrpcRemote::connect(&s.url, None, Some("eve-token")).unwrap();
+    let admin = as_(&s, "admin");
+    let repo = CreateRepositoryRequest { owner: "lumen".into(), name: "fleet".into(), ..Default::default() };
+    admin.platform().create_repository(repo).await.unwrap();
+    let m = SetMemberRequest { org: "lumen".into(), login: "dev".into(), role: Role::Write as i32 };
+    admin.platform().set_member(m).await.unwrap();
+    let dev = as_(&s, "dev");
     let (blob, payload) = encode_object(Kind::Blob, b"#!/bin/sh\necho owned\n");
-    eve.objects().put_many(vec![(blob, payload)]).await.unwrap();
+    dev.objects().put_many(vec![(blob, payload)]).await.unwrap();
     for path in [".git/hooks/post-checkout", "src/.Git/config", ".PANDO/config.json", "git~1/config"] {
-        let e = eve
+        let e = dev
             .create_changeset(Changeset {
                 parents: vec![],
                 changes: vec![FileChange::upsert(path, Mode::Exec, blob)],
-                author: "eve".into(),
+                author: "dev".into(),
                 message: "m".into(),
                 timestamp_ms: 1,
             })
