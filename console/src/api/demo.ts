@@ -31,14 +31,22 @@ interface Stored {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** A deterministic 32-byte digest (four FNV-1a lanes). Ids only need to be distinct here. */
+/**
+ * A deterministic 32-byte digest: two FNV-1a lanes in one pass, spread over eight words. Ids only
+ * need to be distinct here, and this runs over every file the demo boots with, so it stays cheap.
+ */
 function digest(bytes: Uint8Array): Uint8Array {
+  let a = 0x811c9dc5;
+  let b = 0x050c5d1f;
+  for (let i = 0; i < bytes.length; i++) {
+    a = Math.imul(a ^ bytes[i]!, 0x01000193);
+    b = Math.imul(b ^ bytes[i]!, 0x5bd1e995);
+  }
   const out = new Uint8Array(32);
   const view = new DataView(out.buffer);
   for (let lane = 0; lane < 8; lane++) {
-    let h = (0x811c9dc5 ^ (lane * 0x9e3779b1)) >>> 0;
-    for (let i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i]!, 0x01000193) >>> 0;
-    h = Math.imul(h ^ bytes.length ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+    let h = Math.imul(a ^ (lane * 0x9e3779b1), 0x2c1b3c6d) ^ Math.imul(b ^ bytes.length, 0x297a2d39 + lane * 2);
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
     view.setUint32(lane * 4, h);
   }
   return out;
@@ -258,7 +266,7 @@ export class DemoRepo {
     );
     const id = digest(encoded);
     const snapshot: Snapshot = new Map(base);
-    for (const e of edits) {
+    for (const [i, e] of edits.entries()) {
       if (!e.bytes) {
         snapshot.delete(e.path);
         continue;
@@ -269,7 +277,7 @@ export class DemoRepo {
         const next = lines(e.bytes);
         blame = old ? this.remapBlame(old, next, id) : next.map(() => id);
       }
-      snapshot.set(e.path, { bytes: e.bytes, mode: Mode.FILE, blob: digest(e.bytes), blame });
+      snapshot.set(e.path, { bytes: e.bytes, mode: Mode.FILE, blob: changes[i]!.blob, blame });
     }
     const key = hex(id);
     this.times.set(key, time);
