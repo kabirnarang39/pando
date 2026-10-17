@@ -1,3 +1,4 @@
+import { NewChangeRequest } from "../../components/NewChangeRequest";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ChecksIcon, ReviewBadge, StateIcon, stateOf } from "../../components/ReviewParts";
@@ -41,6 +42,7 @@ export function ReviewsView() {
   const me = viewer.data?.account?.login ?? "";
   const [query, setQuery] = useState(q);
   const [cursor, setCursor] = useState(0);
+  const [creating, setCreating] = useState(false);
 
   const views: Record<View, { label: string; test(cr: ChangeRequest): boolean }> = {
     attention: {
@@ -93,7 +95,13 @@ export function ReviewsView() {
           <Icon name="search" size={15} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="author:agent/*  is:ready  billing" aria-label="Filter change requests" />
         </form>
+        {!creating && (
+          <button type="button" className="button" data-primary="" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={15} /> New change request
+          </button>
+        )}
       </div>
+      {creating && <NewChangeRequest onCancel={() => setCreating(false)} />}
       <div className="panel">
         {all.isPending ? (
           <Skeleton rows={8} />

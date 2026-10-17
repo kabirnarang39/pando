@@ -257,6 +257,11 @@ async fn change_requests_gate_protected_branches() {
     assert_eq!(cr.base, admin.get_ref("main").await.unwrap().unwrap().0.to_vec(), "rebased onto main");
     assert_eq!(pando::features::browse::cat(&dev, "docs", "billing/refund.rs").await.unwrap(), b"window = 50\n");
 
+    // `pando land` on a protected branch proposes the work from a `review/` branch.
+    push(&dev, "review/abc", "main", &[("ops/oncall.md", "dev\n")]).await;
+    let auto = dev.reviews().create_change_request(open("review/abc", "On call", &[])).await.unwrap().into_inner();
+    assert!(auto.from_protected_land);
+
     // Activity, and strangers.
     let events = dev
         .reviews()

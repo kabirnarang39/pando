@@ -304,7 +304,6 @@ fn ws_remote(ws: &Workspace, token: Option<&str>) -> Result<Arc<dyn Remote>> {
     connect(&ws.config.server, ws.config.objects.as_deref(), token)
 }
 
-/// Server for workspace-free commands: $PANDO_SERVER, or the current workspace.
 /// The platform service of a server (its base URL, without any OWNER/NAME).
 fn platform_client(
     server: Option<String>,
@@ -327,6 +326,7 @@ fn review_target(server: Option<String>, token: Option<&str>) -> Result<cr::Targ
     })
 }
 
+/// Server for workspace-free commands: $PANDO_SERVER, or the current workspace.
 fn server_for(explicit: Option<String>) -> Result<String> {
     explicit
         .or_else(|| std::env::var("PANDO_SERVER").ok())
@@ -414,7 +414,21 @@ async fn run() -> Result<()> {
         Cmd::Land => {
             let mut ws = workspace()?;
             let remote = ws_remote(&ws, token)?;
-            let out = land::run(remote.as_ref(), &mut ws).await?;
+            let out = match land::run(remote.as_ref(), &mut ws).await {
+                Ok(out) => out,
+                // A protected branch takes changes through review: propose this one instead.
+                Err(e) if format!("{e:#}").contains("is protected") && ws.base.is_some() => {
+                    let target = review_target(Some(ws.config.server.clone()), token).map_err(|_| e)?;
+                    let (number, branch) = cr::propose(target, remote.as_ref(), &ws).await?;
+                    println!(
+                        "{} is protected, so this went for review: change request #{number} from {branch}.\n\
+                         It lands once approved and its checks pass: pando cr view {number}",
+                        ws.config.ref_name
+                    );
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            };
             println!(
                 "landed {} on {}{}",
                 out.landed.short(),

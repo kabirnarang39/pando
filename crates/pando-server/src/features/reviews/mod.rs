@@ -354,6 +354,9 @@ impl reviews_server::Reviews for Reviews {
             )));
         }
         let (files, additions, deletions) = stats(&ctx.repo, base, source_tip).await?;
+        // `pando land` on a protected branch proposes the work from a `review/` branch.
+        let from_protected_land =
+            r.source.starts_with("review/") && self.reg().protection_for(&key, &target).map_err(internal)?.is_some();
         let now = now_ms();
         let mut cr = CrRec {
             key: key.clone(),
@@ -371,7 +374,7 @@ impl reviews_server::Reviews for Reviews {
             reviewers: r.reviewers,
             labels: vec![],
             landed_as: vec![],
-            from_protected_land: false,
+            from_protected_land,
             files,
             additions,
             deletions,

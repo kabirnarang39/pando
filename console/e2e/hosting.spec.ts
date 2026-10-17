@@ -65,3 +65,15 @@ test("protecting the target blocks the change request until it is approved", asy
   await page.getByRole("button", { name: "Stop protecting main" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: "1 approval required" })).toHaveCount(0);
 });
+
+test("open a change request from the console", async ({ page }) => {
+  await page.goto("/#/lumen/fleet/reviews");
+  await page.getByRole("button", { name: "New change request" }).click();
+  const form = page.getByRole("form", { name: "New change request" });
+  await form.getByLabel("Branch to land").selectOption("readme");
+  await form.getByLabel("Title").fill("Add a README");
+  await form.getByLabel("Description").fill("So newcomers know where to start.");
+  await form.getByRole("button", { name: "Open change request" }).click();
+  await expect(page.getByRole("heading", { name: /Add a README/ })).toBeVisible();
+  await expect(page.locator(".drow[data-op=add]", { hasText: "The product monorepo." })).toBeVisible();
+});
