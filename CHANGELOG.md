@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- On platform servers a change is attributed to whoever made it: a member can no longer record
+  someone else as the author. Repository administrators may still record other authors, so
+  imports and `pando migrate` keep the original history. Single-repository servers keep git's
+  free-form authors.
+
 ### Fixed
 - Platform servers no longer slow landing down: access answers are cached per process (cleared
   by every write that changes them) and push events are prepared off the landing path only when

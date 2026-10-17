@@ -143,7 +143,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
       {org && (
         <Link to="/$owner" params={{ owner: org.login }} className="org-switch" style={{ color: "inherit", textDecoration: "none" }}>
           <span className="org-avatar" aria-hidden="true">
-            {org.displayName.slice(0, 1)}
+            {org.displayName.slice(0, 1).toUpperCase()}
           </span>
           <span style={{ minWidth: 0 }}>
             <span className="name">{org.displayName}</span>

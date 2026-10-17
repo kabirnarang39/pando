@@ -60,6 +60,11 @@ pub trait AccessPolicy: Send + Sync {
     fn why_not_ref(&self, _who: &Principal, _ref_name: &str) -> Option<String> {
         None
     }
+    /// The author recorded for a change `who` creates claiming `claimed`. By default the claim
+    /// stands, as in git; a policy can insist on the authenticated identity.
+    fn author_for(&self, _who: &Principal, claimed: &str) -> String {
+        claimed.to_owned()
+    }
     /// Defaults to the whole repository, which is what policies without read rules mean.
     fn read_scope(&self, _who: &Principal) -> ReadScope {
         ReadScope::All
