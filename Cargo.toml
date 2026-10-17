@@ -25,7 +25,7 @@ blake3 = "1"
 bytes = "1"
 clap = { version = "4", features = ["derive", "env"] }
 futures = "0.3"
-getrandom = "0.3"
+getrandom = "0.4"
 hex = "0.4"
 hmac = "0.13"
 prost = "0.14"
@@ -66,7 +66,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
 schemars = "1"
 tower = { version = "0.5", features = ["limit", "util"] }
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors"] }
 
 [profile.release]
 lto = "thin"
