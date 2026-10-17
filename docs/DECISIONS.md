@@ -221,3 +221,21 @@ cannot contain `_`, so clients cannot forge or move a lock through the refs API.
 runs when a land arrives, as Git LFS checks at push: a lock taken while a land is already
 being applied does not stop that land.
 
+## ADR-020: Virtual checkouts use NFS on macOS and ProjFS on Windows
+
+**Decision.** One platform-independent `VirtualTree` serves every platform. Linux mounts it
+with FUSE. macOS mounts a read-only NFSv3 server that `pando` runs on localhost (the
+`nfsserve` crate) with the system's own `mount_nfs`. Windows projects it with the Projected
+File System, whose library is loaded at run time.
+**Why.** On macOS, FUSE needs macFUSE's kernel extension, which users must approve in
+recovery settings; its newer FSKit backend is opt-in and lacks features. A localhost NFS
+server needs nothing installed, and it is where Meta's EdenFS moved as Apple deprecated
+kernel extensions; XetHub mounts multi-terabyte repositories the same way. NFS never says
+when the client drops a file handle, so every inode stays valid for the life of the mount,
+which `VirtualTree` already guarantees. On Windows, ProjFS is built in (the mechanism behind
+VFS for Git and EdenFS there) and needs no driver. Loading its library at run time keeps
+`pando` starting on machines where the optional feature is off. Both mounts are tested in
+CI against the real kernels: a stock macOS runner mounts without admin rights, and a Windows
+runner projects with ProjFS, each compared file by file with `pando clone`. On managed Macs
+whose policy forbids user mounts, `--serve-only` prints the command for an administrator.
+

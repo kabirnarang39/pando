@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `pando mount` on macOS and Windows. macOS serves a read-only NFSv3 view on localhost and
+  mounts it with the system `mount_nfs`: no kernel extension, nothing to install, no admin
+  rights. Windows uses the built-in Projected File System, loaded at run time. Both are
+  tested in CI against the real kernels, file by file against `pando clone` (ADR-020).
+- `pando mount --serve-only` on any Unix prints the mount command instead of mounting.
+- `PANDO_LOG=debug` turns on client-side logs.
+
 ## [2.3.0] - 2026-10-17
 
 ### Added

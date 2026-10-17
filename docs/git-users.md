@@ -38,7 +38,7 @@ instead of a server-side rebase.
 | (none) | `pando find PATTERN` | path search on the server |
 | `git lfs lock f` / `git lfs unlock f` | `pando lock f` / `pando unlock f` | exclusive locks for files that cannot be merged |
 | `git lfs locks` | `pando locks [dir]` | |
-| (none) | `pando mount DIR --rev main` | Linux: a read-only view, files fetched on first read |
+| (none) | `pando mount DIR --rev main` | a read-only view, files fetched on first read (Linux, macOS, Windows) |
 
 ## Moving history in and out
 

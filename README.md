@@ -53,7 +53,8 @@ caches.
   different files and moves the branch with one compare-and-swap per batch. 1,000 agents
   land 504 changes a second, with no client retries.
 - **Clones without history.** A clone fetches one tree, lazily, only for the paths you ask
-  for: 0.46 s for git/git's 82,443 commits, against 19.1 s for `git clone`.
+  for: 0.46 s for git/git's 82,443 commits, against 19.1 s for `git clone`. Or mount a
+  revision on Linux, macOS or Windows and download files only when they are read.
 - **CI without checkouts.** `pando cat main path/to/file` answers in 9 ms. History, blame,
   diff and search are server APIs.
 - **Built for agents.** A built-in [MCP](https://modelcontextprotocol.io) server, plus

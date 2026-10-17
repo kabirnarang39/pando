@@ -158,9 +158,20 @@ implement the `LandCheck` port.
 
 ## Virtual checkouts
 
-`pando mount DIR` (Linux, FUSE) exposes one revision as a read-only file system. The
-platform-independent `VirtualTree` maps inodes to tree entries and loads each directory on first
-access; the FUSE adapter only translates kernel requests. A file's size comes from its zstd frame
+`pando mount DIR` exposes one revision as a read-only file system on Linux, macOS and Windows.
+The platform-independent `VirtualTree` maps inodes to tree entries and loads each directory on
+first access; one thin adapter per platform translates operating-system requests:
+
+| Platform | Mechanism | Needs |
+|---|---|---|
+| Linux | FUSE | `fuse3` |
+| macOS | a read-only NFSv3 server on localhost, mounted with the system `mount_nfs` | nothing to install, no kernel extension, no admin rights |
+| Windows | the Projected File System (ProjFS) | the built-in optional feature `Client-ProjFS` |
+
+On any Unix, `--serve-only` runs the NFS server and prints the mount command instead, for
+machines where only an administrator may mount. On Windows, ProjFS shows every file at once as
+a placeholder and fills it in on first read; files already read stay on disk after the mount
+stops. A file's size comes from its zstd frame
 header or large-file manifest, so `ls -l` downloads no content, and a read of a chunked file
 fetches only the chunks it overlaps. Pointing `--objects` at a node daemon makes first reads local.
 

@@ -77,6 +77,21 @@ pando ls main services
 Inside a workspace these commands use the workspace's server, so `PANDO_SERVER` is only
 needed elsewhere.
 
+## Mount instead of checking out
+
+A mount shows a whole revision at once and downloads a file only when something reads it,
+which suits big repositories and CI jobs that touch a few files:
+
+```sh
+mkdir ~/main && pando mount ~/main --rev main      # Ctrl-C to unmount
+```
+
+It works on Linux (FUSE), macOS (built in, nothing to install) and Windows (the built-in
+Projected File System; enable it once with
+`Enable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS`). Mounts are read-only;
+use `pando clone` to make changes. If your Mac's management policy refuses the mount, run
+`pando mount ~/main --serve-only` and have an administrator run the command it prints.
+
 ## Lock files that cannot be merged
 
 Art, models, video and other binaries cannot be merged, so two people editing one at the
