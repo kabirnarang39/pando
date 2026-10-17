@@ -2553,3 +2553,18 @@ del {
   overflow-x: auto;
   white-space: nowrap;
 }
+
+.boot {
+  height: 100dvh;
+  background: var(--ground);
+}
+
+.palette-early {
+  width: 100%;
+  height: 54px;
+  padding: 0 18px;
+  border: 0;
+  background: none;
+  font-size: var(--t-lg);
+  outline: none;
+}

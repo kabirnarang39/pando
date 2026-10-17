@@ -1,13 +1,16 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Dialog, Menu, MenuItem, MenuTrigger, Modal, ModalOverlay, Popover, Separator } from "react-aria-components";
 import { Mark, Wordmark } from "../brand";
 import { useConnection } from "../connection";
-import { useInbox, useRepositories, useViewer } from "../platform-data";
+import { isSingle, useInbox, useRepositories, useViewer } from "../platform-data";
 import { RepoProvider } from "../repo";
 import { Author, Icon } from "../ui";
-import { CommandMenu, type MenuMode } from "./CommandMenu";
+import type { MenuMode } from "./CommandMenu";
 import { modKey, typing, useTheme } from "./hooks";
+
+// The command menu is its own chunk, fetched when idle or on first open.
+const CommandMenu = lazy(() => import("./CommandMenu").then((m) => ({ default: m.CommandMenu })));
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -53,9 +56,34 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate, params.owner, params.repo]);
 
-  const commandMenu = (
-    <CommandMenu open={menu} onClose={() => setMenu(null)} theme={theme} setTheme={setTheme} showShortcuts={() => setKeys(true)} />
-  );
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  // What was typed while the menu's code was still loading; handed to it when it arrives.
+  const [early, setEarly] = useState("");
+  useEffect(() => {
+    if (menu) setMenuLoaded(true);
+  }, [menu]);
+  useEffect(() => {
+    const id = (window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)))(() => void import("./CommandMenu"));
+    return () => (window.cancelIdleCallback ?? clearTimeout)(id as number);
+  }, []);
+  useEffect(() => {
+    if (!menu) setEarly("");
+  }, [menu]);
+  const commandMenu = menuLoaded ? (
+    <Suspense
+      fallback={
+        menu && (
+          <div className="overlay">
+            <div className="palette">
+              <input className="palette-early" autoFocus value={early} onChange={(e) => setEarly(e.target.value)} placeholder="Search files, repositories, reviews and actions…" aria-label="Command menu" />
+            </div>
+          </div>
+        )
+      }
+    >
+      <CommandMenu open={menu} initialQuery={early} onClose={() => setMenu(null)} theme={theme} setTheme={setTheme} showShortcuts={() => setKeys(true)} />
+    </Suspense>
+  ) : null;
 
   return (
     <div className="app" data-drawer={drawer || undefined}>
@@ -121,6 +149,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
           <Icon name="home" />
           <span className="label">Home</span>
         </Link>
+        {viewer.data?.platform !== false && (
         <Link to="/inbox" className="side-link">
           <Icon name="inbox" />
           <span className="label">Inbox</span>
@@ -130,13 +159,14 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
             </span>
           )}
         </Link>
+        )}
         <div className="side-section">Repositories</div>
         {repos.data?.map((r) => {
           const live = now - Number(r.tipAtMs) < 90_000;
           return (
             <Link key={r.name} to="/$owner/$repo" params={{ owner: r.owner, repo: r.name }} className="side-link" activeOptions={{ exact: false }}>
               <span className="pulse" data-live={live || undefined} aria-label={live ? "landing now" : undefined} />
-              <span className="label">{r.name}</span>
+              <span className="label">{isSingle(`${r.owner}/${r.name}`) ? label : r.name}</span>
               {r.openChangeRequests > 0 && <span className="count" title={`${r.openChangeRequests} open change requests`}>{r.openChangeRequests}</span>}
             </Link>
           );
@@ -146,9 +176,9 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
       <div className="side-foot">
         <MenuTrigger>
           <Button className="me" aria-label="Account and settings">
-            {viewer.data?.account ? <Author author={viewer.data.account.login} compact /> : <Icon name="users" />}
+            {viewer.data?.principal ? <Author author={viewer.data.principal} compact /> : <Icon name="users" />}
             <span style={{ minWidth: 0 }}>
-              <span className="who-name">{viewer.data?.account?.displayName ?? "Signed out"}</span>
+              <span className="who-name">{viewer.data?.account?.displayName ?? (viewer.data?.principal || "Anonymous")}</span>
               <span className="conn">{target.kind === "demo" ? "Demo data" : label}</span>
             </span>
           </Button>
@@ -200,9 +230,10 @@ const sections: Record<string, string> = {
 function TopBar({ onMenu }: { onMenu(): void }) {
   const params = useParams({ strict: false }) as { owner?: string; repo?: string; number?: string };
   const { pathname } = useLocation();
-  const { target } = useConnection();
+  const { target, label } = useConnection();
   const navigate = useNavigate();
   const section = params.repo ? pathname.split("/")[3] : undefined;
+  const single = !!params.owner && !!params.repo && isSingle(`${params.owner}/${params.repo}`);
   const title = pathname === "/" ? "Home" : pathname === "/inbox" ? "Inbox" : pathname === "/connect" ? "Connection" : pathname.startsWith("/settings") ? "Tokens" : null;
 
   return (
@@ -212,16 +243,16 @@ function TopBar({ onMenu }: { onMenu(): void }) {
       </button>
       <nav className="crumbs-top" aria-label="Breadcrumbs">
         {title && <span aria-current="page">{title}</span>}
-        {params.owner && (
+        {params.owner && !single && (
           <Link to="/$owner" params={{ owner: params.owner }}>
             {params.owner}
           </Link>
         )}
         {params.repo && (
           <>
-            <span className="sep">/</span>
+            {!single && <span className="sep">/</span>}
             <Link to="/$owner/$repo" params={{ owner: params.owner!, repo: params.repo }} activeOptions={{ exact: true }}>
-              {params.repo}
+              {single ? label : params.repo}
             </Link>
           </>
         )}

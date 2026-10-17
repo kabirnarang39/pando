@@ -2,9 +2,31 @@
 // organisations, repositories, change requests, comments, the inbox and activity.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { create } from "@bufbuild/protobuf";
 import { isUnimplemented } from "./api/client";
-import { usePlatformApi } from "./connection";
-import { ChangeRequestState, Verdict } from "./gen/pando_platform_pb";
+import { useConnection, usePlatformApi } from "./connection";
+import { ChangeRequestState, RepositorySchema, Verdict, type Repository } from "./gen/pando_platform_pb";
+
+/**
+ * Servers without the platform service (one repository, today's pandod) answer Unimplemented.
+ * Every platform read then falls back to what such a server is: one repository, no reviews.
+ */
+async function or<T, F>(call: Promise<T>, fallback: F): Promise<T | F> {
+  try {
+    return await call;
+  } catch (e) {
+    if (isUnimplemented(e)) return fallback;
+    throw e;
+  }
+}
+
+/** The one repository of a server without the platform service. */
+export const SINGLE = { owner: "server", name: "repo" };
+export const isSingle = (key: string) => key === `${SINGLE.owner}/${SINGLE.name}`;
+
+function singleRepository(label: string): Repository {
+  return create(RepositorySchema, { owner: SINGLE.owner, name: SINGLE.name, description: `The repository on ${label}.`, defaultBranch: "main" });
+}
 
 const ref = (key: string) => {
   const [owner = "", name = ""] = key.split("/");
@@ -22,9 +44,13 @@ export function useViewer() {
     queryKey: ["viewer"],
     queryFn: async () => {
       try {
-        return { platform: true as const, ...(await api.platform.viewer({})) };
+        const v = await api.platform.viewer({});
+        return { platform: true as const, ...v, principal: v.account?.login ?? "" };
       } catch (e) {
-        if (isUnimplemented(e)) return { platform: false as const, account: undefined, organizations: [] };
+        if (isUnimplemented(e)) {
+          const who = await api.access.whoAmI({}).catch(() => null);
+          return { platform: false as const, account: undefined, principal: who?.principal ?? "", organizations: [] };
+        }
         throw e;
       }
     },
@@ -34,16 +60,18 @@ export function useViewer() {
 
 export function useRepositories(owner = "") {
   const api = usePlatformApi();
+  const { label } = useConnection();
   return useQuery({
     queryKey: ["repos", owner],
-    queryFn: async () => (await api.platform.listRepositories({ owner, limit: 200 })).repositories,
+    queryFn: async () => (await or(api.platform.listRepositories({ owner, limit: 200 }), { repositories: [singleRepository(label)] })).repositories,
     refetchInterval: 10_000,
   });
 }
 
 export function useRepository(key: string) {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["repo", key], queryFn: () => api.platform.getRepository(ref(key)), refetchInterval: 10_000, retry: false });
+  const { label } = useConnection();
+  return useQuery({ queryKey: ["repo", key], queryFn: () => or(api.platform.getRepository(ref(key)), singleRepository(label)), refetchInterval: 10_000, retry: false });
 }
 
 export function useOrganization(login: string) {
@@ -53,34 +81,34 @@ export function useOrganization(login: string) {
 
 export function useMembers(org: string) {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["members", org], queryFn: async () => (await api.platform.listMembers({ login: org })).members, staleTime: 60_000 });
+  return useQuery({ queryKey: ["members", org], queryFn: async () => (await or(api.platform.listMembers({ login: org }), { members: [] })).members, staleTime: 60_000 });
 }
 
 export function useTeams(org: string) {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["teams", org], queryFn: async () => (await api.platform.listTeams({ login: org })).teams, staleTime: 60_000 });
+  return useQuery({ queryKey: ["teams", org], queryFn: async () => (await or(api.platform.listTeams({ login: org }), { teams: [] })).teams, staleTime: 60_000 });
 }
 
 export function useTokens() {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["tokens"], queryFn: async () => (await api.platform.listTokens({})).tokens });
+  return useQuery({ queryKey: ["tokens"], queryFn: async () => (await or(api.platform.listTokens({}), { tokens: [] })).tokens });
 }
 
 export function useGrants(key: string) {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["grants", key], queryFn: async () => (await api.platform.listGrants(ref(key))).grants });
+  return useQuery({ queryKey: ["grants", key], queryFn: async () => (await or(api.platform.listGrants(ref(key)), { grants: [] })).grants });
 }
 
 export function useProtections(key: string) {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["protections", key], queryFn: async () => (await api.reviews.listProtections(ref(key))).protections });
+  return useQuery({ queryKey: ["protections", key], queryFn: async () => (await or(api.reviews.listProtections(ref(key)), { protections: [] })).protections });
 }
 
 export function useChangeRequests(key: string, states: ChangeRequestState[] = []) {
   const api = usePlatformApi();
   return useQuery({
     queryKey: ["crs", key, states],
-    queryFn: async () => (await api.reviews.listChangeRequests({ repository: ref(key), states, limit: 200 })).changeRequests,
+    queryFn: async () => (await or(api.reviews.listChangeRequests({ repository: ref(key), states, limit: 200 }), { changeRequests: [] })).changeRequests,
     refetchInterval: 4000,
   });
 }
@@ -99,21 +127,21 @@ export function useComments(key: string, number: bigint) {
   const api = usePlatformApi();
   return useQuery({
     queryKey: ["comments", key, String(number)],
-    queryFn: async () => (await api.reviews.listComments({ repository: ref(key), number })).comments,
+    queryFn: async () => (await or(api.reviews.listComments({ repository: ref(key), number }), { comments: [] })).comments,
     refetchInterval: 4000,
   });
 }
 
 export function useInbox() {
   const api = usePlatformApi();
-  return useQuery({ queryKey: ["inbox"], queryFn: async () => (await api.reviews.inbox({ limit: 100 })).items, refetchInterval: 5000 });
+  return useQuery({ queryKey: ["inbox"], queryFn: async () => (await or(api.reviews.inbox({ limit: 100 }), { items: [] })).items, refetchInterval: 5000 });
 }
 
 export function useEvents(key?: string) {
   const api = usePlatformApi();
   return useQuery({
     queryKey: ["events", key ?? ""],
-    queryFn: async () => (await api.reviews.listEvents({ repository: key ? ref(key) : undefined, limit: 40 })).events,
+    queryFn: async () => (await or(api.reviews.listEvents({ repository: key ? ref(key) : undefined, limit: 40 }), { events: [] })).events,
     refetchInterval: 5000,
   });
 }

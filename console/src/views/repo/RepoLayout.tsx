@@ -5,7 +5,7 @@ import { Trunk } from "../../components/Fleet";
 import { useConnection } from "../../connection";
 import { useLive, useLocks, useRefs } from "../../data";
 import { Visibility } from "../../gen/pando_platform_pb";
-import { useRepository } from "../../platform-data";
+import { isSingle, useRepository } from "../../platform-data";
 import { RepoProvider, useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 import { ago, ErrorState, Icon, useNow, type IconName } from "../../ui";
@@ -32,6 +32,8 @@ function Layout() {
   const compact = section === "code" || section === "changes" || (section === "reviews" && !!pathname.split("/")[4]);
   const now = useNow();
   const rp = { owner, repo: name };
+  const single = isSingle(key);
+  const { label } = useConnection();
 
   if (meta.error && !meta.data) return <ErrorState error={meta.error} title={`${owner}/${name} didn't load`} retry={() => meta.refetch()} />;
   const r = meta.data;
@@ -49,15 +51,23 @@ function Layout() {
       <header className="repo-head" data-compact={compact || undefined}>
         <div className="repo-title">
           <h1>
-            <Link to="/$owner" params={{ owner }} className="owner" style={{ color: "inherit" }}>
-              {owner}
-            </Link>
-            <span className="owner"> / </span>
-            <Link to="/$owner/$repo" params={rp} style={{ color: "inherit" }}>
-              {name}
-            </Link>
+            {single ? (
+              <Link to="/$owner/$repo" params={rp} style={{ color: "inherit" }}>
+                {label}
+              </Link>
+            ) : (
+              <>
+                <Link to="/$owner" params={{ owner }} className="owner" style={{ color: "inherit" }}>
+                  {owner}
+                </Link>
+                <span className="owner"> / </span>
+                <Link to="/$owner/$repo" params={rp} style={{ color: "inherit" }}>
+                  {name}
+                </Link>
+              </>
+            )}
           </h1>
-          {r && <span className="vis">{visibility[r.visibility] ?? "Private"}</span>}
+          {r && !single && <span className="vis">{visibility[r.visibility] ?? "Private"}</span>}
           <div className="repo-actions">
             <RefPicker refName={refName} />
             <CloneButton />
@@ -67,13 +77,19 @@ function Layout() {
           <>
             {r.description && <p className="repo-desc">{r.description}</p>}
             <div className="repo-stats">
-              <span>
-                <strong className="num">{r.lands24h.toLocaleString()}</strong> landed today
-              </span>
-              <span>
-                <strong className="num">{r.openChangeRequests}</strong> open reviews
-              </span>
-              <span>Last landing {r.tipAtMs ? ago(Number(r.tipAtMs), now) : "never"}</span>
+              {!single && (
+                <span>
+                  <strong className="num">{r.lands24h.toLocaleString()}</strong> landed today
+                </span>
+              )}
+              {!single && (
+                <>
+                  <span>
+                    <strong className="num">{r.openChangeRequests}</strong> open reviews
+                  </span>
+                  <span>Last landing {r.tipAtMs ? ago(Number(r.tipAtMs), now) : "never"}</span>
+                </>
+              )}
               {r.topics.length > 0 && (
                 <span>
                   {r.topics.map((t) => (
@@ -91,10 +107,10 @@ function Layout() {
           {tab("/$owner/$repo", "Overview", "repo")}
           {tab("/$owner/$repo/code/$", "Code", "code")}
           {tab("/$owner/$repo/changes", "Changes", "changes")}
-          {tab("/$owner/$repo/reviews", "Reviews", "review", r?.openChangeRequests)}
+          {!single && tab("/$owner/$repo/reviews", "Reviews", "review", r?.openChangeRequests)}
           {tab("/$owner/$repo/locks", "Locks", "lock", locks.data?.length)}
           {tab("/$owner/$repo/agents", "Agents", "bot")}
-          {tab("/$owner/$repo/settings", "Settings", "settings")}
+          {!single && tab("/$owner/$repo/settings", "Settings", "settings")}
         </nav>
       </header>
       <div className="repo-body">
@@ -136,12 +152,12 @@ function RefPicker({ refName }: { refName: string }) {
 }
 
 function CloneButton() {
-  const { owner, name } = useRepo();
+  const { name } = useRepo();
   const { target } = useConnection();
   const server = target.kind === "server" ? target.url : "https://pando.example.com";
   const commands = [
-    { label: "Clone", cmd: `pando clone ${server}/${owner}/${name}`, note: "Fetches one tree, lazily: seconds, even for huge histories." },
-    { label: "Mount", cmd: `pando mount ~/${name} --server ${server}/${owner}/${name}`, note: "Read-only view; files download on first read." },
+    { label: "Clone", cmd: `pando clone ${server} ${name}`, note: "Fetches one tree, lazily: seconds, even for huge histories." },
+    { label: "Mount", cmd: `mkdir ${name} && pando mount ${name} --server ${server}`, note: "Read-only view; files download on first read." },
   ];
   return (
     <DialogTrigger>

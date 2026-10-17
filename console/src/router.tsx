@@ -1,20 +1,23 @@
-import { createHashHistory, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { createHashHistory, createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { AppShell } from "./shell/AppShell";
 import { Empty, ErrorState } from "./ui";
-import { ConnectView } from "./views/Connect";
-import { HomeView } from "./views/Home";
-import { InboxView } from "./views/Inbox";
-import { OrgView } from "./views/Org";
-import { TokensView } from "./views/Tokens";
-import { AgentsView } from "./views/repo/Agents";
-import { ChangesView } from "./views/Changes";
-import { CodeView } from "./views/Code";
-import { LocksView } from "./views/Locks";
-import { OverviewView } from "./views/repo/Overview";
 import { RepoLayout } from "./views/repo/RepoLayout";
-import { ReviewView } from "./views/repo/Review";
-import { ReviewsView } from "./views/repo/Reviews";
-import { RepoSettingsView } from "./views/repo/Settings";
+
+
+// Each screen is its own chunk, loaded on first visit (and preloaded on hover).
+const HomeView = lazyRouteComponent(() => import("./views/Home"), "HomeView");
+const InboxView = lazyRouteComponent(() => import("./views/Inbox"), "InboxView");
+const OrgView = lazyRouteComponent(() => import("./views/Org"), "OrgView");
+const TokensView = lazyRouteComponent(() => import("./views/Tokens"), "TokensView");
+const AgentsView = lazyRouteComponent(() => import("./views/repo/Agents"), "AgentsView");
+const ChangesView = lazyRouteComponent(() => import("./views/Changes"), "ChangesView");
+const CodeView = lazyRouteComponent(() => import("./views/Code"), "CodeView");
+const LocksView = lazyRouteComponent(() => import("./views/Locks"), "LocksView");
+const OverviewView = lazyRouteComponent(() => import("./views/repo/Overview"), "OverviewView");
+const ReviewView = lazyRouteComponent(() => import("./views/repo/Review"), "ReviewView");
+const ReviewsView = lazyRouteComponent(() => import("./views/repo/Reviews"), "ReviewsView");
+const RepoSettingsView = lazyRouteComponent(() => import("./views/repo/Settings"), "RepoSettingsView");
+const ConnectView = lazyRouteComponent(() => import("./views/Connect"), "ConnectView");
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : undefined);
 const flag = (v: unknown) => v === true || v === "true" || v === 1 || undefined;

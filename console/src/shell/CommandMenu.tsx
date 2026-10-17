@@ -12,6 +12,8 @@ export type MenuMode = "all" | "files";
 
 interface Props {
   open: MenuMode | null;
+  /** Text typed before the menu finished loading. */
+  initialQuery?: string;
   onClose(): void;
   theme: Theme;
   setTheme(t: Theme): void;
@@ -19,10 +21,10 @@ interface Props {
 }
 
 /** One place to reach anything: files, repositories, reviews waiting on you, and actions. */
-export function CommandMenu({ open, onClose, theme, setTheme, showShortcuts }: Props) {
+export function CommandMenu({ open, initialQuery = "", onClose, theme, setTheme, showShortcuts }: Props) {
   const navigate = useNavigate();
   const repo = useRepoMaybe();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const deferred = useDeferredValue(query.trim());
   const repos = useRepositories();
   const inbox = useInbox();

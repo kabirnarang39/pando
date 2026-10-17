@@ -1,7 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { Link, Navigate } from "@tanstack/react-router";
 import { ChecksIcon, StateIcon } from "../components/ReviewParts";
 import { EventKind } from "../gen/pando_platform_pb";
-import { useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
+import { SINGLE, useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
 import { ago, Author, Empty, Icon, Skeleton, Time, useNow } from "../ui";
 
 function greeting(h: number) {
@@ -17,6 +17,8 @@ export function HomeView() {
   const now = Math.max(useNow(), Date.now());
   const name = viewer.data?.account?.displayName.split(" ")[0];
   const lands = repos.data?.reduce((s, r) => s + r.lands24h, 0) ?? 0;
+  // A server that hosts one repository has nothing else to show: go straight to it.
+  if (viewer.data && !viewer.data.platform) return <Navigate to="/$owner/$repo" params={{ owner: SINGLE.owner, repo: SINGLE.name }} replace />;
 
   return (
     <div className="page">

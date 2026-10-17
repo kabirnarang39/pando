@@ -82,6 +82,8 @@ impl WebAccess {
                 HeaderName::from_static("x-user-agent"),
                 HeaderName::from_static("grpc-timeout"),
                 HeaderName::from_static("connect-protocol-version"),
+                // Names the repository a call is about (multi-repository servers).
+                HeaderName::from_static("x-pando-repo"),
             ])
             .expose_headers(ExposeHeaders::list([
                 HeaderName::from_static("grpc-status"),

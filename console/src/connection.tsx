@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { DemoPlatform, platformTransport } from "./api/demo-platform";
+import type { DemoPlatform } from "./api/demo-platform";
 import { makeApi, repoInterceptor, serverTransport, type Api } from "./api/client";
 import type { Transport } from "@connectrpc/connect";
 
@@ -52,10 +52,29 @@ function initial(): Target {
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<Target>(initial);
-  const demo = useMemo(() => (target.kind === "demo" ? new DemoPlatform() : null), [target.kind]);
-  useEffect(() => demo?.start(), [demo]);
+  // The demo engine is its own chunk: only demo visitors download it.
+  const [demo, setDemo] = useState<{ platform: DemoPlatform; transport: typeof import("./api/demo-platform").platformTransport } | null>(null);
+  useEffect(() => {
+    if (target.kind !== "demo") {
+      setDemo(null);
+      return;
+    }
+    let live = true;
+    let stop: (() => void) | undefined;
+    void import("./api/demo-platform").then((m) => {
+      if (!live) return;
+      const platform = new m.DemoPlatform();
+      stop = platform.start();
+      setDemo({ platform, transport: m.platformTransport });
+    });
+    return () => {
+      live = false;
+      stop?.();
+    };
+  }, [target.kind]);
 
-  const value = useMemo<Connection>(() => {
+  const value = useMemo<Connection | null>(() => {
+    if (target.kind === "demo" && !demo) return null;
     const transports = new Map<string, Transport>();
     const transport = (repo?: string): Transport => {
       const key = repo ?? "";
@@ -63,7 +82,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       if (!t) {
         t =
           target.kind === "demo"
-            ? platformTransport(demo!, { interceptors: [repoInterceptor(repo)] })
+            ? demo!.transport(demo!.platform, { interceptors: [repoInterceptor(repo)] })
             : serverTransport(target.url, target.token, repo);
         transports.set(key, t);
       }
@@ -92,6 +111,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     };
   }, [target, demo]);
 
+  if (!value) return <div className="boot" aria-busy="true" aria-label="Starting the demo" />;
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

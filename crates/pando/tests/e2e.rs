@@ -1430,13 +1430,14 @@ async fn browsers_call_the_server_over_grpc_web() {
     let preflight = |origin: &str| {
         format!(
             "OPTIONS /pando.v1.Refs/List HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\n\
-             Access-Control-Request-Method: POST\r\nAccess-Control-Request-Headers: content-type,x-grpc-web,authorization\r\n\
+             Access-Control-Request-Method: POST\r\nAccess-Control-Request-Headers: content-type,x-grpc-web,authorization,x-pando-repo\r\n\
              Connection: close\r\n\r\n"
         )
     };
     let (head, _) = http1(&c.server, preflight("http://console.test").as_bytes()).await;
     assert!(head.contains("access-control-allow-origin: http://console.test"), "{head}");
     assert!(head.contains("authorization"), "the bearer token header must be allowed: {head}");
+    assert!(head.contains("x-pando-repo"), "the repository header must be allowed: {head}");
     let (head, _) = http1(&c.server, preflight("http://evil.test").as_bytes()).await;
     assert!(!head.contains("access-control-allow-origin"), "other origins get no permission: {head}");
 
