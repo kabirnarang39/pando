@@ -17,11 +17,13 @@ use pando_proto::changesets_client::ChangesetsClient;
 use pando_proto::diff_client::DiffClient;
 use pando_proto::history_client::HistoryClient;
 use pando_proto::land_client::LandClient;
+use pando_proto::locks_client::LocksClient;
 use pando_proto::merge_base_client::MergeBaseClient;
 use pando_proto::refs_client::RefsClient;
 use pando_proto::{
     BearerAuth, BlameRequest, BrowseRequest, CasRequest, CheckoutRequest, CreateChangesetRequest, DiffRequest, Empty,
-    FindRequest, LandRequest, LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName, ResolveRequest,
+    FindRequest, LandRequest, ListLocksRequest, LockRequest, LogRequest, MAX_MESSAGE_BYTES, MergeBaseRequest, RefName,
+    ResolveRequest, UnlockRequest,
 };
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::{Channel, Endpoint};
@@ -80,6 +82,11 @@ pub trait Remote: Send + Sync {
         sink: &mut (dyn FnMut(Piece) -> Result<()> + Send),
     ) -> Result<()>;
     async fn find(&self, rev: &str, pattern: &str, limit: u32) -> Result<Vec<String>>;
+    /// Lock a file for exclusive editing; returns (path, owner, locked at ms).
+    async fn lock(&self, path: &str) -> Result<(String, String, i64)>;
+    async fn unlock(&self, path: &str, force: bool) -> Result<()>;
+    /// Locks under `prefix` ("" for all).
+    async fn locks(&self, prefix: &str) -> Result<Vec<(String, String, i64)>>;
     /// (changeset that last changed the line, line text) for each line.
     async fn blame(&self, rev: &str, path: &str) -> Result<Vec<(Id, String)>>;
 }
@@ -254,6 +261,21 @@ impl Remote for GrpcRemote {
         let mut c = HistoryClient::new(self.ch()).max_decoding_message_size(MAX_MESSAGE_BYTES);
         let r = c.blame(req).await.map_err(st)?.into_inner();
         r.lines.into_iter().map(|l| Ok((Id::from_slice(&l.changeset)?, l.text))).collect()
+    }
+
+    async fn lock(&self, path: &str) -> Result<(String, String, i64)> {
+        let l = LocksClient::new(self.ch()).lock(LockRequest { path: path.to_owned() }).await.map_err(st)?.into_inner();
+        Ok((l.path, l.owner, l.locked_at_ms))
+    }
+
+    async fn unlock(&self, path: &str, force: bool) -> Result<()> {
+        LocksClient::new(self.ch()).unlock(UnlockRequest { path: path.to_owned(), force }).await.map_err(st)?;
+        Ok(())
+    }
+
+    async fn locks(&self, prefix: &str) -> Result<Vec<(String, String, i64)>> {
+        let r = LocksClient::new(self.ch()).list(ListLocksRequest { prefix: prefix.to_owned() }).await.map_err(st)?;
+        Ok(r.into_inner().locks.into_iter().map(|l| (l.path, l.owner, l.locked_at_ms)).collect())
     }
 
     async fn whoami(&self) -> Result<ReadScope> {

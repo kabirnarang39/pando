@@ -188,3 +188,25 @@ message WhoAmIResponse {
 service Access {
   rpc WhoAmI(Empty) returns (WhoAmIResponse);
 }
+
+// Exclusive locks on files that cannot be merged (art, models, video, binaries). A lock
+// does not block reads; landing a change to a path someone else has locked is refused.
+message LockRequest { string path = 1; }
+message UnlockRequest {
+  string path = 1;
+  // Release another person's lock (needs write access to the path).
+  bool force = 2;
+}
+message ListLocksRequest { string prefix = 1; }
+message LockInfo {
+  string path = 1;
+  string owner = 2;
+  int64 locked_at_ms = 3;
+}
+message LockList { repeated LockInfo locks = 1; }
+
+service Locks {
+  rpc Lock(LockRequest) returns (LockInfo);
+  rpc Unlock(UnlockRequest) returns (Empty);
+  rpc List(ListLocksRequest) returns (LockList);
+}

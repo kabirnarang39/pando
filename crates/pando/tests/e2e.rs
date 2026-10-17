@@ -1376,3 +1376,36 @@ async fn git_import_accepts_a_parent_listed_twice() {
     assert_eq!(tip.changeset.parents.len(), 1, "the repeated parent is imported once");
     assert!(tip.changeset.message.starts_with("dup merge"));
 }
+
+/// A locked file: only its owner lands changes to it; others get a clear refusal, and a
+/// forced unlock (by anyone who may write the path) frees it.
+#[tokio::test(flavor = "multi_thread")]
+async fn locked_files_refuse_other_landers() {
+    let tokens = StaticTokens::new(["alice:ta".to_owned(), "bob:tb".to_owned()]);
+    let c = start_with(SpecFlags::all_on(), Arc::new(tokens), "memory").await;
+    let as_user = |t: &str| -> Arc<dyn Remote> { Arc::new(GrpcRemote::connect(&c.server, None, Some(t)).unwrap()) };
+    let (alice, bob) = (as_user("ta"), as_user("tb"));
+    let config = Config { server: c.server.clone(), objects: None, ref_name: "main".into(), sparse: vec![] };
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (ap, bp) = (a.path().join("w"), b.path().join("w"));
+    let mut wa = clone::run(alice.as_ref(), &flags(), &ap, config.clone()).await.unwrap();
+    write(&ap, "art/hero.psd", "v1");
+    commit_land(&mut wa, alice.as_ref(), "add art").await;
+    let mut wb = clone::run(bob.as_ref(), &flags(), &bp, config).await.unwrap();
+
+    assert_eq!(alice.lock("art/hero.psd").await.unwrap().1, "alice");
+    assert!(bob.lock("art/hero.psd").await.unwrap_err().to_string().contains("locked by alice"));
+    assert_eq!(bob.locks("art").await.unwrap().len(), 1);
+
+    write(&bp, "art/hero.psd", "bob's edit");
+    commit::run(bob.as_ref(), &mut wb, "bob edits", "bob", &[]).await.unwrap();
+    let head = bob.get_ref("main").await.unwrap();
+    let err = land::run(bob.as_ref(), &mut wb).await.unwrap_err().to_string();
+    assert!(err.contains("rejected") && err.contains("locked by alice"), "{err}");
+    assert_eq!(bob.get_ref("main").await.unwrap(), head, "nothing lands");
+
+    assert!(bob.unlock("art/hero.psd", false).await.is_err());
+    bob.unlock("art/hero.psd", true).await.unwrap();
+    assert!(alice.locks("").await.unwrap().is_empty());
+    land::run(bob.as_ref(), &mut wb).await.unwrap();
+}

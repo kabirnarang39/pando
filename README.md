@@ -61,7 +61,8 @@ caches.
 - **Plain git still works.** `git clone pando::https://…`, then push and pull as usual.
   Import and export round-trip with identical trees, so you can leave any time.
 - **Ready for a company.** SSO through OpenID Connect, per-directory read and write
-  permissions, pre-land checks for CI and review, TLS, Prometheus metrics.
+  permissions, pre-land checks for CI and review, file locking for assets that cannot be
+  merged, an audit log, backups with `pandod copy`, TLS, Prometheus metrics.
 - **Runs on what you have.** SQLite, Postgres or CockroachDB for metadata; disk, S3, GCS
   or Azure for objects. Every feature sits behind a flag.
 

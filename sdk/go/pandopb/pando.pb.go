@@ -1850,6 +1850,253 @@ func (x *WhoAmIResponse) GetReadPrefixes() []string {
 	return nil
 }
 
+// Exclusive locks on files that cannot be merged (art, models, video, binaries). A lock
+// does not block reads; landing a change to a path someone else has locked is refused.
+type LockRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LockRequest) Reset() {
+	*x = LockRequest{}
+	mi := &file_pando_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LockRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LockRequest) ProtoMessage() {}
+
+func (x *LockRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pando_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LockRequest.ProtoReflect.Descriptor instead.
+func (*LockRequest) Descriptor() ([]byte, []int) {
+	return file_pando_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *LockRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type UnlockRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Path  string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// Release another person's lock (needs write access to the path).
+	Force         bool `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnlockRequest) Reset() {
+	*x = UnlockRequest{}
+	mi := &file_pando_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnlockRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnlockRequest) ProtoMessage() {}
+
+func (x *UnlockRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pando_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnlockRequest.ProtoReflect.Descriptor instead.
+func (*UnlockRequest) Descriptor() ([]byte, []int) {
+	return file_pando_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *UnlockRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *UnlockRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
+type ListLocksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLocksRequest) Reset() {
+	*x = ListLocksRequest{}
+	mi := &file_pando_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLocksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLocksRequest) ProtoMessage() {}
+
+func (x *ListLocksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pando_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLocksRequest.ProtoReflect.Descriptor instead.
+func (*ListLocksRequest) Descriptor() ([]byte, []int) {
+	return file_pando_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListLocksRequest) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+type LockInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Owner         string                 `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	LockedAtMs    int64                  `protobuf:"varint,3,opt,name=locked_at_ms,json=lockedAtMs,proto3" json:"locked_at_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LockInfo) Reset() {
+	*x = LockInfo{}
+	mi := &file_pando_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LockInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LockInfo) ProtoMessage() {}
+
+func (x *LockInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_pando_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LockInfo.ProtoReflect.Descriptor instead.
+func (*LockInfo) Descriptor() ([]byte, []int) {
+	return file_pando_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *LockInfo) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *LockInfo) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *LockInfo) GetLockedAtMs() int64 {
+	if x != nil {
+		return x.LockedAtMs
+	}
+	return 0
+}
+
+type LockList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Locks         []*LockInfo            `protobuf:"bytes,1,rep,name=locks,proto3" json:"locks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LockList) Reset() {
+	*x = LockList{}
+	mi := &file_pando_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LockList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LockList) ProtoMessage() {}
+
+func (x *LockList) ProtoReflect() protoreflect.Message {
+	mi := &file_pando_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LockList.ProtoReflect.Descriptor instead.
+func (*LockList) Descriptor() ([]byte, []int) {
+	return file_pando_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *LockList) GetLocks() []*LockInfo {
+	if x != nil {
+		return x.Locks
+	}
+	return nil
+}
+
 var File_pando_proto protoreflect.FileDescriptor
 
 const file_pando_proto_rawDesc = "" +
@@ -1967,7 +2214,21 @@ const file_pando_proto_rawDesc = "" +
 	"\x0eWhoAmIResponse\x12\x1c\n" +
 	"\tprincipal\x18\x01 \x01(\tR\tprincipal\x12\x1b\n" +
 	"\tfull_read\x18\x02 \x01(\bR\bfullRead\x12#\n" +
-	"\rread_prefixes\x18\x03 \x03(\tR\freadPrefixes2\xac\x01\n" +
+	"\rread_prefixes\x18\x03 \x03(\tR\freadPrefixes\"!\n" +
+	"\vLockRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"9\n" +
+	"\rUnlockRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
+	"\x05force\x18\x02 \x01(\bR\x05force\"*\n" +
+	"\x10ListLocksRequest\x12\x16\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"V\n" +
+	"\bLockInfo\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
+	"\x05owner\x18\x02 \x01(\tR\x05owner\x12 \n" +
+	"\flocked_at_ms\x18\x03 \x01(\x03R\n" +
+	"lockedAtMs\"4\n" +
+	"\bLockList\x12(\n" +
+	"\x05locks\x18\x01 \x03(\v2\x12.pando.v1.LockInfoR\x05locks2\xac\x01\n" +
 	"\aObjects\x122\n" +
 	"\x03Get\x12\x10.pando.v1.IdList\x1a\x17.pando.v1.ObjectPayload0\x01\x12>\n" +
 	"\x03Put\x12\x17.pando.v1.ObjectPayload\x1a\x1c.pando.v1.PutObjectsResponse(\x01\x12-\n" +
@@ -1995,7 +2256,11 @@ const file_pando_proto_rawDesc = "" +
 	"\x04Find\x12\x15.pando.v1.FindRequest\x1a\x16.pando.v1.FindResponse\x12@\n" +
 	"\bCheckout\x12\x19.pando.v1.CheckoutRequest\x1a\x17.pando.v1.CheckoutPiece0\x012=\n" +
 	"\x06Access\x123\n" +
-	"\x06WhoAmI\x12\x0f.pando.v1.Empty\x1a\x18.pando.v1.WhoAmIResponseb\x06proto3"
+	"\x06WhoAmI\x12\x0f.pando.v1.Empty\x1a\x18.pando.v1.WhoAmIResponse2\xa6\x01\n" +
+	"\x05Locks\x121\n" +
+	"\x04Lock\x12\x15.pando.v1.LockRequest\x1a\x12.pando.v1.LockInfo\x122\n" +
+	"\x06Unlock\x12\x17.pando.v1.UnlockRequest\x1a\x0f.pando.v1.Empty\x126\n" +
+	"\x04List\x12\x1a.pando.v1.ListLocksRequest\x1a\x12.pando.v1.LockListb\x06proto3"
 
 var (
 	file_pando_proto_rawDescOnce sync.Once
@@ -2009,7 +2274,7 @@ func file_pando_proto_rawDescGZIP() []byte {
 	return file_pando_proto_rawDescData
 }
 
-var file_pando_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_pando_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_pando_proto_goTypes = []any{
 	(*Empty)(nil),                  // 0: pando.v1.Empty
 	(*IdMsg)(nil),                  // 1: pando.v1.IdMsg
@@ -2045,6 +2310,11 @@ var file_pando_proto_goTypes = []any{
 	(*CheckoutRequest)(nil),        // 31: pando.v1.CheckoutRequest
 	(*CheckoutPiece)(nil),          // 32: pando.v1.CheckoutPiece
 	(*WhoAmIResponse)(nil),         // 33: pando.v1.WhoAmIResponse
+	(*LockRequest)(nil),            // 34: pando.v1.LockRequest
+	(*UnlockRequest)(nil),          // 35: pando.v1.UnlockRequest
+	(*ListLocksRequest)(nil),       // 36: pando.v1.ListLocksRequest
+	(*LockInfo)(nil),               // 37: pando.v1.LockInfo
+	(*LockList)(nil),               // 38: pando.v1.LockList
 }
 var file_pando_proto_depIdxs = []int32{
 	5,  // 0: pando.v1.CreateChangesetRequest.changes:type_name -> pando.v1.FileChange
@@ -2052,47 +2322,54 @@ var file_pando_proto_depIdxs = []int32{
 	19, // 2: pando.v1.BlameResponse.lines:type_name -> pando.v1.BlameLine
 	5,  // 3: pando.v1.DiffResponse.changes:type_name -> pando.v1.FileChange
 	26, // 4: pando.v1.ListDirResponse.entries:type_name -> pando.v1.DirEntry
-	2,  // 5: pando.v1.Objects.Get:input_type -> pando.v1.IdList
-	3,  // 6: pando.v1.Objects.Put:input_type -> pando.v1.ObjectPayload
-	2,  // 7: pando.v1.Objects.Missing:input_type -> pando.v1.IdList
-	7,  // 8: pando.v1.Changesets.Create:input_type -> pando.v1.CreateChangesetRequest
-	8,  // 9: pando.v1.Changesets.Get:input_type -> pando.v1.ResolveRequest
-	9,  // 10: pando.v1.Refs.Get:input_type -> pando.v1.RefName
-	11, // 11: pando.v1.Refs.CompareAndSwap:input_type -> pando.v1.CasRequest
-	0,  // 12: pando.v1.Refs.List:input_type -> pando.v1.Empty
-	15, // 13: pando.v1.Land.Land:input_type -> pando.v1.LandRequest
-	17, // 14: pando.v1.History.Log:input_type -> pando.v1.LogRequest
-	18, // 15: pando.v1.History.Blame:input_type -> pando.v1.BlameRequest
-	21, // 16: pando.v1.Diff.Diff:input_type -> pando.v1.DiffRequest
-	23, // 17: pando.v1.MergeBase.MergeBase:input_type -> pando.v1.MergeBaseRequest
-	25, // 18: pando.v1.Browse.ListDir:input_type -> pando.v1.BrowseRequest
-	25, // 19: pando.v1.Browse.ReadFile:input_type -> pando.v1.BrowseRequest
-	29, // 20: pando.v1.Browse.Find:input_type -> pando.v1.FindRequest
-	31, // 21: pando.v1.Browse.Checkout:input_type -> pando.v1.CheckoutRequest
-	0,  // 22: pando.v1.Access.WhoAmI:input_type -> pando.v1.Empty
-	3,  // 23: pando.v1.Objects.Get:output_type -> pando.v1.ObjectPayload
-	4,  // 24: pando.v1.Objects.Put:output_type -> pando.v1.PutObjectsResponse
-	2,  // 25: pando.v1.Objects.Missing:output_type -> pando.v1.IdList
-	6,  // 26: pando.v1.Changesets.Create:output_type -> pando.v1.ChangesetInfo
-	6,  // 27: pando.v1.Changesets.Get:output_type -> pando.v1.ChangesetInfo
-	10, // 28: pando.v1.Refs.Get:output_type -> pando.v1.RefValue
-	12, // 29: pando.v1.Refs.CompareAndSwap:output_type -> pando.v1.CasResponse
-	14, // 30: pando.v1.Refs.List:output_type -> pando.v1.RefList
-	16, // 31: pando.v1.Land.Land:output_type -> pando.v1.LandResponse
-	6,  // 32: pando.v1.History.Log:output_type -> pando.v1.ChangesetInfo
-	20, // 33: pando.v1.History.Blame:output_type -> pando.v1.BlameResponse
-	22, // 34: pando.v1.Diff.Diff:output_type -> pando.v1.DiffResponse
-	24, // 35: pando.v1.MergeBase.MergeBase:output_type -> pando.v1.MergeBaseResponse
-	27, // 36: pando.v1.Browse.ListDir:output_type -> pando.v1.ListDirResponse
-	28, // 37: pando.v1.Browse.ReadFile:output_type -> pando.v1.ReadFileResponse
-	30, // 38: pando.v1.Browse.Find:output_type -> pando.v1.FindResponse
-	32, // 39: pando.v1.Browse.Checkout:output_type -> pando.v1.CheckoutPiece
-	33, // 40: pando.v1.Access.WhoAmI:output_type -> pando.v1.WhoAmIResponse
-	23, // [23:41] is the sub-list for method output_type
-	5,  // [5:23] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	37, // 5: pando.v1.LockList.locks:type_name -> pando.v1.LockInfo
+	2,  // 6: pando.v1.Objects.Get:input_type -> pando.v1.IdList
+	3,  // 7: pando.v1.Objects.Put:input_type -> pando.v1.ObjectPayload
+	2,  // 8: pando.v1.Objects.Missing:input_type -> pando.v1.IdList
+	7,  // 9: pando.v1.Changesets.Create:input_type -> pando.v1.CreateChangesetRequest
+	8,  // 10: pando.v1.Changesets.Get:input_type -> pando.v1.ResolveRequest
+	9,  // 11: pando.v1.Refs.Get:input_type -> pando.v1.RefName
+	11, // 12: pando.v1.Refs.CompareAndSwap:input_type -> pando.v1.CasRequest
+	0,  // 13: pando.v1.Refs.List:input_type -> pando.v1.Empty
+	15, // 14: pando.v1.Land.Land:input_type -> pando.v1.LandRequest
+	17, // 15: pando.v1.History.Log:input_type -> pando.v1.LogRequest
+	18, // 16: pando.v1.History.Blame:input_type -> pando.v1.BlameRequest
+	21, // 17: pando.v1.Diff.Diff:input_type -> pando.v1.DiffRequest
+	23, // 18: pando.v1.MergeBase.MergeBase:input_type -> pando.v1.MergeBaseRequest
+	25, // 19: pando.v1.Browse.ListDir:input_type -> pando.v1.BrowseRequest
+	25, // 20: pando.v1.Browse.ReadFile:input_type -> pando.v1.BrowseRequest
+	29, // 21: pando.v1.Browse.Find:input_type -> pando.v1.FindRequest
+	31, // 22: pando.v1.Browse.Checkout:input_type -> pando.v1.CheckoutRequest
+	0,  // 23: pando.v1.Access.WhoAmI:input_type -> pando.v1.Empty
+	34, // 24: pando.v1.Locks.Lock:input_type -> pando.v1.LockRequest
+	35, // 25: pando.v1.Locks.Unlock:input_type -> pando.v1.UnlockRequest
+	36, // 26: pando.v1.Locks.List:input_type -> pando.v1.ListLocksRequest
+	3,  // 27: pando.v1.Objects.Get:output_type -> pando.v1.ObjectPayload
+	4,  // 28: pando.v1.Objects.Put:output_type -> pando.v1.PutObjectsResponse
+	2,  // 29: pando.v1.Objects.Missing:output_type -> pando.v1.IdList
+	6,  // 30: pando.v1.Changesets.Create:output_type -> pando.v1.ChangesetInfo
+	6,  // 31: pando.v1.Changesets.Get:output_type -> pando.v1.ChangesetInfo
+	10, // 32: pando.v1.Refs.Get:output_type -> pando.v1.RefValue
+	12, // 33: pando.v1.Refs.CompareAndSwap:output_type -> pando.v1.CasResponse
+	14, // 34: pando.v1.Refs.List:output_type -> pando.v1.RefList
+	16, // 35: pando.v1.Land.Land:output_type -> pando.v1.LandResponse
+	6,  // 36: pando.v1.History.Log:output_type -> pando.v1.ChangesetInfo
+	20, // 37: pando.v1.History.Blame:output_type -> pando.v1.BlameResponse
+	22, // 38: pando.v1.Diff.Diff:output_type -> pando.v1.DiffResponse
+	24, // 39: pando.v1.MergeBase.MergeBase:output_type -> pando.v1.MergeBaseResponse
+	27, // 40: pando.v1.Browse.ListDir:output_type -> pando.v1.ListDirResponse
+	28, // 41: pando.v1.Browse.ReadFile:output_type -> pando.v1.ReadFileResponse
+	30, // 42: pando.v1.Browse.Find:output_type -> pando.v1.FindResponse
+	32, // 43: pando.v1.Browse.Checkout:output_type -> pando.v1.CheckoutPiece
+	33, // 44: pando.v1.Access.WhoAmI:output_type -> pando.v1.WhoAmIResponse
+	37, // 45: pando.v1.Locks.Lock:output_type -> pando.v1.LockInfo
+	0,  // 46: pando.v1.Locks.Unlock:output_type -> pando.v1.Empty
+	38, // 47: pando.v1.Locks.List:output_type -> pando.v1.LockList
+	27, // [27:48] is the sub-list for method output_type
+	6,  // [6:27] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_pando_proto_init() }
@@ -2106,9 +2383,9 @@ func file_pando_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pando_proto_rawDesc), len(file_pando_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   39,
 			NumExtensions: 0,
-			NumServices:   9,
+			NumServices:   10,
 		},
 		GoTypes:           file_pando_proto_goTypes,
 		DependencyIndexes: file_pando_proto_depIdxs,

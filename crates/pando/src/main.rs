@@ -89,6 +89,24 @@ enum Cmd {
     Show { rev: Option<String> },
     /// Print a file at a revision without checking anything out.
     Cat { rev: String, path: String },
+    /// Lock files for exclusive editing (for files that cannot be merged). Others cannot land
+    /// changes to them until you unlock.
+    Lock {
+        #[arg(required = true)]
+        paths: Vec<String>,
+    },
+    /// Release your locks; --force releases someone else's (needs write access).
+    Unlock {
+        #[arg(required = true)]
+        paths: Vec<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// List locks, optionally under a directory.
+    Locks {
+        #[arg(default_value = "")]
+        prefix: String,
+    },
     /// List a directory at a revision without checking anything out.
     Ls {
         rev: String,
@@ -156,6 +174,24 @@ enum Cmd {
         #[arg(long = "git-ref", default_value = "main")]
         git_ref: String,
     },
+}
+
+/// A path argument as a repository path: inside a workspace it is taken relative to the
+/// current directory, elsewhere it is already repository-relative.
+fn repo_path(arg: &str) -> Result<String> {
+    let Ok(ws) = workspace() else { return Ok(arg.trim_matches('/').to_owned()) };
+    let abs = std::env::current_dir()?.join(arg);
+    let mut parts: Vec<String> = Vec::new();
+    for c in abs.strip_prefix(std::fs::canonicalize(&ws.root)?).or_else(|_| abs.strip_prefix(&ws.root))?.components() {
+        match c {
+            std::path::Component::Normal(p) => parts.push(p.to_string_lossy().into_owned()),
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            _ => {}
+        }
+    }
+    Ok(parts.join("/"))
 }
 
 fn workspace() -> Result<Workspace> {
@@ -337,6 +373,33 @@ async fn run() -> Result<()> {
             if let Some(p) = c.changeset.first_parent()? {
                 stdout.write_all(
                     diff::revisions(remote.as_ref(), &p.to_hex(), &c.id.to_hex(), false).await?.as_bytes(),
+                )?;
+            }
+        }
+        Cmd::Lock { paths } => {
+            let remote = connect(&server_for(None)?, None, token)?;
+            for p in paths {
+                let (path, owner, _) = remote.lock(&repo_path(&p)?).await?;
+                writeln!(stdout, "locked {path} ({owner})")?;
+            }
+        }
+        Cmd::Unlock { paths, force } => {
+            let remote = connect(&server_for(None)?, None, token)?;
+            for p in paths {
+                let path = repo_path(&p)?;
+                remote.unlock(&path, force).await?;
+                writeln!(stdout, "unlocked {path}")?;
+            }
+        }
+        Cmd::Locks { prefix } => {
+            let remote = connect(&server_for(None)?, None, token)?;
+            let prefix = if prefix.is_empty() { prefix } else { repo_path(&prefix)? };
+            for (path, owner, at_ms) in remote.locks(&prefix).await? {
+                let age = (pando::now_ms() - at_ms).max(0) / 60_000;
+                writeln!(
+                    stdout,
+                    "{path}\t{owner}\t{}",
+                    if age < 60 { format!("{age}m ago") } else { format!("{}h ago", age / 60) }
                 )?;
             }
         }

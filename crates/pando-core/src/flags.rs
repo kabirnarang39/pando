@@ -25,10 +25,11 @@ pub enum Flag {
     DaemonPrefetch,
     VirtualCheckout,
     LandChecks,
+    Locks,
 }
 
 impl Flag {
-    pub const ALL: [Flag; 20] = [
+    pub const ALL: [Flag; 21] = [
         Flag::Objects,
         Flag::Changesets,
         Flag::Refs,
@@ -49,6 +50,7 @@ impl Flag {
         Flag::DaemonPrefetch,
         Flag::VirtualCheckout,
         Flag::LandChecks,
+        Flag::Locks,
     ];
 
     pub fn key(self) -> &'static str {
@@ -73,6 +75,7 @@ impl Flag {
             Flag::DaemonPrefetch => "daemon-prefetch",
             Flag::VirtualCheckout => "virtual-checkout",
             Flag::LandChecks => "land-checks",
+            Flag::Locks => "locks",
         }
     }
 

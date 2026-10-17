@@ -1303,3 +1303,181 @@ var Access_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "pando.proto",
 }
+
+const (
+	Locks_Lock_FullMethodName   = "/pando.v1.Locks/Lock"
+	Locks_Unlock_FullMethodName = "/pando.v1.Locks/Unlock"
+	Locks_List_FullMethodName   = "/pando.v1.Locks/List"
+)
+
+// LocksClient is the client API for Locks service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type LocksClient interface {
+	Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*LockInfo, error)
+	Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*Empty, error)
+	List(ctx context.Context, in *ListLocksRequest, opts ...grpc.CallOption) (*LockList, error)
+}
+
+type locksClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewLocksClient(cc grpc.ClientConnInterface) LocksClient {
+	return &locksClient{cc}
+}
+
+func (c *locksClient) Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*LockInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LockInfo)
+	err := c.cc.Invoke(ctx, Locks_Lock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *locksClient) Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Locks_Unlock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *locksClient) List(ctx context.Context, in *ListLocksRequest, opts ...grpc.CallOption) (*LockList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LockList)
+	err := c.cc.Invoke(ctx, Locks_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LocksServer is the server API for Locks service.
+// All implementations must embed UnimplementedLocksServer
+// for forward compatibility.
+type LocksServer interface {
+	Lock(context.Context, *LockRequest) (*LockInfo, error)
+	Unlock(context.Context, *UnlockRequest) (*Empty, error)
+	List(context.Context, *ListLocksRequest) (*LockList, error)
+	mustEmbedUnimplementedLocksServer()
+}
+
+// UnimplementedLocksServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedLocksServer struct{}
+
+func (UnimplementedLocksServer) Lock(context.Context, *LockRequest) (*LockInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method Lock not implemented")
+}
+func (UnimplementedLocksServer) Unlock(context.Context, *UnlockRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method Unlock not implemented")
+}
+func (UnimplementedLocksServer) List(context.Context, *ListLocksRequest) (*LockList, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedLocksServer) mustEmbedUnimplementedLocksServer() {}
+func (UnimplementedLocksServer) testEmbeddedByValue()               {}
+
+// UnsafeLocksServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to LocksServer will
+// result in compilation errors.
+type UnsafeLocksServer interface {
+	mustEmbedUnimplementedLocksServer()
+}
+
+func RegisterLocksServer(s grpc.ServiceRegistrar, srv LocksServer) {
+	// If the following call panics, it indicates UnimplementedLocksServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Locks_ServiceDesc, srv)
+}
+
+func _Locks_Lock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocksServer).Lock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Locks_Lock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocksServer).Lock(ctx, req.(*LockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Locks_Unlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnlockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocksServer).Unlock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Locks_Unlock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocksServer).Unlock(ctx, req.(*UnlockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Locks_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListLocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocksServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Locks_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocksServer).List(ctx, req.(*ListLocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Locks_ServiceDesc is the grpc.ServiceDesc for Locks service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Locks_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pando.v1.Locks",
+	HandlerType: (*LocksServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Lock",
+			Handler:    _Locks_Lock_Handler,
+		},
+		{
+			MethodName: "Unlock",
+			Handler:    _Locks_Unlock_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _Locks_List_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "pando.proto",
+}

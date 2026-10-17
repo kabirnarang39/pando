@@ -36,6 +36,8 @@ instead of a server-side rebase.
 | `git branch` | `pando refs` | alias `branch` |
 | `git merge-base A B` | `pando merge-base A B` | |
 | (none) | `pando find PATTERN` | path search on the server |
+| `git lfs lock f` / `git lfs unlock f` | `pando lock f` / `pando unlock f` | exclusive locks for files that cannot be merged |
+| `git lfs locks` | `pando locks [dir]` | |
 | (none) | `pando mount DIR --rev main` | Linux: a read-only view, files fetched on first read |
 
 ## Moving history in and out

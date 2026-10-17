@@ -82,6 +82,13 @@ impl Land {
         }
         let cs = self.repo.changeset(&cs_id).await?;
         let base = cs.first_parent()?;
+        if self.flags.enabled(Flag::Locks) {
+            let mut paths: Vec<&str> = Vec::with_capacity(cs.changes.len());
+            for c in &cs.changes {
+                paths.push(&c.path);
+            }
+            crate::features::locks::check(&self.repo, who, &paths).await?;
+        }
         if self.flags.enabled(Flag::LandChecks) {
             let proposal = LandProposal {
                 principal: who.0.clone(),

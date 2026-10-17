@@ -26,6 +26,7 @@ metrics.workspace = true
 jsonwebtoken.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 metrics-exporter-prometheus.workspace = true
 mimalloc.workspace = true
