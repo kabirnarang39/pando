@@ -11,6 +11,12 @@ All notable changes to this project are documented here. The format follows
   internal repositories are for the owning organisation's members, members and grants must name
   existing accounts, and any person may create up to `--max-orgs-per-account` (default 3)
   organisations, in a namespace shared with logins and with service names reserved (ADR-032).
+- Browser sign-in for platform servers (`pandod server --login-listen`): Google and any OpenID
+  Connect provider (`--oidc ID=ISSUER`), and single-use email links (`--smtp-url`,
+  `--mail-from`, optional Cloudflare Turnstile). A sign-in creates a 30-day platform token for
+  the console; first sign-ins create an account if `--signup` allows (default: a waitlist,
+  managed with `pando admin signup allow|remove|list`). `pando admin identity link` lets an
+  existing account, such as the first administrator, sign in from a browser (ADR-031).
 
 ### Changed
 - Looking up one organisation reads only that organisation.
