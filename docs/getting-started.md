@@ -43,7 +43,8 @@ pando import-git ~/code/my-repo --server http://127.0.0.1:7420
 ```
 
 Import is deterministic and incremental: run it again later and it uploads only new
-commits. `pando export-git` goes the other way, with identical trees.
+commits. `pando export-git` goes the other way, with identical trees, and `pando mirror` keeps a
+git host such as GitHub or Bitbucket up to date continuously.
 
 ## Make and land a change
 

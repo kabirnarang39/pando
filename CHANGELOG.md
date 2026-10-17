@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - Console review comments on code: a "+" on every line, shift-click for a range of lines, a
   Markdown editor with preview, suggested changes shown as a small diff of current and proposed
   lines, ⌘/Ctrl+Enter to send, Escape to cancel, and resolved conversations collapsed.
+- `pando mirror --to URL [--every SECONDS]`: keeps GitHub, GitLab, Bitbucket or any git
+  remote up to date with a branch. Incremental, deterministic commits, never force-pushes,
+  refuses to overwrite commits it did not make, and redacts credentials in messages.
 - One server, many repositories: `pandod server --platform REGISTRY --repos-metadata TEMPLATE
   [--repos-objects TEMPLATE] --platform-admins NAMES`. Each repository has its own storage and
   landing queues; clients address `SERVER/OWNER/NAME`; calls without a repository reach the
