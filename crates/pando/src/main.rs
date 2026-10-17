@@ -410,7 +410,9 @@ async fn main() {
     if let Ok(filter) = std::env::var("PANDO_LOG") {
         let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     }
-    if let Err(e) = run().await {
+    // Every command's state machine lives in this one future; on the heap it can't overflow the
+    // main thread's stack (1 MB on Windows), however large the commands grow.
+    if let Err(e) = Box::pin(run()).await {
         eprintln!("error: {e:#}");
         std::process::exit(1);
     }
