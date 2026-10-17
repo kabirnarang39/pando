@@ -3,77 +3,19 @@
 //! loses stale approvals when its branch moves, and is rebased onto its target unless they
 //! changed the same files.
 
-use std::sync::Arc;
-
 use pando::remote::{GrpcRemote, Remote};
-use pando_adapters::flags::SpecFlags;
 use pando_core::Id;
-use pando_core::acl::{AccessPolicy, AllowAllPolicy};
 use pando_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
-use pando_core::ports::NoChecks;
 use pando_proto::{
     AddCommentRequest, ChangeRequestRef, ChangeRequestState, Check, CheckState, CreateChangeRequestRequest,
     CreateRepositoryRequest, InboxRequest, ListChangeRequestsRequest, ListEventsRequest, Protection,
     ReportCheckRequest, RepositoryRef, Role, SetMemberRequest, SubmitReviewRequest, Verdict,
 };
-use pando_server::auth::StaticTokens;
-use pando_server::features::land::Land;
-use pando_server::hosting::{BuildRoutes, Hosting, Registry, RepoServices, Templates};
-use pando_server::permissions::{Access, ProtectedRefs};
-use pando_server::{ServeOptions, WebAccess, authority_routes, config, serve};
 use tokio::net::TcpListener;
 use tonic::Code;
 
-struct Server {
-    url: String,
-    _dir: tempfile::TempDir,
-    _stop: tokio::sync::oneshot::Sender<()>,
-}
-
-async fn start() -> Server {
-    let dir = tempfile::tempdir().unwrap();
-    let flags = Arc::new(SpecFlags::all_on());
-    let policy: Arc<dyn AccessPolicy> = Arc::new(AllowAllPolicy);
-    let checks = Arc::new(NoChecks);
-    let registry = Arc::new(Registry::open("memory").unwrap());
-    let access = Arc::new(Access { open: false, admins: vec!["admin".into()] });
-    let (reg, acc) = (registry.clone(), access.clone());
-    let build: BuildRoutes = Arc::new(move |key, repo| {
-        let protected: Arc<dyn AccessPolicy> = Arc::new(ProtectedRefs {
-            inner: policy.clone(),
-            registry: reg.clone(),
-            key: key.clone(),
-            access: acc.clone(),
-        });
-        RepoServices {
-            routes: authority_routes(repo.clone(), flags.clone(), protected, checks.clone()),
-            review_land: Some(Land::new(repo, flags.clone(), policy.clone(), checks.clone())),
-        }
-    });
-    let templates = Templates {
-        metadata: format!("sqlite://{}/repos/{{repo}}.db", dir.path().display()),
-        objects: "metadata".into(),
-    };
-    let hosting = Hosting::new(templates, registry, build, access).unwrap();
-    let default = config::open_repo("memory", "metadata").await.unwrap();
-    let routes = authority_routes(default, Arc::new(SpecFlags::all_on()), Arc::new(AllowAllPolicy), Arc::new(NoChecks));
-    let tokens = ["admin", "dev", "mira", "eve", "agent/fix-01"].map(|w| format!("{w}:{}-token", w.replace('/', "-")));
-    let auth = Arc::new(StaticTokens::new(tokens));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let web = WebAccess { enabled: false, origins: vec![] };
-    tokio::spawn(serve(
-        listener,
-        routes,
-        auth,
-        ServeOptions { web, hosting: Some(Arc::new(hosting)), ..Default::default() },
-        async {
-            let _ = rx.await;
-        },
-    ));
-    Server { url, _dir: dir, _stop: tx }
-}
+mod common;
+use common::{Server, start};
 
 fn as_(s: &Server, who: &str) -> GrpcRemote {
     GrpcRemote::connect(&format!("{}/lumen/fleet", s.url), None, Some(&format!("{}-token", who.replace('/', "-"))))
@@ -261,6 +203,15 @@ async fn change_requests_gate_protected_branches() {
     push(&dev, "review/abc", "main", &[("ops/oncall.md", "dev\n")]).await;
     let auto = dev.reviews().create_change_request(open("review/abc", "On call", &[])).await.unwrap().into_inner();
     assert!(auto.from_protected_land);
+    // Nobody was asked to review it, so it shows in the inbox of those who may approve.
+    let inbox = mira.reviews().inbox(InboxRequest::default()).await.unwrap().into_inner();
+    assert!(
+        inbox
+            .items
+            .iter()
+            .any(|i| i.reason == "Needs a reviewer" && i.change_request.as_ref().unwrap().number == auto.number),
+        "{inbox:?}"
+    );
 
     // Activity, and strangers.
     let events = dev

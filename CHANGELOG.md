@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Remote MCP (ADR-026): `pando mcp --http ADDR --server URL` serves a whole server to agents
+  anywhere over the stateless MCP 2026-07-28 protocol. With a URL and a token an agent reads,
+  writes and lands files, opens, reviews and lands change requests, reports checks and reads its
+  inbox, without a checkout; each request's token is passed through, so the server's
+  permissions, token limits and audit log apply.
+- An agent's change request asks the person the agent answers to for review; change requests
+  nobody was asked to review show in the inbox of everyone who may approve them.
+- Changesets created without an author are attributed to the authenticated caller.
 - Webhooks (ADR-025, `docs/webhooks.md`): `push`, `change_request`, `review`, `comment` and
   `check` events posted to URLs and signed like GitHub's (`X-Pando-Signature-256`), retried
   with backoff from a queue that is safe across replicas. `pando webhook add|list|ping|log|remove`

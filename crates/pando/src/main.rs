@@ -171,6 +171,15 @@ enum Cmd {
     Mcp {
         #[arg(long)]
         server: Option<String>,
+        /// Serve the whole server to remote agents over HTTP at this address (e.g.
+        /// 0.0.0.0:7430), instead of one workspace over stdio. Each request's bearer token is
+        /// passed through to the server.
+        #[arg(long, value_name = "ADDR")]
+        http: Option<std::net::SocketAddr>,
+        /// Host names clients use to reach the HTTP endpoint (repeatable); default: loopback
+        /// only, against DNS rebinding.
+        #[arg(long = "allowed-host")]
+        allowed_hosts: Vec<String>,
     },
     /// Create and list repositories on a server that hosts many (`pandod server --platform`).
     Repo {
@@ -674,7 +683,11 @@ async fn run() -> Result<()> {
                 );
             }
         }
-        Cmd::Mcp { server } => {
+        Cmd::Mcp { server, http: Some(listen), allowed_hosts } => {
+            let base = pando_proto::split_repo_url(&server_for(server)?).0;
+            pando::mcp_remote::RemoteMcp::new(base).serve_http(listen, allowed_hosts).await?;
+        }
+        Cmd::Mcp { server, .. } => {
             let ws = workspace().ok();
             let remote = match &ws {
                 Some(w) if server.is_none() => ws_remote(w, token)?,
