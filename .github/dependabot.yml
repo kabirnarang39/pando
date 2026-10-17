@@ -8,3 +8,20 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: gomod
+    directory: /sdk/go
+    schedule: { interval: weekly }
+    groups:
+      go-deps: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directories: [/console, /sdk/typescript]
+    schedule: { interval: weekly }
+    groups:
+      npm-deps: { patterns: ["*"] }
+  - package-ecosystem: uv
+    directory: /sdk/python
+    schedule: { interval: weekly }
+    groups:
+      python-deps: { patterns: ["*"] }
