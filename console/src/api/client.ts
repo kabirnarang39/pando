@@ -92,6 +92,11 @@ export const title = (message: string) => message.split("\n", 1)[0]?.trim() || "
 
 /** What went wrong, and what to do about it, in a sentence a person can act on. */
 export function explain(err: unknown, server?: string): string {
+  const text = explainRaw(err, server);
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+
+function explainRaw(err: unknown, server?: string): string {
   const e = ConnectError.from(err);
   const where = server ? ` ${server}` : " the server";
   switch (e.code) {

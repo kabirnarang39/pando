@@ -193,6 +193,7 @@ function Page() {
         {(land.error || rebase.error) && (
           <p className="status" data-kind="error" style={{ margin: "12px 28px 0" }} role="alert">
             {explain(land.error ?? rebase.error)}
+            {rebase.error && !land.error && `. The author needs to redo the change on top of ${cr.target}, or you can close this one.`}
           </p>
         )}
         {rebase.isSuccess && !rebase.isPending && cr.conflicts.length === 0 && (
