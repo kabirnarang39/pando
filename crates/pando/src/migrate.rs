@@ -46,7 +46,7 @@ pub struct Migration {
 /// `owner/repo` from the last two path segments of any repository URL.
 fn last_two(url: &str) -> Option<(String, String)> {
     let path = url.trim_end_matches('/').trim_end_matches(".git");
-    let mut parts = path.rsplit(['/', ':']);
+    let mut parts = path.rsplit(['/', ':', '\\']);
     let repo = parts.next()?;
     let owner = parts.next()?;
     (!owner.is_empty() && !repo.is_empty()).then(|| (owner.to_owned(), repo.to_owned()))
@@ -333,5 +333,6 @@ mod tests {
         assert_eq!(github_repo("https://github.com/acme"), None);
         assert_eq!(last_two("https://github.example.com/acme/fleet.git"), Some(("acme".into(), "fleet".into())));
         assert_eq!(last_two("/srv/git/acme/fleet"), Some(("acme".into(), "fleet".into())));
+        assert_eq!(last_two(r"C:\git\acme\fleet"), Some(("acme".into(), "fleet".into())));
     }
 }
