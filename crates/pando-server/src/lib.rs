@@ -17,8 +17,10 @@ use pando_core::acl::AccessPolicy;
 use pando_core::flags::FeatureFlags;
 use pando_core::ports::{LandCheck, ObjectStore};
 use tokio::net::TcpListener;
+use tonic::codegen::http::{HeaderName, HeaderValue, Method};
 use tonic::service::{InterceptorLayer, Routes};
 use tonic::transport::{Server, ServerTlsConfig};
+use tower_http::cors::CorsLayer;
 
 use crate::auth::{AuthInterceptor, Authenticator};
 use crate::features::*;
@@ -50,12 +52,53 @@ pub fn tier_routes(store: Arc<dyn ObjectStore>, flags: Arc<dyn FeatureFlags>) ->
     Routes::new(objects::service(objects::Objects::new(store, flags, Arc::new(pando_core::acl::AllowAllPolicy))))
 }
 
+/// Browser access: gRPC-Web (for the web console and other browser clients) and the
+/// origins allowed to call the server from another site.
+#[derive(Debug, Clone, Default)]
+pub struct WebAccess {
+    /// Accept gRPC-Web requests (the `web` feature flag).
+    pub enabled: bool,
+    /// Origins allowed cross-origin, e.g. `https://console.example.com`; `*` allows any (only
+    /// for development). Empty: same-origin only.
+    pub origins: Vec<String>,
+}
+
+impl WebAccess {
+    fn cors(&self) -> anyhow::Result<CorsLayer> {
+        use tower_http::cors::{AllowOrigin, ExposeHeaders};
+        let origin = if self.origins.iter().any(|o| o == "*") {
+            AllowOrigin::any()
+        } else {
+            let list = self.origins.iter().map(|o| o.parse()).collect::<Result<Vec<HeaderValue>, _>>()?;
+            AllowOrigin::list(list)
+        };
+        Ok(CorsLayer::new()
+            .allow_origin(origin)
+            .allow_methods([Method::POST, Method::OPTIONS])
+            .allow_headers([
+                HeaderName::from_static("authorization"),
+                HeaderName::from_static("content-type"),
+                HeaderName::from_static("x-grpc-web"),
+                HeaderName::from_static("x-user-agent"),
+                HeaderName::from_static("grpc-timeout"),
+                HeaderName::from_static("connect-protocol-version"),
+            ])
+            .expose_headers(ExposeHeaders::list([
+                HeaderName::from_static("grpc-status"),
+                HeaderName::from_static("grpc-message"),
+                HeaderName::from_static("grpc-status-details-bin"),
+            ]))
+            .max_age(std::time::Duration::from_secs(600)))
+    }
+}
+
 /// Serve `routes` with auth, health checks, reflection, metrics and graceful shutdown.
 pub async fn serve(
     listener: TcpListener,
     routes: Routes,
     auth: Arc<dyn Authenticator>,
     tls: Option<ServerTlsConfig>,
+    web: WebAccess,
     shutdown: impl Future<Output = ()> + Send,
 ) -> anyhow::Result<()> {
     let (health_reporter, health) = tonic_health::server::health_reporter();
@@ -66,13 +109,19 @@ pub async fn serve(
     let routes = routes.add_service(health).add_service(reflection);
 
     let mut builder = Server::builder()
+        .accept_http1(web.enabled)
         .tcp_nodelay(true)
         .http2_adaptive_window(Some(true))
         .http2_keepalive_interval(Some(std::time::Duration::from_secs(30)));
     if let Some(tls) = tls {
         builder = builder.tls_config(tls)?;
     }
+    // CORS sits outside authentication: browsers send preflight requests without a token.
     builder
+        .layer(tower::util::option_layer(web.enabled.then(|| web.cors()).transpose()?))
+        // Translates only gRPC-Web requests; plain gRPC passes through untouched. Browsers
+        // reach it over HTTP/1.1, which is accepted only when the `web` flag is on.
+        .layer(tonic_web::GrpcWebLayer::new())
         .layer(telemetry::MeteredLayer)
         .layer(InterceptorLayer::new(AuthInterceptor(auth)))
         .layer(telemetry::AuditLayer)

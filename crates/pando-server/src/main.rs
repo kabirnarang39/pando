@@ -32,6 +32,10 @@ struct Cli {
     /// result) to this file. Off by default; it grows with every request.
     #[arg(long, global = true, env = "PANDO_AUDIT_LOG")]
     audit_log: Option<std::path::PathBuf>,
+    /// Comma-separated origins allowed to call this server from a browser on another site,
+    /// e.g. the web console's address; `*` allows any (development only).
+    #[arg(long, global = true, env = "PANDO_WEB_ORIGINS", value_delimiter = ',')]
+    web_origins: Vec<String>,
     /// Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only).
     #[arg(long, global = true, env = "PANDO_TOKENS", hide_env_values = true)]
     tokens: Option<String>,
@@ -154,6 +158,13 @@ async fn main() -> anyhow::Result<()> {
         telemetry::init_metrics(addr)?;
     }
     let flags = Arc::new(SpecFlags::from_env()?);
+    let web = pando_server::WebAccess {
+        enabled: flags.enabled(pando_core::flags::Flag::Web),
+        origins: cli.web_origins.iter().map(|o| o.trim().to_owned()).filter(|o| !o.is_empty()).collect(),
+    };
+    if web.origins.iter().any(|o| o == "*") {
+        tracing::warn!("PANDO_WEB_ORIGINS=*: any website can call this server from a browser; use only in development");
+    }
     let mut authenticators: Vec<Arc<dyn Authenticator>> = Vec::new();
     if let Some(t) = &cli.tokens {
         authenticators.push(Arc::new(StaticTokens::new(t.split(',').map(|s| s.trim().to_owned()))));
@@ -261,5 +272,5 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    serve(listener, routes, auth, tls, shutdown_signal()).await
+    serve(listener, routes, auth, tls, web, shutdown_signal()).await
 }
