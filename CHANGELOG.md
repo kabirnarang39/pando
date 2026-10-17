@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-10-17
+
 ### Security
 - On platform servers a change is attributed to whoever made it: a member can no longer record
   someone else as the author. Repository administrators may still record other authors, so
