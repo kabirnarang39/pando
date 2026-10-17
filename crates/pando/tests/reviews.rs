@@ -279,3 +279,129 @@ async fn change_requests_gate_protected_branches() {
     let all = eve.reviews().list_events(ListEventsRequest::default()).await.unwrap().into_inner();
     assert!(all.events.is_empty(), "a stranger sees no activity");
 }
+
+/// A tiny HTTP receiver: every request's headers and body, answered 200.
+async fn receiver() -> (String, tokio::sync::mpsc::UnboundedReceiver<(String, String)>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/hook", listener.local_addr().unwrap());
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        loop {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let n = sock.read(&mut chunk).await.unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let len = text[..end]
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= end + 4 + len {
+                            let _ =
+                                tx.send((text[..end].to_ascii_lowercase(), text[end + 4..end + 4 + len].to_owned()));
+                            let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n").await;
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    (url, rx)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn webhooks_deliver_signed_events() {
+    let s = start().await;
+    let admin = as_(&s, "admin");
+    admin
+        .platform()
+        .create_repository(CreateRepositoryRequest {
+            owner: "lumen".into(),
+            name: "fleet".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let (url, mut got) = receiver().await;
+    let created = admin
+        .platform()
+        .create_webhook(pando_proto::CreateWebhookRequest {
+            repository: repo(),
+            url: url.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let secret = created.secret.clone();
+    assert_eq!(secret.len(), 64, "the server makes a secret and shows it once");
+    let hook = created.webhook.unwrap();
+    // Only administrators manage webhooks; others don't even see them.
+    let dev = as_(&s, "dev");
+    admin
+        .platform()
+        .set_member(SetMemberRequest { org: "lumen".into(), login: "dev".into(), role: Role::Write as i32 })
+        .await
+        .unwrap();
+    let e = dev.platform().list_webhook_deliveries(pando_proto::WebhookRef { id: hook.id.clone() }).await.unwrap_err();
+    assert_eq!(e.code(), Code::NotFound);
+    let bad = admin
+        .platform()
+        .create_webhook(pando_proto::CreateWebhookRequest {
+            repository: repo(),
+            url: "http://169.254.169.254/latest".into(),
+            ..Default::default()
+        })
+        .await;
+    assert!(bad.is_ok(), "link-local is refused when delivering, not when saving");
+
+    // A ping arrives at once, signed.
+    let ping =
+        admin.platform().ping_webhook(pando_proto::WebhookRef { id: hook.id.clone() }).await.unwrap().into_inner();
+    assert!(ping.delivered && ping.status == 200, "{ping:?}");
+    let (headers, body) = got.recv().await.unwrap();
+    assert!(headers.contains("x-pando-event: ping"));
+    let sig = pando_server::webhooks::signature(&secret, body.as_bytes());
+    assert!(headers.contains(&format!("x-pando-signature-256: {sig}")), "{headers}");
+
+    // Landing on a branch is a push; opening a change request is a change_request event.
+    let first = changeset(&dev, None, &[("a.txt", "a\n")], "Start").await;
+    assert!(dev.compare_and_swap("main", None, first).await.unwrap());
+    let next = tokio::time::timeout(std::time::Duration::from_secs(10), got.recv()).await.unwrap().unwrap();
+    assert!(next.0.contains("x-pando-event: push"), "{}", next.0);
+    let push: serde_json::Value = serde_json::from_str(&next.1).unwrap();
+    assert_eq!(push["ref"], "main");
+    assert_eq!(push["action"], "created");
+    assert_eq!(push["repository"]["full_name"], "lumen/fleet");
+    push_branch(&dev).await;
+    dev.reviews().create_change_request(open("feature", "A feature", &[])).await.unwrap();
+    let mut kinds = Vec::new();
+    while let Ok(Some((h, _))) = tokio::time::timeout(std::time::Duration::from_secs(10), got.recv()).await {
+        kinds.push(h.lines().find_map(|l| l.strip_prefix("x-pando-event: ").map(str::to_owned)).unwrap());
+        if kinds.iter().any(|k| k == "change_request") && kinds.iter().any(|k| k == "push") {
+            break;
+        }
+    }
+    assert!(kinds.contains(&"push".to_owned()) && kinds.contains(&"change_request".to_owned()), "{kinds:?}");
+    let log =
+        admin.platform().list_webhook_deliveries(pando_proto::WebhookRef { id: hook.id }).await.unwrap().into_inner();
+    assert!(log.deliveries.iter().filter(|d| d.delivered).count() >= 3, "{:?}", log.deliveries);
+}
+
+async fn push_branch(r: &GrpcRemote) {
+    push(r, "feature", "main", &[("b.txt", "b\n")]).await;
+}

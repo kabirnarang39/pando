@@ -148,6 +148,7 @@ impl Registry {
         let db = self.db.lock().unwrap();
         db.execute_batch(crate::directory::SCHEMA)?;
         db.execute_batch(crate::features::reviews::store::SCHEMA)?;
+        db.execute_batch(crate::webhooks::SCHEMA)?;
         Ok(())
     }
 
@@ -312,6 +313,14 @@ impl Hosting {
             let repo = crate::config::open_repo(&metadata, &objects)
                 .await
                 .map_err(|e| Status::unavailable(format!("opening storage for `{key}`: {e:#}")))?;
+            // Every branch move becomes a `push` webhook event.
+            let refs = Arc::new(crate::webhooks::NotifyingRefs {
+                inner: repo.refs.clone(),
+                log: repo.log.clone(),
+                registry: self.registry.clone(),
+                key: key.clone(),
+            });
+            let repo = Repo { refs, ..repo };
             tracing::info!(repo = %key, "opened repository");
             Ok::<_, Status>(Hosted { services: (self.build)(key, repo.clone()), repo })
         })

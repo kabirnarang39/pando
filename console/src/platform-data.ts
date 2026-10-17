@@ -164,6 +164,23 @@ export const useCreateChangeRequest = (key: string) =>
     [["crs", key], ["repo", key], ["repos"], ["inbox"]],
   );
 
+export function useWebhooks(key: string, enabled: boolean) {
+  const api = usePlatformApi();
+  return useQuery({ queryKey: ["webhooks", key], enabled, queryFn: async () => (await or(api.platform.listWebhooks(ref(key)), { webhooks: [] })).webhooks });
+}
+
+export function useDeliveries(id: string) {
+  const api = usePlatformApi();
+  return useQuery({ queryKey: ["deliveries", id], queryFn: async () => (await api.platform.listWebhookDeliveries({ id })).deliveries, refetchInterval: 5000 });
+}
+
+export const useCreateWebhook = (key: string) =>
+  usePlatformMutation((api, w: { url: string; events: string[] }) => api.platform.createWebhook({ repository: ref(key), url: w.url, events: w.events }), [["webhooks", key]]);
+
+export const useDeleteWebhook = (key: string) => usePlatformMutation((api, id: string) => api.platform.deleteWebhook({ id }), [["webhooks", key]]);
+
+export const usePingWebhook = (key: string) => usePlatformMutation((api, id: string) => api.platform.pingWebhook({ id }), [["webhooks", key], ["deliveries"]]);
+
 export const useSetProtection = (key: string) =>
   usePlatformMutation(
     (api, p: { pattern: string; requiredApprovals: number; requiredChecks: string[]; dismissStale: boolean; agentsLandDirectly: boolean; bypass: string[] }) =>

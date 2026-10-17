@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AddPrincipal, RoleSelect, roleNames } from "../../components/Access";
 import { ProtectionForm } from "../../components/ProtectionForm";
+import { Webhooks } from "../../components/Webhooks";
 import { useConnection } from "../../connection";
 import { Role } from "../../gen/pando_platform_pb";
 import { useDeleteProtection, useGrants, useProtections, useRepository, useSetGrant } from "../../platform-data";
@@ -136,6 +137,7 @@ export function RepoSettingsView() {
           />
         )}
       </section>
+      {admin && <Webhooks repo={key} />}
     </div>
   );
 }

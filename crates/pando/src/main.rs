@@ -206,6 +206,13 @@ enum Cmd {
         #[command(subcommand)]
         action: cr::ProtectCmd,
     },
+    /// Webhooks: call a URL (CI, chat, trackers) when something happens in a repository.
+    Webhook {
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: admin::WebhookCmd,
+    },
     /// Access tokens for you and for agents you answer for.
     Token {
         #[arg(long, global = true)]
@@ -680,6 +687,7 @@ async fn run() -> Result<()> {
         Cmd::Team { server, action } => admin::team(platform_client(server, token)?, action).await?,
         Cmd::Cr { server, action } => cr::cr(review_target(server, token)?, action).await?,
         Cmd::Protect { server, action } => cr::protect(review_target(server, token)?, action).await?,
+        Cmd::Webhook { server, action } => admin::webhook(platform_client(server, token)?, action).await?,
         Cmd::Token { server, action } => admin::token(platform_client(server, token)?, action).await?,
         Cmd::Repo { action } => {
             let server = match &action {

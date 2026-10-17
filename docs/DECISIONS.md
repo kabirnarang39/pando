@@ -330,3 +330,22 @@ proportional to what changed; a cache comes if listings of hundreds of open requ
 An agent's land on a protected branch is refused rather than turned into a change request
 automatically; `pando cr create` is one command away.
 
+## ADR-025: Webhooks are a signed, leased delivery queue in the registry
+
+**Decision.** Events are written to a `deliveries` table in the platform registry, one row per
+interested webhook, and a worker in every server process claims due rows with a single
+`UPDATE … RETURNING` that pushes their next attempt a minute ahead (a lease), posts them, and
+records the outcome; failures retry with exponential backoff, eight attempts in all. Bodies are
+signed with HMAC-SHA256 in GitHub's `sha256=` format. Push events come from a wrapper around
+each hosted repository's ref store, the one place every branch move passes through.
+
+**Why.** A queue in the database survives restarts and needs no broker to run or pay for. The
+lease makes any number of replicas safe without coordination. GitHub's signature format means
+receivers reuse the code they already have. Wrapping the ref store catches lands, pushes and
+rebases alike, including ways to move a branch added later.
+
+**Trade-offs.** Addresses are checked when resolved, not pinned for the connection, so a DNS
+answer that changes in between could reach an address that was refused; webhooks are set up by
+repository administrators, and link-local addresses are refused at both points that matter in
+practice. Secrets are stored as given, because signing needs them.
+
