@@ -65,6 +65,21 @@ jobs:
       - run: cargo build --release --locked -p pando-vcs -p pando-server
       - run: scripts/test-mount-macos.sh target/release
 
+  projfs-probe:
+    runs-on: windows-latest
+    steps:
+      - name: Can ProjFS be enabled without a reboot?
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          Get-WindowsOptionalFeature -Online -FeatureName Client-ProjFS | Format-List FeatureName,State,RestartRequired
+          $r = Enable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS -NoRestart
+          $r | Format-List RestartNeeded
+          Get-WindowsOptionalFeature -Online -FeatureName Client-ProjFS | Format-List FeatureName,State
+          Test-Path C:\Windows\System32\ProjectedFSLib.dll
+          Get-Service prjflt -ErrorAction SilentlyContinue | Format-List Name,Status
+          fltmc filters
+
   databases:
     # Same contract suite against real Postgres and CockroachDB (Postgres wire protocol).
     runs-on: ubuntu-latest
