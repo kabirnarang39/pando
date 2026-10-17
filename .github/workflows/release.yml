@@ -31,7 +31,7 @@ jobs:
           - { target: x86_64-pc-windows-msvc,    os: windows-latest }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "${{ matrix.target }}" }
       - uses: arduino/setup-protoc@v3
@@ -46,7 +46,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/pando$ext" "target/${{ matrix.target }}/release/pandod$ext" "target/${{ matrix.target }}/release/git-remote-pando$ext" README.md LICENSE "$name/"
           if [[ "$ext" == ".exe" ]]; then 7z a "$name.zip" "$name" >/dev/null; f="$name.zip"; else tar czf "$name.tar.gz" "$name"; f="$name.tar.gz"; fi
           if command -v sha256sum >/dev/null; then sha256sum "$f" > "$f.sha256"; else shasum -a 256 "$f" > "$f.sha256"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: pando-*
@@ -60,8 +60,8 @@ jobs:
       id-token: write      # Sigstore signing of the attestations
       attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
       # Signed SLSA build provenance for every archive: verify with
       # `gh attestation verify FILE --repo kabirnarang39/pando`.
@@ -86,7 +86,7 @@ jobs:
           sbom-path: dist/pando-${{ github.ref_name }}.spdx.json
       - name: Release notes from CHANGELOG
         run: awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[" v "\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           body_path: notes.md
           files: dist/*
@@ -100,7 +100,7 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fetch release binaries
         run: |
           mkdir -p dist/data
@@ -122,10 +122,10 @@ jobs:
             [ "$(gh release view --json tagName -q .tagName)" = "$TAG" ] && echo "$image:latest"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.release
@@ -144,7 +144,7 @@ jobs:
     if: github.event_name == 'push' && vars.PUBLISH_CRATES == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with: { repo-token: "${{ secrets.GITHUB_TOKEN }}" }
@@ -160,8 +160,8 @@ jobs:
     permissions:
       id-token: write  # PyPI trusted publishing: no token stored in the repository
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uv build
         working-directory: sdk/python
       - uses: pypa/gh-action-pypi-publish@release/v1
@@ -175,8 +175,8 @@ jobs:
       contents: read
       id-token: write  # provenance attestation
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 24, registry-url: "https://registry.npmjs.org" }
       - run: npm ci && npm publish --provenance --access public
         working-directory: sdk/typescript
@@ -188,8 +188,8 @@ jobs:
     if: github.event_name == 'push' && vars.PUBLISH_HOMEBREW == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: kabirnarang39/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
