@@ -2038,6 +2038,7 @@ dependencies = [
  "quick_cache",
  "reqwest",
  "rustls",
+ "serde",
  "serde_json",
  "similar",
  "tempfile",
