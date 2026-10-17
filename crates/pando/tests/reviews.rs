@@ -356,3 +356,37 @@ async fn webhooks_deliver_signed_events() {
 async fn push_branch(r: &GrpcRemote) {
     push(r, "feature", "main", &[("b.txt", "b\n")]).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changes_are_attributed_to_who_made_them() {
+    let s = start().await;
+    let admin = as_(&s, "admin");
+    admin
+        .platform()
+        .create_repository(CreateRepositoryRequest {
+            owner: "lumen".into(),
+            name: "fleet".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    admin
+        .platform()
+        .set_member(SetMemberRequest { org: "lumen".into(), login: "dev".into(), role: Role::Write as i32 })
+        .await
+        .unwrap();
+    let dev = as_(&s, "dev");
+    let claim = |author: &str| Changeset {
+        parents: vec![],
+        changes: vec![],
+        author: author.into(),
+        message: "x".into(),
+        timestamp_ms: 1,
+    };
+    // A member can't put someone else's name on a change.
+    let spoofed = dev.create_changeset(claim("linus <linus@kernel.org>")).await.unwrap();
+    assert_eq!(spoofed.changeset.author, "dev");
+    // An administrator importing history keeps the original authors.
+    let imported = admin.create_changeset(claim("Ada <ada@example.com>")).await.unwrap();
+    assert_eq!(imported.changeset.author, "Ada <ada@example.com>");
+}

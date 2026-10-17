@@ -237,6 +237,14 @@ impl AccessPolicy for ProtectedRefs {
         self.inner.read_scope(who)
     }
 
+    /// On a platform server a change is attributed to whoever made it. Repository
+    /// administrators may record another author, so imports keep their original history.
+    fn author_for(&self, who: &Principal, claimed: &str) -> String {
+        let admin =
+            self.access.is_admin(who) || self.registry.held_role(&who.0, &self.key).is_ok_and(|r| r >= Role::Admin);
+        if admin || claimed == who.0 { claimed.to_owned() } else { who.0.clone() }
+    }
+
     fn why_not_ref(&self, who: &Principal, ref_name: &str) -> Option<String> {
         if !self.inner.can_update_ref(who, ref_name) {
             return self.inner.why_not_ref(who, ref_name);

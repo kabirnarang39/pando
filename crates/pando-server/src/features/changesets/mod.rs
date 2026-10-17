@@ -54,8 +54,15 @@ impl changesets_server::Changesets for Changesets {
         let cs = Changeset {
             parents: r.parents,
             changes: r.changes.into_iter().map(|c| FileChange { path: c.path, blob: c.blob, mode: c.mode }).collect(),
-            // Unnamed changes are attributed to whoever made them.
-            author: if r.author.trim().is_empty() { who.0.clone() } else { r.author },
+            // Unnamed changes are attributed to whoever made them; the access policy may insist
+            // on that for every change (platform servers do, except for administrators).
+            author: if r.author.trim().is_empty() {
+                who.0.clone()
+            } else if self.flags.enabled(Flag::Permissions) {
+                self.policy.author_for(&who, &r.author)
+            } else {
+                r.author
+            },
             message: r.message,
             timestamp_ms: r.timestamp_ms,
         };
