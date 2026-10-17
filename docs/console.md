@@ -39,15 +39,15 @@ links work from any path.
 
 ## What works where
 
-| Feature | `pandod` | `pandod --platform` (3.1) | Coming next |
+| Feature | `pandod` | `pandod --platform` | Coming next |
 |---|---|---|---|
 | Code, blame, file history, search by path | yes | yes | |
 | Changes as they land, word-level diffs | yes | yes | |
 | Locks, branch switching, fleet timeline | yes | yes | |
 | Many repositories, grouped by owner | one repository | yes | |
-| People, agents, teams and roles | | | yes |
+| People, agents, teams, roles and tokens | | yes (3.2) | |
 | Change requests, reviews, line comments, land gate, rebase | | | yes |
-| Inbox, activity, protected branches, tokens | | | yes |
+| Inbox, activity, protected branches | | | yes |
 
 The console asks the server what it supports and shows only that: a server without hosting
 shows its one repository, and a server without review hides reviews and the inbox. The demo shows

@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Accounts, organisations, members, teams, per-repository roles and access tokens on platform
+  servers (ADR-023): `pando org`, `pando team`, `pando repo grant` and `pando token`, and the
+  same in the web console (Tokens, organisation People, repository Settings → Access). Tokens
+  start with `pando_`, are stored as a hash, can act as an agent, be limited to repositories and
+  a highest role, and expire within a year.
+- `pandod token --platform URL --account LOGIN` creates the first administrator's token
+  without a running server.
+
+### Changed
+- Platform servers now check every repository call: reading needs the Read role and anything
+  else Write; repositories are private to their organisation unless made internal or public.
+  After upgrading from 3.1, add people with `pando org member ORG LOGIN ROLE`. Servers without
+  any authentication stay open, for local development.
+
 ## [3.1.0] - 2026-10-17
 
 ### Added

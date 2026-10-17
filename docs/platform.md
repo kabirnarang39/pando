@@ -47,14 +47,14 @@ reused; only the list of jobs people do.
 Each phase ships behind a feature flag, with server and web app together, tests, docs and a
 demo that runs in the browser.
 
-1. **Repositories and organisations.** One server hosts many repositories, each with its own
+1. **Repositories and organisations** (done in 3.1). One server hosts many repositories, each with its own
    storage (a `{repo}` template in the storage URLs). Requests name their repository; an older
    client that names none reaches the default repository. Organisation and repository pages,
    repository creation, a home page with your repositories and their activity.
-2. **Coexistence with GitHub, GitLab and Bitbucket.** A continuous mirror of every landed change
+2. **Coexistence with GitHub, GitLab and Bitbucket** (done in 3.1: `pando mirror`). A continuous mirror of every landed change
    to an existing host, so CI, integrations and audit archives keep working while agents land in
    Pando. This is how an enterprise adopts Pando without replacing anything.
-3. **People, agents and access.** Accounts from the identity provider (OIDC is already
+3. **People, agents and access** (done in 3.2, ADR-023). Accounts from the identity provider (OIDC is already
    supported), personal and agent tokens, organisation members, teams, and per-repository roles
    (read, write, maintain, admin). Agents are accounts marked as agents and owned by a person or
    team.

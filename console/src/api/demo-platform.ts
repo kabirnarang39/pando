@@ -414,11 +414,76 @@ export class DemoPlatform {
     };
   }
 
+  // Access changes made in the demo: kept in memory for this tab only.
+  private memberRoles = new Map<string, Role>();
+  private grantLists = new Map<string, { principal: string; role: Role }[]>();
+  private tokenList: { id: string; name: string; actsAs: string; repositories: string[]; maxRole: Role; createdAtMs: bigint; expiresAtMs: bigint; lastUsedAtMs: bigint }[] = [];
+
   members() {
-    return [
+    const base = [
       ...Object.keys(people).map((login) => ({ account: this.account(login), role: login === VIEWER ? Role.ADMIN : Role.MAINTAIN, teams: login === "dev" ? ["platform"] : ["product"] })),
       ...Object.keys(agentOwners).map((login) => ({ account: this.account(login), role: Role.WRITE, teams: ["agents"] })),
     ];
+    for (const [login, role] of this.memberRoles)
+      if (!base.some((m) => m.account.login === login))
+        base.push({ account: { login, displayName: login.split("@")[0]!, kind: AccountKind.PERSON, owner: "", avatarUrl: "", createdAtMs: BigInt(Date.now()), siteAdmin: false }, role, teams: [] });
+    return base.map((m) => ({ ...m, role: this.memberRoles.get(m.account.login) ?? m.role })).filter((m) => m.role !== Role.UNSPECIFIED);
+  }
+
+  setMember(login: string, role: Role) {
+    if (!/^[A-Za-z0-9._@+/-]{1,100}$/.test(login)) throw new ConnectError(`\`${login}\` is not a valid login`, Code.InvalidArgument);
+    if (login === VIEWER && role !== Role.ADMIN) throw new ConnectError(`\`${login}\` is the last administrator of ${ORG}; make someone else one first`, Code.FailedPrecondition);
+    this.memberRoles.set(login, role);
+    return { account: this.members().find((m) => m.account.login === login)?.account, role, teams: [] };
+  }
+
+  grants(key: string) {
+    if (!this.grantLists.has(key))
+      this.grantLists.set(key, [
+        { principal: `${ORG}/product`, role: Role.WRITE },
+        { principal: `${ORG}/agents`, role: Role.WRITE },
+        { principal: `${ORG}/platform`, role: Role.ADMIN },
+      ]);
+    return this.grantLists.get(key)!;
+  }
+
+  setGrant(key: string, principal: string, role: Role) {
+    if (!/^[A-Za-z0-9._@+/-]{1,100}$/.test(principal)) throw new ConnectError(`\`${principal}\` is not a valid login or team`, Code.InvalidArgument);
+    const rest = this.grants(key).filter((g) => g.principal !== principal);
+    this.grantLists.set(key, role === Role.UNSPECIFIED ? rest : [...rest, { principal, role }].sort((a, b) => a.principal.localeCompare(b.principal)));
+    return { principal, role };
+  }
+
+  tokens() {
+    if (!this.tokenList.length && !this.tokensTouched) {
+      const now = Date.now();
+      this.tokenList = [
+        { id: "t1", name: "laptop", actsAs: "", repositories: [], maxRole: Role.ADMIN, createdAtMs: BigInt(now - 40 * 86_400_000), expiresAtMs: BigInt(now + 50 * 86_400_000), lastUsedAtMs: BigInt(now - 3_600_000) },
+        { id: "t2", name: "perf fleet", actsAs: "agent/perf-05", repositories: [`${ORG}/fleet`], maxRole: Role.WRITE, createdAtMs: BigInt(now - 9 * 86_400_000), expiresAtMs: BigInt(now + 21 * 86_400_000), lastUsedAtMs: BigInt(now - 20_000) },
+      ];
+    }
+    return this.tokenList;
+  }
+  private tokensTouched = false;
+
+  createToken(t: { name: string; actsAs: string; repositories: string[]; maxRole: Role; expiresAtMs: bigint }) {
+    if (!t.name.trim()) throw new ConnectError("give the token a name of up to 100 characters", Code.InvalidArgument);
+    if (t.actsAs && !t.actsAs.startsWith("agent/") && t.actsAs !== VIEWER)
+      throw new ConnectError("a token can act only as you or as an agent (`agent/NAME`) you answer for", Code.PermissionDenied);
+    for (const r of t.repositories) if (!this.hosted.has(r)) throw new ConnectError(`no repository \`${r}\` on this server`, Code.NotFound);
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    // Marked as a demo token so it can never be mistaken for a real one.
+    const secret = `pando_demo_${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const token = { id: `t${Date.now().toString(36)}`, name: t.name.trim(), actsAs: t.actsAs || VIEWER, repositories: t.repositories, maxRole: t.maxRole || Role.ADMIN, createdAtMs: BigInt(Date.now()), expiresAtMs: t.expiresAtMs, lastUsedAtMs: 0n };
+    this.tokens().unshift(token);
+    return { token, secret };
+  }
+
+  revokeToken(id: string) {
+    const before = this.tokens().length;
+    this.tokenList = this.tokens().filter((t) => t.id !== id);
+    this.tokensTouched = true;
+    if (this.tokenList.length === before) throw new ConnectError(`no token \`${id}\``, Code.NotFound);
   }
 
   changeRequests(key: string) {
@@ -571,8 +636,8 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
         await wait();
         return { members: p.members() };
       },
-      setMember() {
-        throw new ConnectError("the demo can't change members", Code.PermissionDenied);
+      async setMember(r) {
+        return p.setMember(r.login, r.role);
       },
       async listTeams() {
         return {
@@ -598,26 +663,21 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
       updateRepository() {
         throw new ConnectError("the demo can't change repository settings", Code.PermissionDenied);
       },
-      async listGrants() {
-        return { grants: [{ principal: `${ORG}/product`, role: Role.WRITE }, { principal: `${ORG}/agents`, role: Role.WRITE }, { principal: `${ORG}/platform`, role: Role.ADMIN }] };
+      async listGrants(r) {
+        return { grants: p.grants(keyOf(r)) };
       },
-      setGrant() {
-        throw new ConnectError("the demo can't change access", Code.PermissionDenied);
+      async setGrant(r) {
+        return p.setGrant(keyOf(r.repository), r.principal, r.role);
       },
       async listTokens() {
-        const now = Date.now();
-        return {
-          tokens: [
-            { id: "t1", name: "laptop", actsAs: "", repositories: [], maxRole: Role.ADMIN, createdAtMs: BigInt(now - 40 * 86_400_000), expiresAtMs: BigInt(now + 50 * 86_400_000), lastUsedAtMs: BigInt(now - 3_600_000) },
-            { id: "t2", name: "perf fleet", actsAs: "agent/perf-05", repositories: [`${ORG}/fleet`], maxRole: Role.WRITE, createdAtMs: BigInt(now - 9 * 86_400_000), expiresAtMs: BigInt(now + 21 * 86_400_000), lastUsedAtMs: BigInt(now - 20_000) },
-          ],
-        };
+        return { tokens: p.tokens() };
       },
-      createToken() {
-        throw new ConnectError("the demo can't issue tokens", Code.PermissionDenied);
+      async createToken(r) {
+        return p.createToken(r);
       },
-      revokeToken() {
-        throw new ConnectError("the demo can't revoke tokens", Code.PermissionDenied);
+      async revokeToken(r) {
+        p.revokeToken(r.id);
+        return {};
       },
     });
     router.service(Reviews, {

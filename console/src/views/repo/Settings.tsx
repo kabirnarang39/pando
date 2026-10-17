@@ -1,16 +1,9 @@
+import { AddPrincipal, RoleSelect, roleNames } from "../../components/Access";
 import { useConnection } from "../../connection";
 import { Role } from "../../gen/pando_platform_pb";
-import { useGrants, useProtections } from "../../platform-data";
+import { useGrants, useProtections, useRepository, useSetGrant } from "../../platform-data";
 import { useRepo } from "../../repo";
 import { Author, Empty, ErrorState, Icon, Skeleton } from "../../ui";
-
-const roles: Record<number, string> = {
-  [Role.READ]: "Read",
-  [Role.TRIAGE]: "Triage",
-  [Role.WRITE]: "Write",
-  [Role.MAINTAIN]: "Maintain",
-  [Role.ADMIN]: "Admin",
-};
 
 /** Who may do what, and which branches need review before anything lands on them. */
 export function RepoSettingsView() {
@@ -18,9 +11,12 @@ export function RepoSettingsView() {
   const { target } = useConnection();
   const protections = useProtections(key);
   const grants = useGrants(key);
+  const repo = useRepository(key);
+  const setGrant = useSetGrant(key);
+  const admin = (repo.data?.viewerRole ?? Role.UNSPECIFIED) >= Role.ADMIN;
   return (
     <div className="page page-narrow">
-      {target.kind === "demo" && <p className="status" data-kind="info">The demo shows settings read-only. On your server, admins change them here.</p>}
+      {target.kind === "demo" && <p className="status" data-kind="info">In the demo, changes to access stay in this browser tab. Branch protection is shown read-only.</p>}
       <section className="panel" aria-labelledby="protect-title" style={{ margin: "20px 0" }}>
         <div className="panel-head">
           <Icon name="shield" />
@@ -58,25 +54,64 @@ export function RepoSettingsView() {
           <Icon name="users" />
           <h2 id="access-title">Access</h2>
         </div>
+        <p className="panel-note muted">
+          Members of {key.split("/")[0]} have their organisation role here too. Add people, agents or teams (<span className="mono">org/team</span>) for more.
+        </p>
         {grants.isPending ? (
           <Skeleton />
+        ) : grants.error ? (
+          <ErrorState error={grants.error} />
         ) : (
           <table className="table">
             <thead>
               <tr>
                 <th>Who</th>
                 <th>Role</th>
+                {admin && (
+                  <th>
+                    <span className="sr-only">Remove</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
+              {grants.data?.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="muted">
+                    No one beyond the organisation's members.
+                  </td>
+                </tr>
+              )}
               {grants.data?.map((g) => (
                 <tr key={g.principal}>
-                  <td>{g.principal.includes("/") && !g.principal.startsWith("agent/") ? <span className="mono">{g.principal}</span> : <Author author={g.principal} />}</td>
-                  <td>{roles[g.role] ?? "None"}</td>
+                  <td>{g.principal.includes("/") && !g.principal.startsWith("agent/") && !g.principal.startsWith("bot/") ? <span className="mono">{g.principal}</span> : <Author author={g.principal} />}</td>
+                  <td>
+                    {admin ? (
+                      <RoleSelect value={g.role} label={`Role for ${g.principal}`} disabled={setGrant.isPending} onChange={(role) => setGrant.mutate({ principal: g.principal, role })} />
+                    ) : (
+                      (roleNames[g.role] ?? "None")
+                    )}
+                  </td>
+                  {admin && (
+                    <td className="cell-action">
+                      <button type="button" className="button button-quiet" onClick={() => setGrant.mutate({ principal: g.principal, role: Role.UNSPECIFIED })} disabled={setGrant.isPending}>
+                        Remove
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+        {admin && (
+          <AddPrincipal
+            label="Person, agent or team"
+            placeholder="mira, agent/perf-05 or lumen/platform"
+            pending={setGrant.isPending}
+            error={setGrant.error ? (setGrant.error as Error).message : null}
+            onAdd={(principal, role, done) => setGrant.mutate({ principal, role }, { onSuccess: done })}
+          />
         )}
       </section>
     </div>

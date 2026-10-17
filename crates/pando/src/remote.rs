@@ -91,7 +91,8 @@ pub trait Remote: Send + Sync {
     async fn blame(&self, rev: &str, path: &str) -> Result<Vec<(Id, String)>>;
 }
 
-type Ch = InterceptedService<Channel, BearerAuth>;
+/// An authenticated channel to a server.
+pub type Ch = InterceptedService<Channel, BearerAuth>;
 
 #[derive(Clone)]
 pub struct GrpcRemote {

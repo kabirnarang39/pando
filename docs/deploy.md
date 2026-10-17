@@ -27,30 +27,65 @@ when it does.
 
 ## Hosting many repositories
 
-One `pandod` can host any number of repositories, each with its own storage:
+One `pandod` can host any number of repositories, each with its own storage, for a whole
+company: organisations, members, teams, per-repository roles and access tokens.
 
 ```sh
-PANDO_TOKENS="admin:$ADMIN_TOKEN,ci:$CI_TOKEN" pandod server --listen 0.0.0.0:7420 \
+# 1. The first administrator's token, written straight into the registry (shown once).
+pandod token --platform sqlite:///var/lib/pando/platform.db --account kabir > ~/.pando-admin-token
+
+# 2. The server. With a platform token in the registry, every call needs a token.
+pandod server --listen 0.0.0.0:7420 \
   --platform sqlite:///var/lib/pando/platform.db \
   --repos-metadata 'sqlite:///var/lib/pando/repos/{repo}.db' \
   --repos-objects 'file:///var/lib/pando/objects/{repo_id}' \
-  --platform-admins admin
+  --platform-admins kabir
 
-pando repo create lumen/fleet --server https://pando.example.com
-pando clone https://pando.example.com/lumen/fleet fleet
+# 3. An organisation, a repository, people and agents.
+export PANDO_TOKEN=$(cat ~/.pando-admin-token) PANDO_SERVER=https://pando.example.com
+pando org create lumen
+pando repo create lumen/fleet
+pando org member lumen mira@lumen.dev write
+pando team set lumen/platform --member mira@lumen.dev
+pando repo grant lumen/fleet lumen/platform admin
+pando token create perf-fleet --as agent/perf-05 --repo lumen/fleet --role write
 ```
 
-- `--platform` is the registry of which repositories exist. `--repos-metadata` and
-  `--repos-objects` are templates: `{repo}` becomes `OWNER/NAME` and `{repo_id}` becomes
-  `OWNER--NAME`. Each repository gets its own database and its own landing queues, so one busy
-  repository never slows another, and a repository can be backed up, moved or deleted on its own.
+- `--platform` is the registry: which repositories exist, and who may use them.
+  `--repos-metadata` and `--repos-objects` are templates: `{repo}` becomes `OWNER/NAME` and
+  `{repo_id}` becomes `OWNER--NAME`. Each repository gets its own database and its own landing
+  queues, so one busy repository never slows another, and a repository can be backed up, moved
+  or deleted on its own.
 - Clients name a repository by adding `/OWNER/NAME` to the server address; the web console lists
   them. A client that names none reaches the server's default repository (`--metadata`), so
   existing setups keep working.
-- Only principals in `--platform-admins` create repositories. Names are letters, digits, `.`, `_`
-  and `-`, so they are safe in paths and database names.
-- In this release, access rules apply to every repository alike, and caches and node daemons
-  serve the default repository only. Per-repository roles, accounts and teams come next.
+
+### Who may do what
+
+| Role | Read | Write (land, push objects, lock) | Administer (access, settings) |
+|---|---|---|---|
+| Read, Triage | yes | | |
+| Write, Maintain | yes | yes | |
+| Admin | yes | yes | yes |
+
+- A person's role on a repository is the highest of: their organisation role, grants to them,
+  and grants to their teams. Internal and public repositories are readable by everyone with an
+  account on the server. Repositories are private unless made otherwise.
+- `--platform-admins` administer the whole server: they create organisations and act as
+  administrators everywhere. An organisation's administrators add members, teams and
+  repositories.
+- An agent (`agent/NAME`) answers to the person who issued its first token and works with that
+  person's role, or with its own if it has been given one.
+- A token acts as you or as an agent you answer for. It can be limited to some repositories and
+  to a highest role, and expires within a year (90 days by default). The server stores only a
+  hash; tokens start with `pando_`, so secret scanners can find leaked ones.
+- People who sign in with single sign-on or a static token get an account automatically; give
+  them a role with `pando org member`.
+- Someone who can't read a repository is told it does not exist, so private names don't leak.
+  Every change to access is in the audit log.
+- With no static tokens, single sign-on or platform tokens, the server is open, for local
+  development; it refuses to listen beyond 127.0.0.1 that way unless `PANDO_ALLOW_ANONYMOUS=1`.
+- Caches and node daemons serve the default repository only.
 
 ## Roles
 

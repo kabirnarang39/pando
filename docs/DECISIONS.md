@@ -273,3 +273,35 @@ can still be shared by pointing every template at one bucket. Putting the dispat
 authentication means the principal is known before any repository is opened, and the header
 keeps every existing client working. The cost is one open database per active repository, which
 is why repositories open lazily.
+
+## ADR-023: Accounts, roles and tokens live in the platform registry
+
+**Decision.** A platform server keeps accounts, organisations, members, teams, grants and access
+tokens in the registry database next to the list of repositories. Every call that names a
+repository is checked in the hosting layer, after authentication and before the repository
+opens: methods that only read need the Read role, everything else needs Write. The read list is
+explicit, so a method added later needs Write until someone decides otherwise. A caller who may
+not read a repository gets NotFound, the same answer as for a repository that doesn't exist.
+
+A role is the highest of organisation membership, direct grants and team grants; internal and
+public repositories add Read for every account. Agents act with their owner's role unless given
+their own. Tokens are 32 random bytes, prefixed `pando_` for secret scanners, stored as a BLAKE3
+hash, scoped to repositories and a highest role, and expire within a year. A token made with a
+token can't reach further than the one used to make it.
+
+Platform tokens are checked before the server's other authentication; anyone who signs in
+another way gets an account, with no role until an administrator gives one. `pandod token`
+writes the first token straight into the registry, so a server can run on platform tokens alone
+and nobody has to configure a shared secret.
+
+**Why.** GitHub and Bitbucket model access the same way (organisation base role, repository
+collaborators, teams), so administrators already know it. Keeping it in the registry means one
+small database to back up per server, and the check needs no network call. Treating unknown
+methods as writes, and unreadable repositories as missing, fails safe.
+
+**Trade-offs.** The check reads SQLite on every repository call: a few indexed lookups under one
+mutex, measured well below the cost of a land; a cache comes if profiles show it. Servers with
+no authentication at all stay open, for local development, as before. Repositories created in
+phase 1 become private to their organisation's members: administrators add members after
+upgrading.
+

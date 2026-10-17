@@ -66,8 +66,8 @@ You choose how far to go, and can change your mind at any point.
   stays exportable to git at any time, so there's no lock-in either way.
 
 Most teams start beside and move the busiest repositories over once the numbers are in.
-Accounts and code review on the server are being built now; today the console demonstrates
-them in your browser.
+Code review on the server is being built now; today the console demonstrates it in your
+browser.
 
 ## Highlights
 

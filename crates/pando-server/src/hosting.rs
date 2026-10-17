@@ -32,7 +32,7 @@ pub struct RepoKey {
     pub name: String,
 }
 
-fn valid_part(s: &str) -> bool {
+pub(crate) fn valid_part(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 100
         && !s.starts_with('.')
@@ -107,7 +107,7 @@ pub struct RepoRecord {
 
 /// Which repositories exist. SQLite, one small table; writes are rare (creating a repository).
 pub struct Registry {
-    db: Mutex<rusqlite::Connection>,
+    pub(crate) db: Mutex<rusqlite::Connection>,
 }
 
 impl Registry {
@@ -138,7 +138,15 @@ impl Registry {
                PRIMARY KEY (owner, name)
              );",
         )?;
-        Ok(Self { db: Mutex::new(conn) })
+        let reg = Self { db: Mutex::new(conn) };
+        reg.migrate()?;
+        Ok(reg)
+    }
+
+    /// Brings the schema up to date: accounts, organisations, teams, grants and tokens.
+    pub(crate) fn migrate(&self) -> anyhow::Result<()> {
+        self.db.lock().unwrap().execute_batch(crate::directory::SCHEMA)?;
+        Ok(())
     }
 
     fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<RepoRecord> {
@@ -173,6 +181,25 @@ impl Registry {
         )?;
         let rows = st.query_map([owner], Self::row)?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Replaces a repository's settings (everything but its name and creation time).
+    pub fn update(&self, rec: &RepoRecord) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute(
+            "UPDATE repositories SET description = ?3, visibility = ?4, default_branch = ?5, archived = ?6, topics = ?7
+             WHERE owner = ?1 AND name = ?2",
+            (
+                &rec.key.owner,
+                &rec.key.name,
+                &rec.description,
+                rec.visibility,
+                &rec.default_branch,
+                rec.archived as i64,
+                rec.topics.join(","),
+            ),
+        )?;
+        Ok(())
     }
 
     /// Adds a repository; false if it already exists.
@@ -215,20 +242,20 @@ pub struct RepoStats {
 /// The repositories this server hosts, opened on first use.
 pub struct Hosting {
     templates: Templates,
-    pub registry: Registry,
+    pub registry: Arc<Registry>,
     build: BuildRoutes,
     open: Mutex<HashMap<RepoKey, Arc<OnceCell<Hosted>>>>,
     stats: Mutex<HashMap<RepoKey, (Instant, RepoStats)>>,
-    /// Principals allowed to create repositories.
-    pub admins: Vec<String>,
+    /// Who may do what.
+    pub access: crate::permissions::Access,
 }
 
 impl Hosting {
     pub fn new(
         templates: Templates,
-        registry: Registry,
+        registry: Arc<Registry>,
         build: BuildRoutes,
-        admins: Vec<String>,
+        access: crate::permissions::Access,
     ) -> anyhow::Result<Self> {
         templates.validate()?;
         Ok(Self {
@@ -237,8 +264,25 @@ impl Hosting {
             build,
             open: Mutex::new(HashMap::new()),
             stats: Mutex::new(HashMap::new()),
-            admins,
+            access,
         })
+    }
+
+    /// The repository's record, if `who` (limited by `scope`) has at least `need` on it.
+    pub fn authorize(
+        &self,
+        key: &RepoKey,
+        who: &pando_core::acl::Principal,
+        scope: Option<&crate::auth::TokenScope>,
+        need: pando_proto::Role,
+    ) -> Result<RepoRecord, Status> {
+        let rec = self
+            .registry
+            .get(key)
+            .map_err(|e| Status::internal(e.to_string()))?
+            .ok_or_else(|| Status::not_found(format!("no repository `{key}` on this server")))?;
+        self.access.check(&self.registry, who, scope, &rec, need)?;
+        Ok(rec)
     }
 
     async fn hosted(&self, key: &RepoKey) -> Result<Arc<OnceCell<Hosted>>, Status> {
@@ -363,7 +407,16 @@ where
         let named = req.headers().get(REPO_HEADER).and_then(|v| v.to_str().ok()).map(str::to_owned);
         match (self.hosting.clone(), named) {
             (Some(hosting), Some(name)) => Box::pin(async move {
-                let routes = match RepoKey::parse(&name) {
+                let who = req
+                    .extensions()
+                    .get::<pando_core::acl::Principal>()
+                    .cloned()
+                    .unwrap_or_else(pando_core::acl::Principal::anonymous);
+                let scope = req.extensions().get::<crate::auth::TokenScope>().cloned();
+                let need = crate::permissions::required_role(req.uri().path());
+                let routes = match RepoKey::parse(&name)
+                    .and_then(|key| hosting.authorize(&key, &who, scope.as_ref(), need).map(|_| key))
+                {
                     Ok(key) => hosting.routes(&key).await,
                     Err(e) => Err(e),
                 };
