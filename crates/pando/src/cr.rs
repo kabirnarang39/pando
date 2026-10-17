@@ -233,13 +233,14 @@ pub async fn propose(
 
 pub struct Target {
     pub client: ReviewsClient<Ch>,
+    pub issues: pando_proto::issues_client::IssuesClient<Ch>,
     pub repo: RepositoryRef,
     /// The workspace's branch, for `cr create` without `--source`.
     pub branch: Option<String>,
 }
 
 pub async fn cr(t: Target, cmd: CrCmd) -> Result<()> {
-    let Target { mut client, repo, branch } = t;
+    let Target { mut client, repo, branch, .. } = t;
     let r = |number| ChangeRequestRef { repository: Some(repo.clone()), number };
     let update = |number, state: ChangeRequestState| UpdateChangeRequestRequest {
         r#ref: Some(ChangeRequestRef { repository: Some(repo.clone()), number }),

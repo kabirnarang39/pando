@@ -116,6 +116,48 @@ async fn agents_work_through_mcp_without_a_checkout() {
         "rate = 20\n"
     );
 
+    // The agent loop: an issue assigned to the agent, found in its inbox, fixed by a change
+    // request that closes it on landing.
+    let (e, t) = call(
+        &addr,
+        "mira-token",
+        "pando_open_issue",
+        json!({"repo": "lumen/fleet", "title": "Refunds use the wrong window",
+        "body": "Refunds should allow 45 days.", "assignees": ["agent/fix-01"]}),
+    )
+    .await;
+    assert!(!e && t.contains("assigned to agent/fix-01"), "{t}");
+    let n: u64 = t[1..t.find(' ').unwrap()].parse().unwrap();
+    let (_, inbox) = call(&addr, agent, "pando_inbox", json!({})).await;
+    assert!(inbox.contains(&format!("Assigned to you: issue lumen/fleet#{n}")), "{inbox}");
+    let (_, issue) = call(&addr, agent, "pando_issue", json!({"repo": "lumen/fleet", "number": n})).await;
+    assert!(issue.contains("45 days") && issue.contains(&format!("Fixes #{n}")), "{issue}");
+    let (e, t) = call(
+        &addr,
+        agent,
+        "pando_write",
+        json!({"repo": "lumen/fleet", "branch": "refund-window",
+        "files": [{"path": "billing/refund.rs", "content": "window = 45\n"}], "message": "Allow 45 days for refunds"}),
+    )
+    .await;
+    assert!(!e, "{t}");
+    let (e, t) = call(
+        &addr,
+        agent,
+        "pando_open_change_request",
+        json!({"repo": "lumen/fleet", "source": "refund-window",
+        "title": "Allow 45 days for refunds", "body": format!("Fixes #{n}")}),
+    )
+    .await;
+    assert!(!e, "{t}");
+    let cr: u64 = t[1..t.find(' ').unwrap()].parse().unwrap();
+    assert_ne!(cr, n, "issues and change requests share numbers");
+    call(&addr, "mira-token", "pando_review", json!({"repo": "lumen/fleet", "number": cr, "verdict": "approve"})).await;
+    let (e, t) = call(&addr, agent, "pando_land_change_request", json!({"repo": "lumen/fleet", "number": cr})).await;
+    assert!(!e, "{t}");
+    let (_, issue) = call(&addr, agent, "pando_issue", json!({"repo": "lumen/fleet", "number": n})).await;
+    assert!(issue.contains("[done]"), "landing the fix closes the issue: {issue}");
+
     // No token, or a token that can't see the repository: nothing.
     let (e, t) = call(&addr, "", "pando_repositories", json!({})).await;
     assert!(e && t.contains("Authorization: Bearer"), "{t}");

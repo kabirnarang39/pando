@@ -149,6 +149,7 @@ impl Registry {
         db.execute_batch(crate::directory::SCHEMA)?;
         db.execute_batch(crate::features::reviews::store::SCHEMA)?;
         db.execute_batch(crate::webhooks::SCHEMA)?;
+        db.execute_batch(crate::features::issues::SCHEMA)?;
         Ok(())
     }
 
@@ -431,8 +432,9 @@ where
 
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
         // Platform and review calls name their repository in the request itself.
+        let path = req.uri().path();
         let central =
-            req.uri().path().starts_with("/pando.v1.Platform/") || req.uri().path().starts_with("/pando.v1.Reviews/");
+            ["/pando.v1.Platform/", "/pando.v1.Reviews/", "/pando.v1.Issues/"].iter().any(|p| path.starts_with(p));
         let named =
             req.headers().get(REPO_HEADER).and_then(|v| v.to_str().ok()).filter(|_| !central).map(str::to_owned);
         match (self.hosting.clone(), named) {

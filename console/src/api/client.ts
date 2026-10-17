@@ -3,7 +3,7 @@ import { Code, ConnectError, createClient, type Interceptor, type Transport } fr
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { ChangesetSchema, Mode } from "../gen/pando_objects_pb";
 import { Access, Browse, Changesets, Diff, History, Locks, Refs, type ChangesetInfo } from "../gen/pando_pb";
-import { Platform, Reviews } from "../gen/pando_platform_pb";
+import { Issues, Platform, Reviews } from "../gen/pando_platform_pb";
 
 export { Mode };
 
@@ -19,6 +19,7 @@ export function makeApi(transport: Transport) {
     refs: createClient(Refs, transport),
     platform: createClient(Platform, transport),
     reviews: createClient(Reviews, transport),
+    issues: createClient(Issues, transport),
   };
 }
 export type Api = ReturnType<typeof makeApi>;

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "@bufbuild/protobuf";
 import { isUnimplemented } from "./api/client";
 import { useConnection, usePlatformApi } from "./connection";
-import { ChangeRequestState, RepositorySchema, Role, Verdict, type Repository } from "./gen/pando_platform_pb";
+import { ChangeRequestState, IssueState, RepositorySchema, Role, Verdict, type Repository } from "./gen/pando_platform_pb";
 
 /**
  * Servers without the platform service (one repository, today's pandod) answer Unimplemented.
@@ -180,6 +180,45 @@ export const useCreateWebhook = (key: string) =>
 export const useDeleteWebhook = (key: string) => usePlatformMutation((api, id: string) => api.platform.deleteWebhook({ id }), [["webhooks", key]]);
 
 export const usePingWebhook = (key: string) => usePlatformMutation((api, id: string) => api.platform.pingWebhook({ id }), [["webhooks", key], ["deliveries"]]);
+
+export function useIssues(key: string, states: IssueState[]) {
+  const api = usePlatformApi();
+  return useQuery({
+    queryKey: ["issues", key, states],
+    queryFn: async () => (await or(api.issues.listIssues({ repository: ref(key), states }), { issues: [] })).issues,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useIssue(key: string, number: bigint) {
+  const api = usePlatformApi();
+  return useQuery({ queryKey: ["issue", key, String(number)], queryFn: () => api.issues.getIssue({ repository: ref(key), number }), refetchInterval: 5000 });
+}
+
+export function useIssueComments(key: string, number: bigint) {
+  const api = usePlatformApi();
+  return useQuery({
+    queryKey: ["issue-comments", key, String(number)],
+    queryFn: async () => (await api.issues.listIssueComments({ repository: ref(key), number })).comments,
+    refetchInterval: 5000,
+  });
+}
+
+export const useCreateIssue = (key: string) =>
+  usePlatformMutation(
+    (api, i: { title: string; body: string; assignees: string[]; labels: string[] }) => api.issues.createIssue({ repository: ref(key), ...i }),
+    [["issues", key], ["inbox"]],
+  );
+
+export const useUpdateIssue = (key: string, number: bigint) =>
+  usePlatformMutation(
+    (api, u: { fields: string[]; title?: string; body?: string; state?: IssueState; labels?: string[]; assignees?: string[] }) =>
+      api.issues.updateIssue({ ref: { repository: ref(key), number }, ...u }),
+    [["issue", key, String(number)], ["issues", key], ["inbox"]],
+  );
+
+export const useAddIssueComment = (key: string, number: bigint) =>
+  usePlatformMutation((api, body: string) => api.issues.addIssueComment({ ref: { repository: ref(key), number }, body }), [["issue-comments", key, String(number)], ["issue", key, String(number)]]);
 
 export const useSetProtection = (key: string) =>
   usePlatformMutation(

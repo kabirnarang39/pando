@@ -128,6 +128,7 @@ function Layout() {
           {tab("/$owner/$repo/code/$", "Code", "code")}
           {tab("/$owner/$repo/changes", "Changes", "changes")}
           {reviews && tab("/$owner/$repo/reviews", "Reviews", "review", r?.openChangeRequests)}
+          {reviews && tab("/$owner/$repo/issues", "Issues", "dot")}
           {tab("/$owner/$repo/locks", "Locks", "lock", locks.data?.length)}
           {tab("/$owner/$repo/agents", "Agents", "bot")}
           {reviews && tab("/$owner/$repo/settings", "Settings", "settings")}

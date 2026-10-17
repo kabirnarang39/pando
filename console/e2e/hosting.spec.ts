@@ -5,6 +5,8 @@ import { HOSTING } from "./setup";
 test.beforeEach(async ({ page }) => {
   await page.goto(`/?server=${encodeURIComponent(HOSTING)}#/`);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
+  // Connected once the server's repositories show; only then is the connection remembered.
+  await expect(page.getByRole("link", { name: "lumen/fleet" })).toBeVisible();
 });
 
 test("lists the server's repositories and opens one", async ({ page }) => {

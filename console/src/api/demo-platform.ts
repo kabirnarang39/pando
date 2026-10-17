@@ -11,6 +11,9 @@ import {
   ChangeRequestState,
   CheckState,
   EventKind,
+  Issues,
+  IssueSchema,
+  IssueState,
   Platform,
   Reviews,
   Role,
@@ -24,6 +27,7 @@ import {
   type ChangeRequest,
   type Comment,
   type Event,
+  type Issue,
   type Protection,
 } from "../gen/pando_platform_pb";
 import { DemoRepo, repoServices } from "./demo";
@@ -625,8 +629,81 @@ export class DemoPlatform {
     return cr;
   }
 
+  // Issues, kept in memory; numbered after the change requests, as on a server.
+  private issueLists = new Map<string, Issue[]>();
+  private issueComments = new Map<string, Comment[]>();
+
+  issuesOf(key: string) {
+    if (!this.issueLists.has(key)) {
+      const [owner, name] = key.split("/");
+      const at = (h: number) => BigInt(Date.now() - h * 3_600_000);
+      const base = Math.max(0, ...(this.crs.get(key) ?? []).map((c) => Number(c.number))) - 40;
+      const make = (n: number, i: Omit<Partial<Issue>, "$typeName" | "$unknown">) =>
+        create(IssueSchema, { repository: { owner, name }, number: BigInt(base + n), state: IssueState.OPEN, createdAtMs: at(30), updatedAtMs: at(2), ...i });
+      this.issueLists.set(
+        key,
+        key.endsWith("/fleet")
+          ? [
+              make(1, { title: "Refunds over 30 days need finance approval", author: "mira", body: "Enterprise customers ask for 45 days. Keep 30 for everyone else, and route longer ones to finance.", labels: ["billing"], assignees: [VIEWER] }),
+              make(2, { title: "Search ranking ignores stock levels", author: "sana", body: "Out-of-stock items still rank first for popular queries.", labels: ["search"], assignees: ["agent/perf-05"], updatedAtMs: at(1) }),
+              make(3, { title: "Flaky checkout end-to-end test", author: "dev", labels: ["tests"], state: IssueState.COMPLETED, closedAtMs: at(20), updatedAtMs: at(20) }),
+            ]
+          : [],
+      );
+    }
+    return this.issueLists.get(key)!;
+  }
+
+  issue(key: string, number: bigint) {
+    const i = this.issuesOf(key).find((x) => x.number === number);
+    if (!i) throw new ConnectError(`no issue #${number} in ${key}`, Code.NotFound);
+    return { ...i, comments: (this.issueComments.get(`${key}#${number}`) ?? []).length };
+  }
+
+  createIssue(key: string, r: { title: string; body: string; labels: string[]; assignees: string[] }) {
+    if (!r.title.trim()) throw new ConnectError("give the issue a title of up to 300 characters", Code.InvalidArgument);
+    const [owner, name] = key.split("/");
+    const numbers = [...(this.crs.get(key) ?? []).map((c) => Number(c.number)), ...this.issuesOf(key).map((i) => Number(i.number))];
+    const now = BigInt(Date.now());
+    const i = create(IssueSchema, { repository: { owner, name }, number: BigInt(Math.max(0, ...numbers) + 1), title: r.title.trim(), body: r.body, author: VIEWER, state: IssueState.OPEN, labels: r.labels, assignees: r.assignees, createdAtMs: now, updatedAtMs: now });
+    this.issuesOf(key).unshift(i);
+    return i;
+  }
+
+  updateIssue(key: string, number: bigint, r: { fields: string[]; title: string; body: string; state: IssueState; labels: string[]; assignees: string[] }) {
+    const i = this.issuesOf(key).find((x) => x.number === number);
+    if (!i) throw new ConnectError(`no issue #${number} in ${key}`, Code.NotFound);
+    for (const f of r.fields) {
+      if (f === "title" && r.title.trim()) i.title = r.title.trim();
+      if (f === "body") i.body = r.body;
+      if (f === "labels") i.labels = r.labels;
+      if (f === "assignees") i.assignees = r.assignees;
+      if (f === "state") {
+        i.state = r.state;
+        i.closedAtMs = r.state === IssueState.OPEN ? 0n : BigInt(Date.now());
+      }
+    }
+    i.updatedAtMs = BigInt(Date.now());
+    return this.issue(key, number);
+  }
+
+  issueCommentsOf(key: string, number: bigint) {
+    return this.issueComments.get(`${key}#${number}`) ?? [];
+  }
+
+  addIssueComment(key: string, number: bigint, body: string) {
+    this.issue(key, number);
+    if (!body.trim()) throw new ConnectError("a comment needs some text", Code.InvalidArgument);
+    const id = `ic${Date.now().toString(36)}`;
+    const c = create(CommentSchema, { id, author: VIEWER, body: body.trim(), createdAtMs: BigInt(Date.now()), thread: id });
+    this.issueComments.set(`${key}#${number}`, [...this.issueCommentsOf(key, number), c]);
+    return c;
+  }
+
   inbox() {
-    const items: { changeRequest: CR; reason: string; unread: boolean }[] = [];
+    const items: { changeRequest?: CR; issue?: Issue; reason: string; unread: boolean }[] = [];
+    for (const key of this.hosted.keys())
+      for (const i of this.issuesOf(key)) if (i.state === IssueState.OPEN && i.assignees.includes(VIEWER)) items.push({ issue: i, reason: "Assigned to you", unread: false });
     for (const list of this.crs.values()) {
       for (const cr of list) {
         if (cr.state !== ChangeRequestState.OPEN) continue;
@@ -635,7 +712,8 @@ export class DemoPlatform {
         else if (agentOwners[cr.author] === VIEWER && cr.blockers.length === 0) items.push({ changeRequest: cr, reason: "Your agent is ready to land", unread: false });
       }
     }
-    return items.sort((a, b) => Number(b.changeRequest.updatedAtMs - a.changeRequest.updatedAtMs));
+    const when = (x: (typeof items)[number]) => (x.changeRequest ?? x.issue)!.updatedAtMs;
+    return items.sort((a, b) => Number(when(b) - when(a)));
   }
 
   eventsOf(key: string | null, limit: number) {
@@ -752,6 +830,29 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
       },
       async pingWebhook(r) {
         return p.pingWebhook(r.id);
+      },
+    });
+    router.service(Issues, {
+      async listIssues(r) {
+        await wait();
+        const states = r.states.length ? r.states : [IssueState.OPEN];
+        return { issues: p.issuesOf(keyOf(r.repository)).filter((i) => states.includes(i.state)).map((i) => p.issue(keyOf(r.repository), i.number)) };
+      },
+      async getIssue(r) {
+        await wait();
+        return p.issue(keyOf(r.repository), r.number);
+      },
+      async createIssue(r) {
+        return p.createIssue(keyOf(r.repository), r);
+      },
+      async updateIssue(r) {
+        return p.updateIssue(keyOf(r.ref?.repository), r.ref!.number, r);
+      },
+      async listIssueComments(r) {
+        return { comments: p.issueCommentsOf(keyOf(r.repository), r.number) };
+      },
+      async addIssueComment(r) {
+        return p.addIssueComment(keyOf(r.ref?.repository), r.ref!.number, r.body);
       },
     });
     router.service(Reviews, {

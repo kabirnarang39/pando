@@ -70,7 +70,23 @@ export function CommandMenu({ open, initialQuery = "", onClose, theme, setTheme,
                   {inbox.data && inbox.data.length > 0 && (
                     <Command.Group heading="Waiting on you">
                       {inbox.data.slice(0, deferred ? 50 : 4).map((i) => {
-                        const cr = i.changeRequest!;
+                        const cr = i.changeRequest;
+                        if (!cr) {
+                          const is = i.issue!;
+                          return (
+                            <Command.Item
+                              key={`issue-${is.repository?.name}#${is.number}`}
+                              value={`issue ${is.repository?.name} ${is.number} ${is.title}`}
+                              onSelect={() => run(() => navigate({ to: "/$owner/$repo/issues/$number", params: { owner: is.repository!.owner, repo: is.repository!.name, number: String(is.number) } }))}
+                            >
+                              <Author author={is.author} compact />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{is.title}</span>
+                              <span className="hint">
+                                {is.repository?.name} #{String(is.number)}
+                              </span>
+                            </Command.Item>
+                          );
+                        }
                         return (
                           <Command.Item
                             key={`${cr.repository?.name}#${cr.number}`}

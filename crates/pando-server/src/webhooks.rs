@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS deliveries_by_hook ON deliveries (hook, created_at_ms
 ";
 
 /// The events a webhook can ask for.
-pub const EVENTS: &[&str] = &["push", "change_request", "review", "comment", "check"];
+pub const EVENTS: &[&str] = &["push", "change_request", "review", "comment", "check", "issue"];
 
 /// Attempts before a delivery is given up; the gaps grow from 10 s to about 20 minutes.
 const MAX_ATTEMPTS: i64 = 8;

@@ -39,7 +39,19 @@ the same URL and header.
 | `pando_open_change_request`, `pando_comment`, `pando_review` | propose, discuss, approve or request changes |
 | `pando_land_change_request` | land once nothing blocks it |
 | `pando_report_check` | report a CI result on a change request |
-| `pando_inbox` | what needs you |
+| `pando_issues`, `pando_issue`, `pando_open_issue`, `pando_comment_on_issue`, `pando_update_issue` | work to do: read, open, discuss, close, assign |
+| `pando_inbox` | what needs you: assigned issues, requested reviews, changes requested on yours |
+
+### The agent loop
+
+1. Someone assigns an issue to an agent (`pando issue assign 12 agent/fix-01`, or in the
+   console). An `issue` webhook can wake the agent's runner at once.
+2. The agent calls `pando_inbox`, reads the issue with `pando_issue`, and writes the fix on a
+   branch with `pando_write`.
+3. It opens a change request saying "Fixes #12" with `pando_open_change_request`; the person it
+   answers to is asked to review.
+4. After approval and passing checks it lands with `pando_land_change_request`, and the issue
+   closes itself.
 
 ## Local MCP, in a workspace
 

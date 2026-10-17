@@ -657,6 +657,7 @@ impl reviews_server::Reviews for Reviews {
         cr.updated_at_ms = now_ms();
         self.reg().update_change_request(&cr).map_err(internal)?;
         self.event(EventKind::ChangeRequestLanded, &who, &cr, &cr.landed_as.clone(), &cr.target.clone());
+        crate::features::issues::close_fixed(self.reg(), &key, &who, cr.number, &format!("{}\n{}", cr.title, cr.body));
         audit("land_change_request", &who, &format!("{key}#{} as {}", cr.number, landed.id));
         let landed_as = cr.landed_as.clone();
         Ok(Response::new(LandChangeRequestResponse {
@@ -830,9 +831,17 @@ impl reviews_server::Reviews for Reviews {
             } else {
                 continue;
             };
-            items.push(InboxItem { change_request: Some(view), reason: reason.to_owned(), unread: false });
+            items.push(InboxItem { change_request: Some(view), reason: reason.to_owned(), ..Default::default() });
             if items.len() == limit {
                 break;
+            }
+        }
+        // Issues assigned to you, in repositories you can still read.
+        let assigned = self.reg().issues(None, &[pando_proto::IssueState::Open as i32]).map_err(internal)?;
+        for i in assigned.into_iter().filter(|i| i.assignees.contains(&who.0)) {
+            let Some(key) = i.repository.as_ref().and_then(|r| RepoKey::new(&r.owner, &r.name).ok()) else { continue };
+            if items.len() < limit && self.hosting.authorize(&key, &who, scope.as_ref(), Role::Read).is_ok() {
+                items.push(InboxItem { issue: Some(i), reason: "Assigned to you".to_owned(), ..Default::default() });
             }
         }
         Ok(Response::new(InboxResponse { items }))
