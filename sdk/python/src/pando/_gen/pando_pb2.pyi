@@ -288,3 +288,39 @@ class WhoAmIResponse(_message.Message):
     full_read: bool
     read_prefixes: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, principal: _Optional[str] = ..., full_read: _Optional[bool] = ..., read_prefixes: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class LockRequest(_message.Message):
+    __slots__ = ("path",)
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    path: str
+    def __init__(self, path: _Optional[str] = ...) -> None: ...
+
+class UnlockRequest(_message.Message):
+    __slots__ = ("path", "force")
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    FORCE_FIELD_NUMBER: _ClassVar[int]
+    path: str
+    force: bool
+    def __init__(self, path: _Optional[str] = ..., force: _Optional[bool] = ...) -> None: ...
+
+class ListLocksRequest(_message.Message):
+    __slots__ = ("prefix",)
+    PREFIX_FIELD_NUMBER: _ClassVar[int]
+    prefix: str
+    def __init__(self, prefix: _Optional[str] = ...) -> None: ...
+
+class LockInfo(_message.Message):
+    __slots__ = ("path", "owner", "locked_at_ms")
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    LOCKED_AT_MS_FIELD_NUMBER: _ClassVar[int]
+    path: str
+    owner: str
+    locked_at_ms: int
+    def __init__(self, path: _Optional[str] = ..., owner: _Optional[str] = ..., locked_at_ms: _Optional[int] = ...) -> None: ...
+
+class LockList(_message.Message):
+    __slots__ = ("locks",)
+    LOCKS_FIELD_NUMBER: _ClassVar[int]
+    locks: _containers.RepeatedCompositeFieldContainer[LockInfo]
+    def __init__(self, locks: _Optional[_Iterable[_Union[LockInfo, _Mapping]]] = ...) -> None: ...

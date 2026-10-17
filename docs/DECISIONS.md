@@ -206,3 +206,18 @@ does with commits that become empty. The landed-as record stays as a fast path. 
 simulation's clients now give up waiting and retry on other replicas, and it catches this
 race at the second seed when the fix is removed.
 
+## ADR-019: File locks are system refs moved by compare-and-swap
+
+**Decision.** A lock on `path` is the system ref `_lock/<hash of path>`, pointing at a
+small record object (path, owner, time). Taking a lock is a compare-and-swap from absent
+(or released) to the record; releasing swaps it to a fixed "unlocked" id, since refs
+cannot be deleted. Landing lists the lock refs once and refuses changes to paths locked by
+someone else. Locking and forced unlocking need write access to the path.
+**Why.** Teams with binary assets (games, film, hardware) need exclusive checkout, which is
+why many stay on Perforce; Git LFS added a locking API for the same reason. Refs already
+give an atomic, replicated compare-and-swap in every backend, so locks need no new storage
+port, and two people can never hold one lock, across server replicas too. User ref names
+cannot contain `_`, so clients cannot forge or move a lock through the refs API. The check
+runs when a land arrives, as Git LFS checks at push: a lock taken while a land is already
+being applied does not stop that land.
+

@@ -77,6 +77,21 @@ pando ls main services
 Inside a workspace these commands use the workspace's server, so `PANDO_SERVER` is only
 needed elsewhere.
 
+## Lock files that cannot be merged
+
+Art, models, video and other binaries cannot be merged, so two people editing one at the
+same time lose someone's work. Lock the file first:
+
+```sh
+pando lock art/hero.psd          # others can still read it, but cannot land changes to it
+pando locks art                  # who holds what
+pando unlock art/hero.psd        # or --force to release someone else's lock
+```
+
+A land that changes a file someone else has locked is refused with
+`rejected: art/hero.psd is locked by alice`. Locks need write access to the path, and
+every lock and unlock is recorded in the audit log.
+
 ## Next
 
 - Keep using git against the same server: [Coming from git](git-users.md).

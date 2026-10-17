@@ -36,6 +36,7 @@ pub fn authority_routes(
         .add_service(changesets::service(changesets::Changesets::new(repo.clone(), f(), policy.clone())))
         .add_service(refs::service(refs::Refs::new(repo.clone(), f(), policy.clone())))
         .add_service(land::service(land::Land::new(repo.clone(), f(), policy.clone(), checks)))
+        .add_service(locks::service(locks::Locks::new(repo.clone(), f(), policy.clone())))
         .add_service(history::service(history::History::new(repo.clone(), f(), policy.clone())))
         .add_service(diff::service(diff::Diff::new(repo.clone(), f(), policy.clone())))
         .add_service(merge_base::service(merge_base::MergeBase::new(repo.clone(), f())))

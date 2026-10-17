@@ -31,6 +31,7 @@ pub fn status_err(s: tonic::Status) -> Error {
         tonic::Code::InvalidArgument => Error::Invalid(s.message().to_owned()),
         tonic::Code::PermissionDenied => Error::PermissionDenied(s.message().to_owned()),
         tonic::Code::Aborted => Error::Conflict(s.message().to_owned()),
+        tonic::Code::FailedPrecondition => Error::Rejected(s.message().to_owned()),
         _ => storage_err(format!("upstream: {s}")),
     }
 }

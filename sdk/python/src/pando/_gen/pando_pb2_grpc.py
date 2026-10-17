@@ -1070,3 +1070,161 @@ class Access:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LocksStub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.Lock = channel.unary_unary(
+                '/pando.v1.Locks/Lock',
+                request_serializer=pando__pb2.LockRequest.SerializeToString,
+                response_deserializer=pando__pb2.LockInfo.FromString,
+                _registered_method=True)
+        self.Unlock = channel.unary_unary(
+                '/pando.v1.Locks/Unlock',
+                request_serializer=pando__pb2.UnlockRequest.SerializeToString,
+                response_deserializer=pando__pb2.Empty.FromString,
+                _registered_method=True)
+        self.List = channel.unary_unary(
+                '/pando.v1.Locks/List',
+                request_serializer=pando__pb2.ListLocksRequest.SerializeToString,
+                response_deserializer=pando__pb2.LockList.FromString,
+                _registered_method=True)
+
+
+class LocksServicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def Lock(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Unlock(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def List(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LocksServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'Lock': grpc.unary_unary_rpc_method_handler(
+                    servicer.Lock,
+                    request_deserializer=pando__pb2.LockRequest.FromString,
+                    response_serializer=pando__pb2.LockInfo.SerializeToString,
+            ),
+            'Unlock': grpc.unary_unary_rpc_method_handler(
+                    servicer.Unlock,
+                    request_deserializer=pando__pb2.UnlockRequest.FromString,
+                    response_serializer=pando__pb2.Empty.SerializeToString,
+            ),
+            'List': grpc.unary_unary_rpc_method_handler(
+                    servicer.List,
+                    request_deserializer=pando__pb2.ListLocksRequest.FromString,
+                    response_serializer=pando__pb2.LockList.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'pando.v1.Locks', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('pando.v1.Locks', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class Locks:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Lock(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pando.v1.Locks/Lock',
+            pando__pb2.LockRequest.SerializeToString,
+            pando__pb2.LockInfo.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Unlock(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pando.v1.Locks/Unlock',
+            pando__pb2.UnlockRequest.SerializeToString,
+            pando__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def List(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pando.v1.Locks/List',
+            pando__pb2.ListLocksRequest.SerializeToString,
+            pando__pb2.LockList.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

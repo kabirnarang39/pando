@@ -9,6 +9,7 @@ pub mod copy;
 pub mod diff;
 pub mod history;
 pub mod land;
+pub mod locks;
 pub mod merge_base;
 pub mod objects;
 pub mod prefetch;

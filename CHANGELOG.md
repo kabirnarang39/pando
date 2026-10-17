@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- File locking for files that cannot be merged: `pando lock`, `pando unlock [--force]`,
+  `pando locks`. A land that changes a file someone else has locked is refused. Locks
+  are compare-and-swap system refs (ADR-019), need write access, are audited, and sit
+  behind the `locks` feature flag.
+
+### Fixed
+- A land refused by a pre-land check or a lock showed as a garbled storage error on the
+  client; it now reads `rejected: <reason>`.
+
 ## [2.2.0] - 2026-10-16
 
 ### Added
