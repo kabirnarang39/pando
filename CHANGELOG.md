@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Webhooks (ADR-025, `docs/webhooks.md`): `push`, `change_request`, `review`, `comment` and
+  `check` events posted to URLs and signed like GitHub's (`X-Pando-Signature-256`), retried
+  with backoff from a queue that is safe across replicas. `pando webhook add|list|ping|log|remove`
+  and repository Settings → Webhooks in the console.
+- `pando land` on a protected branch opens a change request from a `review/` branch instead of
+  failing. The console can open a change request from any branch.
+
+### Added
 - Change requests and review on platform servers (ADR-024): open a change request from a branch,
   comment on lines with suggestions, approve or request changes, report CI checks, and land it as
   one changeset once nothing blocks it; `pando cr rebase` replays it on its target. Protected

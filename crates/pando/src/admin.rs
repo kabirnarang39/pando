@@ -88,6 +88,33 @@ pub enum TeamCmd {
 }
 
 #[derive(Subcommand)]
+pub enum WebhookCmd {
+    /// A repository's webhooks: `pando webhook list lumen/fleet`.
+    List {
+        repo: String,
+    },
+    /// Call URL when something happens in the repository. Prints the signing secret once.
+    Add {
+        repo: String,
+        url: String,
+        /// Only these events (repeatable): push, change_request, review, comment, check.
+        #[arg(long = "event")]
+        events: Vec<String>,
+    },
+    /// Send a ping now and show how it went.
+    Ping {
+        id: String,
+    },
+    /// Recent deliveries and their answers.
+    Log {
+        id: String,
+    },
+    Remove {
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum TokenCmd {
     /// Your tokens.
     List,
@@ -269,6 +296,65 @@ pub async fn token(mut p: PlatformClient<Ch>, cmd: TokenCmd) -> Result<()> {
         TokenCmd::Revoke { id } => {
             p.revoke_token(RevokeTokenRequest { id: id.clone() }).await.map_err(explain)?;
             println!("revoked {id}");
+        }
+    }
+    Ok(())
+}
+
+pub async fn webhook(mut p: PlatformClient<Ch>, cmd: WebhookCmd) -> Result<()> {
+    use pando_proto::{CreateWebhookRequest, WebhookRef};
+    let status = |s: i32| match s {
+        0 => "not sent yet".to_owned(),
+        -1 => "no answer".to_owned(),
+        s => format!("HTTP {s}"),
+    };
+    match cmd {
+        WebhookCmd::List { repo } => {
+            let (owner, name) = split(&repo, "repository")?;
+            for h in p.list_webhooks(RepositoryRef { owner, name }).await.map_err(explain)?.into_inner().webhooks {
+                let events = if h.events.is_empty() { "every event".to_owned() } else { h.events.join(",") };
+                println!("{}\t{}\t{events}\tlast: {}", h.id, h.url, status(h.last_status));
+            }
+        }
+        WebhookCmd::Add { repo, url, events } => {
+            let (owner, name) = split(&repo, "repository")?;
+            let r = p
+                .create_webhook(CreateWebhookRequest {
+                    repository: Some(RepositoryRef { owner, name }),
+                    url,
+                    events,
+                    secret: String::new(),
+                })
+                .await
+                .map_err(explain)?
+                .into_inner();
+            let h = r.webhook.unwrap_or_default();
+            eprintln!("webhook {} calls {}; verify X-Pando-Signature-256 with this secret, shown once:", h.id, h.url);
+            println!("{}", r.secret);
+        }
+        WebhookCmd::Ping { id } => {
+            let d = p.ping_webhook(WebhookRef { id }).await.map_err(explain)?.into_inner();
+            println!(
+                "{}{}",
+                status(d.status),
+                if d.error.is_empty() { String::new() } else { format!(": {}", d.error) }
+            );
+        }
+        WebhookCmd::Log { id } => {
+            for d in p.list_webhook_deliveries(WebhookRef { id }).await.map_err(explain)?.into_inner().deliveries {
+                let state = if d.delivered {
+                    "delivered"
+                } else if d.attempts >= 8 {
+                    "gave up"
+                } else {
+                    "retrying"
+                };
+                println!("{}\t{}\t{state}\t{}\t{} attempts\t{}", d.id, d.event, status(d.status), d.attempts, d.error);
+            }
+        }
+        WebhookCmd::Remove { id } => {
+            p.delete_webhook(WebhookRef { id: id.clone() }).await.map_err(explain)?;
+            println!("removed webhook {id}");
         }
     }
     Ok(())

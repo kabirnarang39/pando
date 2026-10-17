@@ -191,6 +191,50 @@ message CreateTokenResponse {
 }
 message RevokeTokenRequest { string id = 1; }
 
+// ---- webhooks ----
+
+// Calls a URL when something happens in a repository. Events: push, change_request, review,
+// comment, check (and ping). Bodies are JSON, signed like GitHub's: the
+// `X-Pando-Signature-256` header is `sha256=` and the hex HMAC-SHA256 of the body.
+message Webhook {
+  string id = 1;
+  RepositoryRef repository = 2;
+  string url = 3;
+  // Empty: every event.
+  repeated string events = 4;
+  bool active = 5;
+  int64 created_at_ms = 6;
+  string created_by = 7;
+  // The last delivery's HTTP status (0: none yet, -1: no answer).
+  int32 last_status = 8;
+  int64 last_delivery_at_ms = 9;
+}
+message CreateWebhookRequest {
+  RepositoryRef repository = 1;
+  string url = 2;
+  repeated string events = 3;
+  // Empty: the server makes one and returns it once.
+  string secret = 4;
+}
+message CreateWebhookResponse {
+  Webhook webhook = 1;
+  string secret = 2;
+}
+message WebhookRef { string id = 1; }
+message ListWebhooksResponse { repeated Webhook webhooks = 1; }
+message WebhookDelivery {
+  string id = 1;
+  string event = 2;
+  // HTTP status of the last attempt (0: not tried yet, -1: no answer).
+  int32 status = 3;
+  string error = 4;
+  uint32 attempts = 5;
+  int64 created_at_ms = 6;
+  bool delivered = 7;
+  string payload = 8;
+}
+message ListWebhookDeliveriesResponse { repeated WebhookDelivery deliveries = 1; }
+
 message ViewerResponse {
   Account account = 1;
   repeated Organization organizations = 2;
@@ -219,6 +263,13 @@ service Platform {
   rpc ListTokens(Empty) returns (ListTokensResponse);
   rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse);
   rpc RevokeToken(RevokeTokenRequest) returns (Empty);
+
+  rpc ListWebhooks(RepositoryRef) returns (ListWebhooksResponse);
+  rpc CreateWebhook(CreateWebhookRequest) returns (CreateWebhookResponse);
+  rpc DeleteWebhook(WebhookRef) returns (Empty);
+  rpc ListWebhookDeliveries(WebhookRef) returns (ListWebhookDeliveriesResponse);
+  // Sends a `ping` event now.
+  rpc PingWebhook(WebhookRef) returns (WebhookDelivery);
 }
 
 // ---- review ----

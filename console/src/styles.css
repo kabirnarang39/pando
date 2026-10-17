@@ -2985,3 +2985,25 @@ del {
   padding: 12px 0 0;
   border-bottom: 0;
 }
+.protection-form fieldset.events {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.protection-form fieldset.events legend {
+  margin-bottom: 6px;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.row-meta [data-kind="ok"] {
+  color: var(--ok);
+}
+.row-meta [data-kind="bad"] {
+  color: var(--bad);
+}
+.table.deliveries {
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+}

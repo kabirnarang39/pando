@@ -11,6 +11,7 @@ pub mod oidc;
 pub mod permissions;
 mod status;
 pub mod telemetry;
+pub mod webhooks;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -146,6 +147,7 @@ pub async fn serve(
         None => auth,
     };
     if let Some(h) = &hosting {
+        tokio::spawn(webhooks::run(h.registry.clone()));
         routes = routes
             .add_service(features::platform::service(features::platform::Platform::new(h.clone())))
             .add_service(features::reviews::service(features::reviews::Reviews::new(h.clone())));

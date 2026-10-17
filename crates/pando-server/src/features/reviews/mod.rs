@@ -27,6 +27,7 @@ use crate::directory::{check_login, kind_of};
 use crate::features::land::Land;
 use crate::hosting::{Hosting, Registry, RepoKey, RepoRecord, now_ms};
 use crate::status::{RpcResult, id_from, to_status};
+use crate::webhooks;
 
 /// Line counts are worked out for at most this many files of a change.
 const STAT_FILES: usize = 300;
@@ -157,6 +158,20 @@ impl Reviews {
         if let Err(e) = self.reg().record_event(kind, &who.0, &cr.key, cr.number, changeset, summary) {
             tracing::warn!(error = %e, "recording an event");
         }
+        let (event, action) = match kind {
+            EventKind::ChangeRequestOpened => ("change_request", "opened"),
+            EventKind::ChangeRequestClosed => ("change_request", "closed"),
+            EventKind::ChangeRequestLanded => ("change_request", "landed"),
+            EventKind::Reviewed => ("review", summary),
+            EventKind::CommentedOn => ("comment", "created"),
+            _ => return,
+        };
+        let mut p = webhooks::envelope(event, action, &cr.key, &who.0);
+        p["change_request"] = cr_json(cr);
+        if !changeset.is_empty() {
+            p["landed_as"] = serde_json::json!(hex::encode(changeset));
+        }
+        webhooks::emit(self.reg(), &cr.key, event, p);
     }
 
     /// May `who` change this change request: its author, the person an agent author answers
@@ -168,6 +183,21 @@ impl Reviews {
     fn answers_for(&self, who: &Principal, author: &str) -> bool {
         matches!(self.reg().account(author), Ok(Some(a)) if a.owner == who.0)
     }
+}
+
+/// A change request as webhook payloads carry it.
+fn cr_json(cr: &CrRec) -> serde_json::Value {
+    serde_json::json!({
+        "number": cr.number,
+        "title": cr.title,
+        "author": cr.author,
+        "state": format!("{:?}", cr.state).to_lowercase(),
+        "source": cr.source,
+        "target": cr.target,
+        "source_tip": hex::encode(&cr.source_tip),
+        "base": hex::encode(&cr.base),
+        "draft": cr.state == ChangeRequestState::Draft,
+    })
 }
 
 /// Files, added lines and removed lines between two versions.
@@ -704,6 +734,10 @@ impl reviews_server::Reviews for Reviews {
             return Err(Status::invalid_argument("a details link must be an http(s) URL"));
         }
         self.reg().set_check(&key, &cr.source_tip, &check).map_err(internal)?;
+        let mut p = webhooks::envelope("check", "reported", &key, &who.0);
+        p["change_request"] = cr_json(&cr);
+        p["check"] = serde_json::json!({ "name": check.name, "state": format!("{:?}", CheckState::try_from(check.state).unwrap_or(CheckState::Pending)).to_lowercase(), "summary": check.summary, "details_url": check.details_url });
+        webhooks::emit(self.reg(), &key, "check", p);
         Ok(Response::new(self.view(&ctx.repo, cr).await?))
     }
 

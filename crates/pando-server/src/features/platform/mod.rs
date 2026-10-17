@@ -9,10 +9,11 @@ use pando_core::acl::Principal;
 use pando_proto::platform_server::{self, PlatformServer};
 use pando_proto::{
     Account, AccountKind, CreateOrganizationRequest, CreateRepositoryRequest, CreateTokenRequest, CreateTokenResponse,
-    Empty, Grant, ListGrantsResponse, ListMembersResponse, ListOrganizationsResponse, ListRepositoriesRequest,
-    ListRepositoriesResponse, ListTeamsResponse, ListTokensResponse, Member, OrgName, Organization, Repository,
+    CreateWebhookRequest, CreateWebhookResponse, Empty, Grant, ListGrantsResponse, ListMembersResponse,
+    ListOrganizationsResponse, ListRepositoriesRequest, ListRepositoriesResponse, ListTeamsResponse,
+    ListTokensResponse, ListWebhookDeliveriesResponse, ListWebhooksResponse, Member, OrgName, Organization, Repository,
     RepositoryRef, RevokeTokenRequest, Role, SetGrantRequest, SetMemberRequest, Team, TeamRef, Token,
-    UpdateRepositoryRequest, ViewerResponse, Visibility,
+    UpdateRepositoryRequest, ViewerResponse, Visibility, WebhookDelivery, WebhookRef,
 };
 use tonic::{Request, Response, Status};
 
@@ -192,6 +193,20 @@ impl Platform {
             s
         };
         all.into_iter().filter(|o| mine.contains(&o.login)).map(|o| self.organization(who, scope, o)).collect()
+    }
+
+    /// A webhook, if `who` administers its repository; NotFound otherwise.
+    fn webhook_for(
+        &self,
+        who: &Principal,
+        scope: Option<&TokenScope>,
+        id: &str,
+    ) -> Result<(pando_proto::Webhook, RepoKey), Status> {
+        let missing = || Status::not_found(format!("no webhook `{id}`"));
+        let (hook, _) = self.reg().webhook(id).map_err(internal)?.ok_or_else(missing)?;
+        let r = hook.repository.clone().ok_or_else(missing)?;
+        let rec = self.require_repo(who, scope, &r, Role::Admin).map_err(|_| missing())?;
+        Ok((hook, rec.key))
     }
 
     fn require_repo(
@@ -600,5 +615,61 @@ impl platform_server::Platform for Platform {
         self.reg().revoke_token(&id).map_err(internal)?;
         audit("revoke_token", &who, &id);
         Ok(Response::new(Empty {}))
+    }
+
+    async fn list_webhooks(&self, req: Request<RepositoryRef>) -> RpcResult<ListWebhooksResponse> {
+        let (who, scope) = caller(&req);
+        let rec = self.require_repo(&who, scope.as_ref(), req.get_ref(), Role::Admin)?;
+        Ok(Response::new(ListWebhooksResponse { webhooks: self.reg().webhooks(&rec.key).map_err(internal)? }))
+    }
+
+    async fn create_webhook(&self, req: Request<CreateWebhookRequest>) -> RpcResult<CreateWebhookResponse> {
+        let (who, scope) = caller(&req);
+        let r = req.into_inner();
+        let repo = r.repository.ok_or_else(|| Status::invalid_argument("name the repository"))?;
+        let rec = self.require_repo(&who, scope.as_ref(), &repo, Role::Admin)?;
+        crate::webhooks::check_url(&r.url).map_err(Status::invalid_argument)?;
+        if let Some(bad) = r.events.iter().find(|e| !crate::webhooks::EVENTS.contains(&e.as_str())) {
+            return Err(Status::invalid_argument(format!(
+                "`{bad}` is not an event; choose from {}",
+                crate::webhooks::EVENTS.join(", ")
+            )));
+        }
+        if self.reg().webhooks(&rec.key).map_err(internal)?.len() >= 20 {
+            return Err(Status::resource_exhausted("a repository has at most 20 webhooks"));
+        }
+        let (webhook, secret) =
+            self.reg().create_webhook(&rec.key, &r.url, &r.events, &r.secret, &who.0).map_err(internal)?;
+        audit("create_webhook", &who, &format!("{}: {}", rec.key, webhook.id));
+        // The secret is returned once, only when the server made it.
+        let secret = if r.secret.is_empty() { secret } else { String::new() };
+        Ok(Response::new(CreateWebhookResponse { webhook: Some(webhook), secret }))
+    }
+
+    async fn delete_webhook(&self, req: Request<WebhookRef>) -> RpcResult<Empty> {
+        let (who, scope) = caller(&req);
+        let (hook, key) = self.webhook_for(&who, scope.as_ref(), &req.get_ref().id)?;
+        self.reg().delete_webhook(&hook.id).map_err(internal)?;
+        audit("delete_webhook", &who, &format!("{key}: {}", hook.id));
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn list_webhook_deliveries(&self, req: Request<WebhookRef>) -> RpcResult<ListWebhookDeliveriesResponse> {
+        let (who, scope) = caller(&req);
+        let (hook, _) = self.webhook_for(&who, scope.as_ref(), &req.get_ref().id)?;
+        Ok(Response::new(ListWebhookDeliveriesResponse {
+            deliveries: self.reg().deliveries(&hook.id, 50).map_err(internal)?,
+        }))
+    }
+
+    async fn ping_webhook(&self, req: Request<WebhookRef>) -> RpcResult<WebhookDelivery> {
+        let (who, scope) = caller(&req);
+        let (hook, key) = self.webhook_for(&who, scope.as_ref(), &req.get_ref().id)?;
+        let mut payload = crate::webhooks::envelope("ping", "ping", &key, &who.0);
+        payload["hook"] = serde_json::json!({ "id": hook.id, "events": hook.events });
+        let ids = self.reg().enqueue(&key, "ping", &payload, Some(&hook.id)).map_err(internal)?;
+        let id = ids.first().ok_or_else(|| Status::internal("ping was not queued"))?;
+        let delivery = crate::webhooks::deliver_now(self.reg(), id).await.map_err(internal)?;
+        Ok(Response::new(delivery.ok_or_else(|| Status::internal("ping vanished"))?))
     }
 }

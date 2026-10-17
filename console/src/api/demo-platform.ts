@@ -479,6 +479,50 @@ export class DemoPlatform {
     return { token, secret };
   }
 
+  private hooks: { id: string; repo: string; url: string; events: string[]; deliveries: { id: string; event: string; createdAtMs: bigint }[] }[] = [];
+
+  webhooksOf(repo: string) {
+    return this.hooks.filter((h) => h.repo === repo).map((h) => this.hookView(h));
+  }
+
+  private hookView(h: (typeof this.hooks)[number]) {
+    const [owner, name] = h.repo.split("/");
+    return { id: h.id, repository: { owner: owner!, name: name! }, url: h.url, events: h.events, active: true, createdAtMs: 0n, createdBy: VIEWER, lastStatus: 0, lastDeliveryAtMs: 0n };
+  }
+
+  createWebhook(repo: string, url: string, events: string[]) {
+    if (!/^https?:\/\/[^/\s]+/.test(url)) throw new ConnectError("a webhook calls an http:// or https:// URL", Code.InvalidArgument);
+    const h = { id: `h${Date.now().toString(36)}`, repo, url, events, deliveries: [] };
+    this.hooks.push(h);
+    const secret = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return { webhook: this.hookView(h), secret };
+  }
+
+  private hook(id: string) {
+    const h = this.hooks.find((x) => x.id === id);
+    if (!h) throw new ConnectError(`no webhook \`${id}\``, Code.NotFound);
+    return h;
+  }
+
+  pingWebhook(id: string) {
+    const d = { id: `d${Date.now().toString(36)}`, event: "ping", createdAtMs: BigInt(Date.now()) };
+    this.hook(id).deliveries.unshift(d);
+    return this.deliveryView(d);
+  }
+
+  private deliveryView(d: { id: string; event: string; createdAtMs: bigint }) {
+    return { ...d, status: 0, error: "the demo doesn't call URLs; on your server this is sent now", attempts: 0, delivered: false, payload: "{}" };
+  }
+
+  deliveriesOf(id: string) {
+    return this.hook(id).deliveries.map((d) => this.deliveryView(d));
+  }
+
+  deleteWebhook(id: string) {
+    this.hook(id);
+    this.hooks = this.hooks.filter((h) => h.id !== id);
+  }
+
   revokeToken(id: string) {
     const before = this.tokens().length;
     this.tokenList = this.tokens().filter((t) => t.id !== id);
@@ -692,6 +736,22 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
       async revokeToken(r) {
         p.revokeToken(r.id);
         return {};
+      },
+      async listWebhooks(r) {
+        return { webhooks: p.webhooksOf(keyOf(r)) };
+      },
+      async createWebhook(r) {
+        return p.createWebhook(keyOf(r.repository), r.url, r.events);
+      },
+      async deleteWebhook(r) {
+        p.deleteWebhook(r.id);
+        return {};
+      },
+      async listWebhookDeliveries(r) {
+        return { deliveries: p.deliveriesOf(r.id) };
+      },
+      async pingWebhook(r) {
+        return p.pingWebhook(r.id);
       },
     });
     router.service(Reviews, {

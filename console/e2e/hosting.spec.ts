@@ -77,3 +77,21 @@ test("open a change request from the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Add a README/ })).toBeVisible();
   await expect(page.locator(".drow[data-op=add]", { hasText: "The product monorepo." })).toBeVisible();
 });
+
+test("a webhook on the server: add, see the secret once, ping, remove", async ({ page }) => {
+  await page.goto("/#/lumen/fleet/settings");
+  await page.getByRole("button", { name: "Add webhook" }).click();
+  const form = page.getByRole("form", { name: "Add webhook" });
+  await form.getByLabel("Payload URL").fill("http://127.0.0.1:9/nowhere");
+  await form.getByLabel("Reviews").check();
+  await form.getByRole("button", { name: "Add webhook" }).click();
+  await expect(page.getByLabel("Signing secret")).toHaveText(/^[0-9a-f]{64}$/);
+  await page.getByRole("button", { name: "Done" }).click();
+  const row = page.getByRole("listitem").filter({ hasText: "127.0.0.1:9/nowhere" });
+  await expect(row).toContainText("review");
+  await row.getByRole("button", { name: "Ping" }).click();
+  await expect(page.getByRole("table", { name: /Deliveries to/ })).toContainText("ping");
+  await expect(row).toContainText("No answer");
+  await row.getByRole("button", { name: /Remove webhook/ }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "127.0.0.1:9/nowhere" })).toHaveCount(0);
+});
