@@ -395,7 +395,7 @@ wheels = [
 
 [[package]]
 name = "pando-vcs"
-version = "3.0.0"
+version = "3.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "blake3", version = "1.0.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },

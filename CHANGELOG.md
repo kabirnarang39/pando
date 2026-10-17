@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-17
+
 ### Added
 - Console review comments on code: a "+" on every line, shift-click for a range of lines, a
   Markdown editor with preview, suggested changes shown as a small diff of current and proposed
