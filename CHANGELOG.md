@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-17
+
 ### Added
 - Accounts, organisations, members, teams, per-repository roles and access tokens on platform
   servers (ADR-023): `pando org`, `pando team`, `pando repo grant` and `pando token`, and the
