@@ -47,6 +47,25 @@ pando import-git ~/code/my-repo --server http://127.0.0.1:7420   # incremental; 
 pando export-git ./mirror.git                                     # first-parent history, identical trees
 ```
 
+## Keep GitHub, GitLab or Bitbucket up to date
+
+`pando mirror` keeps a git repository current with a branch, so CI, code search, issue links
+and anything else attached to your git host keep working while agents land in Pando:
+
+```sh
+pando mirror --to git@github.com:acme/fleet.git --every 5        # runs until stopped
+pando mirror --to https://bitbucket.org/acme/fleet.git           # once, for cron or CI
+```
+
+- Every landed change becomes one git commit with its author, message and date. The same
+  history always makes the same commits, so a mirror can be rebuilt from scratch at any time.
+- It is incremental: each round pushes only what landed since the last one.
+- It never force-pushes. If the destination branch has commits the mirror did not make, it
+  stops and says so; protect the branch on your git host so only the mirror writes to it.
+- Credentials are git's own: an SSH key, or a credential helper or deploy token. Tokens in
+  the URL are never printed.
+- The local copy lives in your cache directory (`--dir` to choose).
+
 Submodules are not imported. Commits are imported with their authors, messages and dates,
 so `pando log` and `pando blame` show the original history.
 

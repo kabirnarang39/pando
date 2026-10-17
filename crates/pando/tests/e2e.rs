@@ -1454,3 +1454,54 @@ async fn browsers_call_the_server_over_grpc_web() {
     assert!(head.contains("application/grpc-web"), "{head}");
     assert!(String::from_utf8_lossy(&body).contains("grpc-status:0"), "{body:?}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mirror_pushes_landed_changes_to_a_git_remote_incrementally() {
+    let c = start().await;
+    let r = remote(&c);
+    let ws_dir = tempfile::tempdir().unwrap();
+    let mut ws = clone_into(&c, ws_dir.path(), &[]).await;
+    write(ws_dir.path(), "billing/tax.rs", "rate = 19\n");
+    commit_land(&mut ws, r.as_ref(), "Add tax rate").await;
+    write(ws_dir.path(), "billing/refund.rs", "window = 30\n");
+    commit_land(&mut ws, r.as_ref(), "Add refund window").await;
+
+    // The destination: an empty bare repository, as on GitHub or Bitbucket.
+    let dest = tempfile::tempdir().unwrap();
+    git_cmd(dest.path(), &["init", "-q", "--bare"]);
+    let to = dest.path().to_str().unwrap().to_owned();
+    let cache = tempfile::tempdir().unwrap();
+    let n = git::mirror(r.as_ref(), &flags(), "main", cache.path(), "main", &to).await.unwrap();
+    assert_eq!(n, 2);
+    assert_eq!(git_cmd(dest.path(), &["rev-list", "--count", "main"]), "2");
+    assert_eq!(git_cmd(dest.path(), &["log", "-1", "--format=%s", "main"]), "Add refund window");
+
+    // Nothing new: nothing written, the push is a no-op.
+    assert_eq!(git::mirror(r.as_ref(), &flags(), "main", cache.path(), "main", &to).await.unwrap(), 0);
+
+    // One more landing: only it is added, as a fast-forward.
+    write(ws_dir.path(), "billing/tax.rs", "rate = 20\n");
+    commit_land(&mut ws, r.as_ref(), "Raise tax rate").await;
+    assert_eq!(git::mirror(r.as_ref(), &flags(), "main", cache.path(), "main", &to).await.unwrap(), 1);
+    let tip = git_cmd(dest.path(), &["rev-parse", "main"]);
+    assert_eq!(git_cmd(dest.path(), &["rev-list", "--count", "main"]), "3");
+    assert_eq!(git_cmd(dest.path(), &["show", "main:billing/tax.rs"]), "rate = 20");
+
+    // A fresh local copy rebuilds exactly the same commits, so the push changes nothing.
+    let fresh = tempfile::tempdir().unwrap();
+    assert_eq!(git::mirror(r.as_ref(), &flags(), "main", fresh.path(), "main", &to).await.unwrap(), 3);
+    assert_eq!(git_cmd(dest.path(), &["rev-parse", "main"]), tip, "commits are deterministic");
+
+    // Someone else's commit on the destination is never overwritten.
+    let other = tempfile::tempdir().unwrap();
+    git_cmd(other.path(), &["clone", "-q", &to, "."]);
+    write(other.path(), "README.md", "hello\n");
+    git_cmd(other.path(), &["add", "."]);
+    git_cmd(other.path(), &["commit", "-qm", "direct push"]);
+    git_cmd(other.path(), &["push", "-q", "origin", "main"]);
+    write(ws_dir.path(), "billing/tax.rs", "rate = 21\n");
+    commit_land(&mut ws, r.as_ref(), "Raise tax rate again").await;
+    let e = git::mirror(r.as_ref(), &flags(), "main", cache.path(), "main", &to).await.unwrap_err();
+    assert!(format!("{e:#}").contains("did not come from this mirror"), "{e:#}");
+    assert_eq!(git_cmd(dest.path(), &["log", "-1", "--format=%s", "main"]), "direct push");
+}

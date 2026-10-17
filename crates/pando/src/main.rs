@@ -174,6 +174,26 @@ enum Cmd {
         #[command(subcommand)]
         action: RepoCmd,
     },
+    /// Keep a git repository (GitHub, GitLab, Bitbucket, any git remote) up to date with a
+    /// branch: every landed change becomes the same git commit every time, pushed without force.
+    Mirror {
+        /// Where to push: any URL git accepts. Credentials come from git (SSH keys or a
+        /// credential helper).
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        server: Option<String>,
+        #[arg(long, default_value = "main")]
+        rev: String,
+        #[arg(long = "git-ref", default_value = "main")]
+        git_ref: String,
+        /// The mirror's local copy (a bare git repository); defaults to the user cache.
+        #[arg(long)]
+        dir: Option<PathBuf>,
+        /// Mirror again every SECONDS until interrupted; without it, mirror once and exit.
+        #[arg(long, value_name = "SECONDS")]
+        every: Option<u64>,
+    },
     /// Export first-parent history to a git repository.
     ExportGit {
         git_dir: PathBuf,
@@ -612,6 +632,27 @@ async fn run() -> Result<()> {
                     for r in rs {
                         println!("{}/{}\t{} landed today\t{}", r.owner, r.name, r.lands_24h, r.description);
                     }
+                }
+            }
+        }
+        Cmd::Mirror { to, server, rev, git_ref, dir, every } => {
+            let remote = connect(&server_for(server)?, None, token)?;
+            let dir = dir.unwrap_or_else(|| git::default_mirror_dir(&to));
+            let shown = git::redact(&to);
+            loop {
+                match git::mirror(remote.as_ref(), &flags, &rev, &dir, &git_ref, &to).await {
+                    Ok(n) if n > 0 || every.is_none() => {
+                        println!("mirrored {n} changes from {rev} to {shown} ({git_ref})")
+                    }
+                    Ok(_) => {}
+                    // Keep running through network and server blips; the next round retries.
+                    Err(e) if every.is_some() => eprintln!("pando: mirror to {shown}: {e:#}; retrying"),
+                    Err(e) => return Err(e),
+                }
+                let Some(secs) = every else { break };
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(secs.max(1))) => {}
+                    _ = tokio::signal::ctrl_c() => break,
                 }
             }
         }

@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufReader, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
@@ -282,11 +282,30 @@ pub async fn export(
     git_ref: &str,
 ) -> Result<usize> {
     require(flags, Flag::GitExport)?;
+    init_git(git_dir)?;
+    let chain = first_parent_chain(remote, rev).await?;
+    write_commits(remote, &chain, git_dir, git_ref, None).await?;
+    Ok(chain.len())
+}
+
+fn init_git(git_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(git_dir)?;
     if !git_dir.join(".git").exists() && !git_dir.join("HEAD").exists() {
         git(git_dir, &["init", "-q"])?;
     }
-    let chain = first_parent_chain(remote, rev).await?;
+    Ok(())
+}
+
+/// Writes `chain` (oldest first) as commits on `git_ref`, continuing from git commit
+/// `continue_from` when given. Commits are deterministic: the same changesets always make the
+/// same git commits.
+async fn write_commits(
+    remote: &dyn Remote,
+    chain: &[crate::remote::RemoteChangeset],
+    git_dir: &Path,
+    git_ref: &str,
+    continue_from: Option<&str>,
+) -> Result<()> {
     let mut child = Command::new("git")
         .arg("-C")
         .arg(git_dir)
@@ -302,7 +321,10 @@ pub async fn export(
     let mut next_mark = 1u64;
     let mut prev: Option<u64> = None;
     let refname = format!("refs/heads/{git_ref}");
-    for rc in &chain {
+    if let Some(sha) = continue_from {
+        w.reset(&refname, sha)?;
+    }
+    for rc in chain {
         let cs = &rc.changeset;
         let new_blobs: Vec<Id> = cs
             .changes
@@ -350,5 +372,144 @@ pub async fn export(
     if !status.success() {
         bail!("git fast-import failed: {status}");
     }
+    Ok(())
+}
+
+/// Where a mirror has got to: the last changeset exported and the git commit it became.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirrorState {
+    pub changeset: Id,
+    pub commit: String,
+}
+
+const MIRROR_STATE: &str = "pando-mirror";
+
+pub fn mirror_state(git_dir: &Path) -> Result<Option<MirrorState>> {
+    let path = git_dir.join(MIRROR_STATE);
+    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(None) };
+    let (cs, commit) = text.trim().split_once(' ').with_context(|| format!("{} is damaged", path.display()))?;
+    Ok(Some(MirrorState { changeset: cs.parse::<Id>()?, commit: commit.to_owned() }))
+}
+
+/// Brings `git_ref` in `git_dir` up to date with `rev`, appending only changes not yet
+/// exported. Returns how many commits were added (0 when already current).
+pub async fn mirror_once(
+    remote: &dyn Remote,
+    flags: &dyn FeatureFlags,
+    rev: &str,
+    git_dir: &Path,
+    git_ref: &str,
+) -> Result<usize> {
+    require(flags, Flag::GitExport)?;
+    init_git(git_dir)?;
+    let Some(tip) = remote.get_ref(rev).await? else { return Ok(0) };
+    let state = mirror_state(git_dir)?;
+    if state.as_ref().is_some_and(|s| s.changeset == tip) {
+        return Ok(0);
+    }
+    // Changes since the last export, newest first, then reversed.
+    let mut chain = Vec::new();
+    let mut next = Some(tip.to_hex());
+    'pages: while let Some(r) = next {
+        let page = remote.log(&r, "", 10_000).await?;
+        next = page.last().and_then(|c| c.changeset.first_parent().ok().flatten()).map(|p| p.to_hex());
+        for rc in page {
+            if state.as_ref().is_some_and(|s| s.changeset == rc.id) {
+                break 'pages;
+            }
+            chain.push(rc);
+        }
+        if next.is_none() && state.is_some() {
+            bail!("{rev} no longer contains the last mirrored change; refusing to rewrite the mirror");
+        }
+    }
+    chain.reverse();
+    write_commits(remote, &chain, git_dir, git_ref, state.as_ref().map(|s| s.commit.as_str())).await?;
+    let commit = git(git_dir, &["rev-parse", &format!("refs/heads/{git_ref}")])?;
+    // Written last: if anything above fails, the next run redoes the same work.
+    let tmp = git_dir.join(format!("{MIRROR_STATE}.tmp"));
+    std::fs::write(&tmp, format!("{} {commit}\n", tip.to_hex()))?;
+    std::fs::rename(tmp, git_dir.join(MIRROR_STATE))?;
     Ok(chain.len())
+}
+
+/// A URL with any password or token replaced, for messages and logs.
+pub fn redact(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else { return url.to_owned() };
+    let host_end = rest.find('/').unwrap_or(rest.len());
+    match rest[..host_end].rfind('@') {
+        Some(at) => format!("{scheme}://***@{}", &rest[at + 1..]),
+        None => url.to_owned(),
+    }
+}
+
+/// Where a mirror keeps its local copy when no directory is given: a bare repository in the
+/// user's cache, one per destination.
+pub fn default_mirror_dir(to: &str) -> PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("LOCALAPPDATA").map(PathBuf::from))
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    let name: String =
+        redact(to).chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    base.join("pando").join("mirror").join(name)
+}
+
+/// Brings the mirror's local copy up to date with `rev` and pushes `git_ref` to `to`.
+/// The push never forces: if the destination has commits the mirror didn't make, it fails
+/// and says so. Pushing every time also retries a push that failed last time.
+pub async fn mirror(
+    remote: &dyn Remote,
+    flags: &dyn FeatureFlags,
+    rev: &str,
+    dir: &Path,
+    git_ref: &str,
+    to: &str,
+) -> Result<usize> {
+    std::fs::create_dir_all(dir)?;
+    if !dir.join("HEAD").exists() {
+        git(dir, &["init", "-q", "--bare"])?;
+    }
+    let n = mirror_once(remote, flags, rev, dir, git_ref).await?;
+    if git(dir, &["rev-parse", "-q", "--verify", &format!("refs/heads/{git_ref}")]).is_err() {
+        return Ok(0); // nothing has landed yet
+    }
+    let spec = format!("refs/heads/{git_ref}:refs/heads/{git_ref}");
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["push", "--quiet", "--porcelain", to, &spec])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .context("running git push")?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr).replace(to, &redact(to));
+        let why = String::from_utf8_lossy(&out.stdout).replace(to, &redact(to)) + &why;
+        if why.contains("[rejected]") || why.contains("non-fast-forward") || why.contains("fetch first") {
+            bail!(
+                "{} has commits on {git_ref} that did not come from this mirror; the mirror never \
+                 overwrites them. Mirror into an empty repository or branch, or one this mirror made.",
+                redact(to)
+            );
+        }
+        bail!("pushing to {} failed: {}", redact(to), why.trim());
+    }
+    Ok(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact;
+
+    #[test]
+    fn redact_hides_credentials_only() {
+        assert_eq!(
+            redact("https://x-access-token:ghp_secret@github.com/acme/fleet.git"),
+            "https://***@github.com/acme/fleet.git"
+        );
+        assert_eq!(redact("https://github.com/acme/fleet.git"), "https://github.com/acme/fleet.git");
+        assert_eq!(redact("git@github.com:acme/fleet.git"), "git@github.com:acme/fleet.git");
+        assert_eq!(redact("https://github.com/a/b@c"), "https://github.com/a/b@c");
+    }
 }

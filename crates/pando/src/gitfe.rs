@@ -266,6 +266,12 @@ pub struct Writer<W: Write> {
 }
 
 impl<W: Write> Writer<W> {
+    /// Start `refname` at an existing commit; the next commit on it continues from there.
+    pub fn reset(&mut self, refname: &str, commit: &str) -> Result<()> {
+        write!(self.w, "reset {refname}\nfrom {commit}\n\n")?;
+        Ok(())
+    }
+
     pub fn blob(&mut self, mark: u64, data: &[u8]) -> Result<()> {
         write!(self.w, "blob\nmark :{mark}\ndata {}\n", data.len())?;
         self.w.write_all(data)?;
