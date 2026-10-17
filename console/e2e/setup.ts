@@ -80,6 +80,12 @@ export default async function setup() {
     run(["commit", "-m", "Lower the tax rate"], fleet);
     run(["land"], fleet);
     run(["cr", "create", "--title", "Lower the tax rate to 17%", "--body", "Matches the new regulation."], fleet);
+    // A branch with no change request yet, for opening one in the console.
+    run(["checkout", "main"], fleet);
+    run(["checkout", "-b", "readme"], fleet);
+    writeFileSync(join(fleet, "README.md"), "# Fleet\n\nThe product monorepo.\n");
+    run(["commit", "-m", "Add a README"], fleet);
+    run(["land"], fleet);
   } catch (e) {
     server.kill();
     hosting.kill();

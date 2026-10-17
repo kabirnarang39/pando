@@ -197,6 +197,40 @@ fn print(cr: &ChangeRequest) {
     }
 }
 
+/// Opens a change request for the workspace's committed work on a protected branch: pushes it
+/// to a new branch `review/ID` and proposes that branch for the protected one. Returns the
+/// change request's number and the branch.
+pub async fn propose(
+    t: Target,
+    remote: &dyn pando::remote::Remote,
+    ws: &pando::workspace::Workspace,
+) -> Result<(u64, String)> {
+    let Target { mut client, repo, .. } = t;
+    let tip = ws.base.context("nothing to propose: commit first")?;
+    let branch = format!("review/{}", &tip.to_hex()[..12]);
+    if !remote.compare_and_swap(&branch, None, tip).await? && remote.get_ref(&branch).await? != Some(tip) {
+        anyhow::bail!("branch {branch} already exists with other work");
+    }
+    let message =
+        remote.log(&tip.to_hex(), "", 1).await?.into_iter().next().map(|c| c.changeset.message).unwrap_or_default();
+    let (title, body) = message.split_once('\n').unwrap_or((&message, ""));
+    let title =
+        if title.trim().is_empty() { format!("Changes for {}", ws.config.ref_name) } else { title.trim().to_owned() };
+    let cr = client
+        .create_change_request(CreateChangeRequestRequest {
+            repository: Some(repo),
+            source: branch.clone(),
+            target: ws.config.ref_name.clone(),
+            title,
+            body: body.trim().to_owned(),
+            ..Default::default()
+        })
+        .await
+        .map_err(explain)?
+        .into_inner();
+    Ok((cr.number, branch))
+}
+
 pub struct Target {
     pub client: ReviewsClient<Ch>,
     pub repo: RepositoryRef,
