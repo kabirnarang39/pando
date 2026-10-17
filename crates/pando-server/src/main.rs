@@ -78,6 +78,8 @@ struct Cli {
     tls_key: Option<std::path::PathBuf>,
 }
 
+// Parsed once at startup; boxing the big variant would buy nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Role {
     /// Authoritative server: all features, durable storage.

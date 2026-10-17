@@ -402,6 +402,23 @@ async fn waitlist_and_login_names() {
     assert_eq!(entries, ["@corp.example", "eve@else.example", "mira@a.example"]);
     let eve = w.oidc("g-3", "eve@else.example", |_| {}).await.unwrap();
     assert_eq!(w.viewer(&eve).await.unwrap(), "eve");
+
+    // The first administrator gets in by linking an identity to their account.
+    let link = |token: &str, login: &str| {
+        let mut req = tonic::Request::new(pando_proto::LinkIdentityRequest {
+            login: login.into(),
+            provider: "mock".into(),
+            subject: "g-7".into(),
+        });
+        req.metadata_mut().insert("authorization", format!("Bearer {token}").parse().unwrap());
+        req
+    };
+    assert_eq!(p.link_identity(link(&first, "dev")).await.unwrap_err().code(), tonic::Code::PermissionDenied);
+    assert_eq!(p.link_identity(link(&admin, "nobody")).await.unwrap_err().code(), tonic::Code::NotFound);
+    p.link_identity(link(&admin, "root")).await.unwrap();
+    let root = w.oidc("g-7", "unlisted@else.example", |_| {}).await.unwrap();
+    assert_eq!(w.viewer(&root).await.unwrap(), "root");
+    assert_eq!(p.link_identity(link(&admin, "dev")).await.unwrap_err().code(), tonic::Code::AlreadyExists);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -416,7 +433,8 @@ async fn email_links_are_single_use_and_do_not_reveal_who_can_sign_in() {
     let mail = w.wait_for_mail(1).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(w.mail.lock().unwrap().len(), 1, "only the listed address gets a link");
-    let body = mail[0].replace("=\n", "");
+    // Quoted-printable, as mail clients would decode it.
+    let body = mail[0].replace("=\n", "").replace("=3D", "=");
     assert!(body.contains("To: mira@a.example"), "{body}");
     let token = body.split("token=").nth(1).unwrap()[..64].to_owned();
     let link = format!("{}/login/email/verify?token={token}", w.login);

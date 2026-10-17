@@ -6,8 +6,8 @@ use clap::{Subcommand, ValueEnum};
 use pando::remote::Ch;
 use pando_proto::platform_client::PlatformClient;
 use pando_proto::{
-    CreateOrganizationRequest, CreateTokenRequest, Empty, OrgName, RepositoryRef, RevokeTokenRequest, Role,
-    SetGrantRequest, SetMemberRequest, SetSignupAllowRequest, Team, TeamRef,
+    CreateOrganizationRequest, CreateTokenRequest, Empty, LinkIdentityRequest, OrgName, RepositoryRef,
+    RevokeTokenRequest, Role, SetGrantRequest, SetMemberRequest, SetSignupAllowRequest, Team, TeamRef,
 };
 
 fn now_ms() -> i64 {
@@ -144,6 +144,26 @@ pub enum AdminCmd {
     Signup {
         #[command(subcommand)]
         action: SignupCmd,
+    },
+    /// Ways people sign in from a browser.
+    Identity {
+        #[command(subcommand)]
+        action: IdentityCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum IdentityCmd {
+    /// Let an identity sign in as an existing account, e.g. the first administrator:
+    /// `pando admin identity link kabir --provider email --subject kabir@example.com`.
+    Link {
+        login: String,
+        /// `email`, or a sign-in provider's id such as `google`.
+        #[arg(long)]
+        provider: String,
+        /// The email address, or the provider's `sub` for the person.
+        #[arg(long)]
+        subject: String,
     },
 }
 
@@ -383,7 +403,20 @@ pub async fn webhook(mut p: PlatformClient<Ch>, cmd: WebhookCmd) -> Result<()> {
 }
 
 pub async fn admin(mut p: PlatformClient<Ch>, cmd: AdminCmd) -> Result<()> {
-    let AdminCmd::Signup { action } = cmd;
+    let action = match cmd {
+        AdminCmd::Signup { action } => action,
+        AdminCmd::Identity { action: IdentityCmd::Link { login, provider, subject } } => {
+            p.link_identity(LinkIdentityRequest {
+                login: login.clone(),
+                provider: provider.clone(),
+                subject: subject.clone(),
+            })
+            .await
+            .map_err(explain)?;
+            println!("{provider} {subject} now signs in as {login}");
+            return Ok(());
+        }
+    };
     match action {
         SignupCmd::Allow { entry } => {
             p.set_signup_allow(SetSignupAllowRequest { entry: entry.clone(), allowed: true }).await.map_err(explain)?;

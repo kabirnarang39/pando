@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS email_logins (
 );
 ";
 
+/// Names sign-in never hands out: they look like the console's and the site's own pages.
+const RESERVED: &[&str] = &[
+    "admin", "api", "login", "settings", "new", "explore", "www", "mail", "support", "help", "security", "status",
+    "docs", "pando",
+];
+
 /// A login proposed from an email address: its local part, lowercased, with anything but
 /// letters, digits, `.`, `_` and `-` turned into `-`, so it is also a valid organisation name.
 fn proposed_login(email: &str) -> String {
@@ -111,6 +117,7 @@ impl Registry {
         let mut login = base.clone();
         for n in 2.. {
             let taken: bool = reserved.contains(&login)
+                || RESERVED.contains(&login.as_str())
                 || tx.query_row(
                     "SELECT EXISTS (SELECT 1 FROM accounts WHERE login = ?1)
                        OR EXISTS (SELECT 1 FROM organizations WHERE login = ?1)",
@@ -135,6 +142,25 @@ impl Registry {
         drop(db);
         self.invalidate();
         Ok(login)
+    }
+
+    /// Lets `provider`'s `subject` sign in as the existing account `login` (how the first
+    /// administrator, made with `pandod token`, signs in from a browser). False if that
+    /// identity already belongs to another account.
+    pub fn link_identity(&self, login: &str, provider: &str, subject: &str) -> anyhow::Result<bool> {
+        let email = (provider == "email").then_some(subject);
+        let db = self.db.lock().unwrap();
+        db.execute(
+            "INSERT INTO identities (provider, subject, login, email, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT DO NOTHING",
+            (provider, subject, login, email, now_ms()),
+        )?;
+        let owner: String = db.query_row(
+            "SELECT login FROM identities WHERE provider = ?1 AND subject = ?2",
+            (provider, subject),
+            |r| r.get(0),
+        )?;
+        Ok(owner == login)
     }
 
     pub(crate) fn put_login_state(
@@ -227,6 +253,14 @@ mod tests {
         assert_eq!(r.create_person("google", "1", "other@a.example", &[]).unwrap(), "mira-3", "same identity");
         assert_eq!(r.create_person("email", "root@a.example", "root@a.example", &["root".into()]).unwrap(), "root-2");
         assert_eq!(r.identity_login("google", "1").unwrap().as_deref(), Some("mira-3"));
+        assert_eq!(
+            r.create_person("email", "a@x.example", "admin@x.example", &[]).unwrap(),
+            "admin-2",
+            "route-like names"
+        );
+        assert!(r.link_identity("mira", "email", "mira@b.example").unwrap());
+        assert!(r.link_identity("mira", "email", "mira@b.example").unwrap(), "again: no change");
+        assert!(!r.link_identity("mira-3", "email", "mira@b.example").unwrap(), "belongs to someone else");
     }
 
     #[test]
