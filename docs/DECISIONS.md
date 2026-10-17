@@ -407,3 +407,23 @@ running the migration, with the original author named and linked, because Pando 
 map to GitHub logins. Only open pull requests move; review comments on them don't yet. Each
 branch is imported separately, so a repository with very many branches takes longer.
 
+## ADR-029: Access answers are cached per process and dropped by every write
+
+**Decision.** The reads every repository call makes against the platform registry (the
+repository's record, a caller's role, an agent's owner, team membership, branch protection, and
+whether any webhook wants pushes) are cached in memory. Every write that could change an answer
+(membership, grants, teams, repositories, protections, webhooks, new accounts) clears the cache
+at once; entries also expire after five seconds, which bounds how long a write on another
+replica can go unseen. Push events are prepared off the landing path, and only when a webhook
+wants them.
+
+**Why.** Measured with 200 agents landing on one branch (release build, one laptop): through a
+hosted repository with access checks, throughput fell from about 1,140 to 770–960 changes a
+second and p99 latency rose from 0.3 s to 2.8–3.8 s. With the cache and the push change it is
+1,010–1,150 changes a second with p99 0.22–0.25 s, the same as a server without the platform
+(also with a non-administrator token, zero errors).
+
+**Trade-offs.** A revoked grant is enforced at once on the replica that made the change and
+within five seconds on others. Webhook lists in the console are read uncached, so delivery
+status stays current.
+

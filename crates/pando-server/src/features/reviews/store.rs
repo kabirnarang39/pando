@@ -394,6 +394,10 @@ impl Registry {
     }
 
     pub fn protections(&self, key: &RepoKey) -> anyhow::Result<Vec<Protection>> {
+        self.cached(format!("protections:{key}"), || self.protections_uncached(key))
+    }
+
+    fn protections_uncached(&self, key: &RepoKey) -> anyhow::Result<Vec<Protection>> {
         let db = self.db.lock().unwrap();
         let mut st = db.prepare_cached(
             "SELECT pattern, required_approvals, required_checks, dismiss_stale, agents_land_directly, bypass
@@ -423,6 +427,7 @@ impl Registry {
     }
 
     pub fn set_protection(&self, key: &RepoKey, p: &Protection) -> anyhow::Result<()> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "INSERT INTO protections (owner, name, pattern, required_approvals, required_checks, dismiss_stale, agents_land_directly, bypass)
@@ -445,6 +450,7 @@ impl Registry {
     }
 
     pub fn delete_protection(&self, key: &RepoKey, pattern: &str) -> anyhow::Result<bool> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         Ok(db.execute(
             "DELETE FROM protections WHERE owner = ?1 AND name = ?2 AND pattern = ?3",

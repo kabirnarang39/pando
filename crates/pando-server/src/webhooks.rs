@@ -127,6 +127,7 @@ impl Registry {
     ) -> anyhow::Result<(Webhook, String)> {
         let id = random_hex(8)?;
         let secret = if secret.is_empty() { random_hex(32)? } else { secret.to_owned() };
+        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "INSERT INTO webhooks (id, owner, name, url, secret, events, created_at_ms, created_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -153,6 +154,7 @@ impl Registry {
     }
 
     pub fn delete_webhook(&self, id: &str) -> anyhow::Result<bool> {
+        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute("DELETE FROM deliveries WHERE hook = ?1", [id])?;
         Ok(db.execute("DELETE FROM webhooks WHERE id = ?1", [id])? == 1)
@@ -190,12 +192,16 @@ impl Registry {
     ) -> anyhow::Result<Vec<String>> {
         let hooks: Vec<Webhook> = match only {
             Some(id) => self.webhook(id)?.map(|(h, _)| h).into_iter().collect(),
+            // Every push asks; most repositories have no webhooks, so the answer is cached.
             None => self
-                .webhooks(key)?
+                .cached(format!("hooks:{key}"), || self.webhooks(key))?
                 .into_iter()
                 .filter(|h| h.active && (h.events.is_empty() || h.events.iter().any(|e| e == event)))
                 .collect(),
         };
+        if hooks.is_empty() {
+            return Ok(vec![]);
+        }
         let mut ids = Vec::new();
         let db = self.db.lock().unwrap();
         for h in hooks {
@@ -255,6 +261,13 @@ impl Registry {
             rusqlite::params![id, attempts, status, error, delivered as i64, next],
         )?;
         Ok(())
+    }
+
+    /// Whether any active webhook of the repository wants `event` (cached).
+    pub fn wants(&self, key: &RepoKey, event: &str) -> bool {
+        self.cached(format!("hooks:{key}"), || self.webhooks(key))
+            .map(|hooks| hooks.iter().any(|h| h.active && (h.events.is_empty() || h.events.iter().any(|e| e == event))))
+            .unwrap_or(true)
     }
 
     pub fn delivery(&self, id: &str) -> anyhow::Result<Option<WebhookDelivery>> {
@@ -401,18 +414,24 @@ impl pando_core::ports::RefStore for NotifyingRefs {
 
     async fn compare_and_swap(&self, name: &str, expected: Option<Id>, new: Id) -> CoreResult<bool> {
         let moved = self.inner.compare_and_swap(name, expected, new).await?;
-        if moved && !name.starts_with('_') {
-            let head = match self.log.get(&new).await {
-                Ok(Some(bytes)) => <pando_core::object::Changeset as prost::Message>::decode(bytes.as_ref()).ok(),
-                _ => None,
-            };
-            let (author, message) = head.map(|c| (c.author, c.message)).unwrap_or_default();
-            let mut p = envelope("push", if expected.is_none() { "created" } else { "updated" }, &self.key, &author);
-            p["ref"] = json!(name);
-            p["before"] = json!(expected.map(|e| e.to_hex()));
-            p["after"] = json!(new.to_hex());
-            p["head"] = json!({ "id": new.to_hex(), "author": author, "message": message });
-            emit(&self.registry, &self.key, "push", p);
+        // Branch moves are on the landing path: do nothing more unless a webhook wants pushes
+        // (a cached answer), and then queue the event in the background.
+        if moved && !name.starts_with('_') && self.registry.wants(&self.key, "push") {
+            let (registry, log, key, name) =
+                (self.registry.clone(), self.log.clone(), self.key.clone(), name.to_owned());
+            tokio::spawn(async move {
+                let head = match log.get(&new).await {
+                    Ok(Some(bytes)) => <pando_core::object::Changeset as prost::Message>::decode(bytes.as_ref()).ok(),
+                    _ => None,
+                };
+                let (author, message) = head.map(|c| (c.author, c.message)).unwrap_or_default();
+                let mut p = envelope("push", if expected.is_none() { "created" } else { "updated" }, &key, &author);
+                p["ref"] = json!(name);
+                p["before"] = json!(expected.map(|e| e.to_hex()));
+                p["after"] = json!(new.to_hex());
+                p["head"] = json!({ "id": new.to_hex(), "author": author, "message": message });
+                emit(&registry, &key, "push", p);
+            });
         }
         Ok(moved)
     }
