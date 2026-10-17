@@ -349,3 +349,23 @@ answer that changes in between could reach an address that was refused; webhooks
 repository administrators, and link-local addresses are refused at both points that matter in
 practice. Secrets are stored as given, because signing needs them.
 
+## ADR-026: Remote MCP is a stateless gateway that passes the caller's token through
+
+**Decision.** `pando mcp --http` serves Model Context Protocol tools for a whole server over
+streamable HTTP, statelessly (MCP 2026-07-28; no sessions). Each request's bearer token is
+forwarded to the server for every call the tool makes, so the gateway holds no credentials and
+an agent can do exactly what its token allows. Writing files lands them as one changeset on a
+branch; on a protected branch the change goes to a `review/` branch and a change request opens.
+An agent's change request asks the person the agent answers to for review.
+
+**Why.** Agents shouldn't need a clone, a workspace or a git client to change code: a URL and
+a token is the whole setup, which is what makes Pando usable from hosted agents. Passing the
+token through avoids a confused deputy and reuses every permission check, token limit and
+audit record the server already has. Statelessness matches the server: gateways scale
+horizontally behind any load balancer and need nothing to coordinate.
+
+**Trade-offs.** A gateway is a second process to run (it can share the server's host or
+container). Changesets with no author are attributed to the authenticated caller; a client can
+still claim another author name, as in git, which a later change will restrict on platform
+servers.
+

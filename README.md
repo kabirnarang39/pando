@@ -71,6 +71,10 @@ the CLI (`pando cr`), for people and agents alike.
 
 ## Highlights
 
+- **Agents need a URL and a token, nothing else.** `pando mcp --http` serves the whole server
+  over the Model Context Protocol: any agent reads, writes and lands code, opens and reviews
+  change requests and reports checks without cloning, limited to what its token allows.
+
 - **Landing without a merge queue.** The server rebases concurrent changes that touch
   different files and moves the branch with one compare-and-swap per batch. 1,000 agents
   land 504 changes a second, with no client retries.

@@ -1,6 +1,47 @@
 # AI agents and SDKs
 
-## MCP
+## Remote MCP: any agent, no checkout
+
+`pando mcp --http` serves a whole Pando server to agents anywhere over the
+[Model Context Protocol](https://modelcontextprotocol.io) (the stateless 2026-07-28 version). An
+agent needs a URL and a token, nothing else: it reads, searches, writes and lands files, opens
+and reviews change requests, reports CI checks and reads its inbox, without cloning anything.
+
+```sh
+pando mcp --http 0.0.0.0:7430 --server https://pando.example.com --allowed-host mcp.example.com
+pando token create claude --as agent/claude-01 --repo lumen/fleet --role write   # one token per agent
+```
+
+Connect an agent with the URL and its token:
+
+```sh
+claude mcp add --transport http pando https://mcp.example.com/mcp \
+  --header "Authorization: Bearer $PANDO_TOKEN"                  # Claude Code
+```
+
+Claude Desktop, Cursor, ChatGPT, Gemini CLI and other clients that speak MCP over HTTP take
+the same URL and header.
+
+- **The token decides everything.** The gateway passes each request's token to the server and
+  holds no credentials of its own, so an agent can do exactly what its token allows: limited to
+  some repositories, a highest role, an expiry, every action in the audit log.
+- **Protected branches still hold.** When an agent writes to one, the change goes to a new
+  `review/` branch and a change request opens, asking the person the agent answers to.
+- **Stateless:** run as many gateways as you like behind a load balancer; nothing is shared.
+
+| Tool | What it does |
+|---|---|
+| `pando_repositories` | repositories you can read, with today's activity |
+| `pando_read_file`, `pando_list_directory`, `pando_find_files` | read code at any branch or change |
+| `pando_history`, `pando_blame`, `pando_diff` | who changed what, and when |
+| `pando_write` | write or delete files and land them as one change (or open a change request on a protected branch) |
+| `pando_change_requests`, `pando_change_request` | change requests and what blocks each |
+| `pando_open_change_request`, `pando_comment`, `pando_review` | propose, discuss, approve or request changes |
+| `pando_land_change_request` | land once nothing blocks it |
+| `pando_report_check` | report a CI result on a change request |
+| `pando_inbox` | what needs you |
+
+## Local MCP, in a workspace
 
 `pando mcp` serves Pando as [Model Context Protocol](https://modelcontextprotocol.io)
 tools over stdio, so coding agents read, commit and land without shelling out:

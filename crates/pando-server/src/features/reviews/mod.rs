@@ -384,6 +384,14 @@ impl reviews_server::Reviews for Reviews {
             )));
         }
         let (files, additions, deletions) = stats(&ctx.repo, base, source_tip).await?;
+        // An agent's change goes to the person who answers for it, unless someone else was asked.
+        let mut reviewers = r.reviewers;
+        if reviewers.is_empty()
+            && let Some(owner) =
+                self.reg().account(&who.0).map_err(internal)?.map(|a| a.owner).filter(|o| !o.is_empty())
+        {
+            reviewers.push(owner);
+        }
         // `pando land` on a protected branch proposes the work from a `review/` branch.
         let from_protected_land =
             r.source.starts_with("review/") && self.reg().protection_for(&key, &target).map_err(internal)?.is_some();
@@ -401,7 +409,7 @@ impl reviews_server::Reviews for Reviews {
             base: base.0.to_vec(),
             created_at_ms: now,
             updated_at_ms: now,
-            reviewers: r.reviewers,
+            reviewers,
             labels: vec![],
             landed_as: vec![],
             from_protected_land,
@@ -798,15 +806,23 @@ impl reviews_server::Reviews for Reviews {
         for cr in open {
             let mine = cr.author == who.0 || self.answers_for(&who, &cr.author);
             let asked = cr.reviewers.contains(&who.0);
-            if !mine && !asked {
+            // Nobody asked: anyone who may approve it sees it.
+            let unassigned = cr.reviewers.is_empty() && !mine;
+            if !mine && !asked && !unassigned {
                 continue;
             }
             let Ok(ctx) = self.ctx(&who, scope.as_ref(), &cr.key, Role::Read).await else { continue };
+            if unassigned && ctx.role < Role::Write {
+                continue;
+            }
             let cr = self.refresh(&ctx.repo, cr).await?;
             let view = self.view(&ctx.repo, cr.clone()).await?;
             let reviewed = view.reviews.iter().any(|r| r.reviewer == who.0 && r.reviewed_tip == view.source_tip);
+            let needs_approval = view.blockers.iter().any(|b| b.contains("approval"));
             let reason = if asked && !reviewed {
                 "Review requested"
+            } else if unassigned && needs_approval && !reviewed {
+                "Needs a reviewer"
             } else if mine && view.reviews.iter().any(|r| r.verdict == Verdict::ChangesRequested as i32) {
                 "Changes requested"
             } else if mine && view.blockers.is_empty() && kind_of(&cr.author) == AccountKind::Agent {

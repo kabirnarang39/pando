@@ -20,6 +20,7 @@ pando-proto = { path = "crates/pando-proto", version = "3" }
 pando-server = { path = "crates/pando-server", version = "3" }
 anyhow = "1"
 async-trait = "0.1"
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "http2"] }
 blake3 = "1"
 bytes = "1"
 clap = { version = "4", features = ["derive", "env"] }
@@ -62,7 +63,7 @@ fuser = "0.18"
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
+rmcp = { version = "3.5", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
 schemars = "1"
 tower = { version = "0.5", features = ["limit", "util"] }
 tower-http = { version = "0.6", features = ["cors"] }
