@@ -604,6 +604,20 @@ export class DemoPlatform {
   protectionsOf(key: string) {
     return this.protections.get(key) ?? [];
   }
+
+  setProtectionOf(key: string, p: Protection) {
+    const pattern = p.pattern.trim();
+    if (!pattern || pattern.slice(0, -1).includes("*")) throw new ConnectError("protect a branch (`main`) or a prefix (`release/*`, `*`)", Code.InvalidArgument);
+    const saved = create(ProtectionSchema, { ...p, pattern });
+    this.protections.set(key, [...this.protectionsOf(key).filter((x) => x.pattern !== pattern), saved].sort((a, b) => a.pattern.localeCompare(b.pattern)));
+    return saved;
+  }
+
+  deleteProtectionOf(key: string, pattern: string) {
+    const before = this.protectionsOf(key);
+    if (!before.some((x) => x.pattern === pattern)) throw new ConnectError(`\`${pattern}\` is not protected`, Code.NotFound);
+    this.protections.set(key, before.filter((x) => x.pattern !== pattern));
+  }
 }
 
 const keyOf = (r: { owner: string; name: string } | undefined | null) => (r ? `${r.owner}/${r.name}` : "");
@@ -722,8 +736,12 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
       async listProtections(r) {
         return { protections: p.protectionsOf(keyOf(r)) };
       },
-      setProtection() {
-        throw new ConnectError("the demo can't change protection", Code.PermissionDenied);
+      async setProtection(r) {
+        return p.setProtectionOf(keyOf(r.repository), r);
+      },
+      async deleteProtection(r) {
+        p.deleteProtectionOf(keyOf(r.repository), r.pattern);
+        return {};
       },
       async inbox() {
         await wait();

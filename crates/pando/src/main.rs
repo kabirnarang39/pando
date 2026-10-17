@@ -1,4 +1,5 @@
 mod admin;
+mod cr;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -190,6 +191,21 @@ enum Cmd {
         #[command(subcommand)]
         action: admin::TeamCmd,
     },
+    /// Change requests: propose a branch, review it, land it.
+    Cr {
+        /// The repository, SERVER/OWNER/NAME; defaults to the workspace's.
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: cr::CrCmd,
+    },
+    /// Protected branches: changes land on them only through a reviewed change request.
+    Protect {
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: cr::ProtectCmd,
+    },
     /// Access tokens for you and for agents you answer for.
     Token {
         #[arg(long, global = true)]
@@ -296,6 +312,19 @@ fn platform_client(
 ) -> Result<pando_proto::platform_client::PlatformClient<pando::remote::Ch>> {
     let base = pando_proto::split_repo_url(&server_for(server)?).0;
     Ok(GrpcRemote::connect(&base, None, token)?.platform())
+}
+
+/// The review service and repository for `pando cr` and `pando protect`.
+fn review_target(server: Option<String>, token: Option<&str>) -> Result<cr::Target> {
+    let url = server_for(server)?;
+    let (base, repo) = pando_proto::split_repo_url(&url);
+    let repo = repo.context("name the repository: --server SERVER/OWNER/NAME")?;
+    let (owner, name) = repo.split_once('/').context("give the repository as OWNER/NAME")?;
+    Ok(cr::Target {
+        client: GrpcRemote::connect(&base, None, token)?.reviews(),
+        repo: pando_proto::RepositoryRef { owner: owner.into(), name: name.into() },
+        branch: workspace().ok().map(|ws| ws.config.ref_name),
+    })
 }
 
 fn server_for(explicit: Option<String>) -> Result<String> {
@@ -635,6 +664,8 @@ async fn run() -> Result<()> {
         }
         Cmd::Org { server, action } => admin::org(platform_client(server, token)?, action).await?,
         Cmd::Team { server, action } => admin::team(platform_client(server, token)?, action).await?,
+        Cmd::Cr { server, action } => cr::cr(review_target(server, token)?, action).await?,
+        Cmd::Protect { server, action } => cr::protect(review_target(server, token)?, action).await?,
         Cmd::Token { server, action } => admin::token(platform_client(server, token)?, action).await?,
         Cmd::Repo { action } => {
             let server = match &action {

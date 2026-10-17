@@ -157,6 +157,16 @@ export const useSetMember = (org: string) =>
 export const useSetGrant = (key: string) =>
   usePlatformMutation((api, g: { principal: string; role: Role }) => api.platform.setGrant({ repository: ref(key), principal: g.principal, role: g.role }), [["grants", key]]);
 
+export const useSetProtection = (key: string) =>
+  usePlatformMutation(
+    (api, p: { pattern: string; requiredApprovals: number; requiredChecks: string[]; dismissStale: boolean; agentsLandDirectly: boolean; bypass: string[] }) =>
+      api.reviews.setProtection({ repository: ref(key), ...p }),
+    [["protections", key], ["crs", key], ["cr", key]],
+  );
+
+export const useDeleteProtection = (key: string) =>
+  usePlatformMutation((api, pattern: string) => api.reviews.deleteProtection({ repository: ref(key), pattern }), [["protections", key], ["crs", key], ["cr", key]]);
+
 export function useProtections(key: string) {
   const api = usePlatformApi();
   return useQuery({ queryKey: ["protections", key], queryFn: async () => (await or(api.reviews.listProtections(ref(key)), { protections: [] })).protections });

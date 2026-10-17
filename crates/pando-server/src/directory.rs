@@ -308,6 +308,17 @@ impl Registry {
         Ok(n > 0)
     }
 
+    /// Whether `login` belongs to the team `org/slug`.
+    pub fn in_team(&self, login: &str, team: &str) -> anyhow::Result<bool> {
+        let Some((org, slug)) = team.split_once('/') else { return Ok(false) };
+        let db = self.db.lock().unwrap();
+        Ok(db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM team_members WHERE org = ?1 AND slug = ?2 AND login = ?3)",
+            (org, slug, login),
+            |r| r.get(0),
+        )?)
+    }
+
     // ---- grants ----
 
     pub fn grants(&self, key: &RepoKey) -> anyhow::Result<Vec<(String, Role)>> {

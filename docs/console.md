@@ -46,8 +46,8 @@ links work from any path.
 | Locks, branch switching, fleet timeline | yes | yes | |
 | Many repositories, grouped by owner | one repository | yes | |
 | People, agents, teams, roles and tokens | | yes (3.2) | |
-| Change requests, reviews, line comments, land gate, rebase | | | yes |
-| Inbox, activity, protected branches | | | yes |
+| Change requests, reviews, line comments, land gate, rebase | | yes (3.3) | |
+| Inbox, activity, protected branches | | yes (3.3) | |
 
 The console asks the server what it supports and shows only that: a server without hosting
 shows its one repository, and a server without review hides reviews and the inbox. The demo shows

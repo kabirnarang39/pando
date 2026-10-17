@@ -56,6 +56,10 @@ impl ReadScope {
 pub trait AccessPolicy: Send + Sync {
     fn can_write(&self, who: &Principal, path: &str) -> bool;
     fn can_update_ref(&self, who: &Principal, ref_name: &str) -> bool;
+    /// Why `who` may not update `ref_name`, when the policy can say more than "not allowed".
+    fn why_not_ref(&self, _who: &Principal, _ref_name: &str) -> Option<String> {
+        None
+    }
     /// Defaults to the whole repository, which is what policies without read rules mean.
     fn read_scope(&self, _who: &Principal) -> ReadScope {
         ReadScope::All
@@ -126,7 +130,9 @@ pub fn require_ref(policy: &dyn AccessPolicy, who: &Principal, ref_name: &str) -
     if policy.can_update_ref(who, ref_name) {
         Ok(())
     } else {
-        Err(Error::PermissionDenied(format!("{} may not update ref `{ref_name}`", who.0)))
+        Err(Error::PermissionDenied(
+            policy.why_not_ref(who, ref_name).unwrap_or_else(|| format!("{} may not update ref `{ref_name}`", who.0)),
+        ))
     }
 }
 

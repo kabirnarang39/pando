@@ -10,7 +10,8 @@ use pando_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
 use pando_core::ports::NoChecks;
 use pando_proto::{CreateRepositoryRequest, CreateTokenRequest, ListRepositoriesRequest, Role, SetMemberRequest};
 use pando_server::auth::StaticTokens;
-use pando_server::hosting::{BuildRoutes, Hosting, Registry, Templates};
+use pando_server::features::land::Land;
+use pando_server::hosting::{BuildRoutes, Hosting, Registry, RepoServices, Templates};
 use pando_server::permissions::Access;
 use pando_server::{ServeOptions, WebAccess, authority_routes, config, serve};
 use tokio::net::TcpListener;
@@ -28,12 +29,15 @@ async fn start() -> Server {
     let policy = Arc::new(AllowAllPolicy);
     let checks = Arc::new(NoChecks);
     let (f, p, c) = (flags.clone(), policy.clone(), checks.clone());
-    let build: BuildRoutes = Arc::new(move |repo| authority_routes(repo, f.clone(), p.clone(), c.clone()));
+    let build: BuildRoutes = Arc::new(move |_, repo| RepoServices {
+        routes: authority_routes(repo.clone(), f.clone(), p.clone(), c.clone()),
+        review_land: Some(Land::new(repo, f.clone(), p.clone(), c.clone())),
+    });
     let templates = Templates {
         metadata: format!("sqlite://{}/repos/{{repo}}.db", dir.path().display()),
         objects: "metadata".into(),
     };
-    let access = Access { open: false, admins: vec!["admin".into()] };
+    let access = Arc::new(Access { open: false, admins: vec!["admin".into()] });
     let hosting = Hosting::new(templates, Arc::new(Registry::open("memory").unwrap()), build, access).unwrap();
     let default = config::open_repo("memory", "metadata").await.unwrap();
     let routes = authority_routes(default, flags, policy, checks);

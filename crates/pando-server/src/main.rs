@@ -9,9 +9,10 @@ use pando_core::acl::{AccessPolicy, AllowAllPolicy};
 use pando_core::flags::{FeatureFlags, Flag};
 use pando_core::ports::{LandCheck, NoChecks};
 use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
+use pando_server::features::land::Land;
 use pando_server::land_hook::WebhookCheck;
 use pando_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
-use pando_server::permissions::{Access, NoOtherAuth};
+use pando_server::permissions::{Access, NoOtherAuth, ProtectedRefs};
 use pando_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
 
@@ -299,9 +300,6 @@ async fn main() -> anyhow::Result<()> {
                     )?,
                     objects: repos_objects.clone(),
                 };
-                let (f, p, c) = (flags.clone(), policy.clone(), checks.clone());
-                let build: pando_server::hosting::BuildRoutes =
-                    Arc::new(move |repo| authority_routes(repo, f.clone(), p.clone(), c.clone()));
                 let registry_db = Arc::new(pando_server::hosting::Registry::open(registry)?);
                 // Platform tokens count as authentication: once one exists, every call needs one
                 // (or a static token or single sign-on). With none of them, the server is open,
@@ -313,12 +311,24 @@ async fn main() -> anyhow::Result<()> {
                 anonymous = open;
                 let admins: Vec<String> =
                     platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect();
-                hosting = Some(Arc::new(pando_server::hosting::Hosting::new(
-                    templates,
-                    registry_db,
-                    build,
-                    Access { open, admins },
-                )?));
+                let access = Arc::new(Access { open, admins });
+                let (f, p, c, reg, acc) =
+                    (flags.clone(), policy.clone(), checks.clone(), registry_db.clone(), access.clone());
+                // Each repository's branches are protected by its own rules; change requests land
+                // through their review instead.
+                let build: pando_server::hosting::BuildRoutes = Arc::new(move |key, repo| {
+                    let protected: Arc<dyn AccessPolicy> = Arc::new(ProtectedRefs {
+                        inner: p.clone(),
+                        registry: reg.clone(),
+                        key: key.clone(),
+                        access: acc.clone(),
+                    });
+                    pando_server::hosting::RepoServices {
+                        routes: authority_routes(repo.clone(), f.clone(), protected, c.clone()),
+                        review_land: Some(Land::new(repo, f.clone(), p.clone(), c.clone())),
+                    }
+                });
+                hosting = Some(Arc::new(pando_server::hosting::Hosting::new(templates, registry_db, build, access)?));
                 tracing::info!(registry = %config::redact(registry), open, "hosting many repositories");
             }
             (listen, authority_routes(repo, flags, policy, checks))

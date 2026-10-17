@@ -2962,3 +2962,26 @@ del {
   background: var(--panel);
   user-select: all;
 }
+.protection-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.protection-form label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.protection-form label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+.row .protection-form {
+  margin-top: 12px;
+  padding: 12px 0 0;
+  border-bottom: 0;
+}

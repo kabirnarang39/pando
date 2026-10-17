@@ -2,7 +2,7 @@
 // and locks a file, so the tests exercise the console against the actual server.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { connect } from "node:net";
 import { join, resolve } from "node:path";
@@ -67,10 +67,19 @@ export default async function setup() {
   );
   try {
     await up(HOSTING_PORT);
-    const run = (args: string[]) => execFileSync(join(bin, "pando"), args, { stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
+    const run = (args: string[], cwd?: string) => execFileSync(join(bin, "pando"), args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
     run(["repo", "create", "lumen/fleet", "--description", "The product monorepo", "--server", HOSTING]);
     run(["repo", "create", "lumen/web", "--description", "The storefront", "--server", HOSTING]);
     run(["import-git", src, "--server", `${HOSTING}/lumen/fleet`]);
+    // A change request on a branch, for the review screens.
+    const fleet = join(dir, "fleet");
+    run(["clone", `${HOSTING}/lumen/fleet`, fleet]);
+    run(["checkout", "-b", "lower-rate"], fleet);
+    const tax = join(fleet, "services/billing/tax.rs");
+    writeFileSync(tax, readFileSync(tax, "utf8").replace(/RATE_BPS: u32 = \d+/, "RATE_BPS: u32 = 1700"));
+    run(["commit", "-m", "Lower the tax rate"], fleet);
+    run(["land"], fleet);
+    run(["cr", "create", "--title", "Lower the tax rate to 17%", "--body", "Matches the new regulation."], fleet);
   } catch (e) {
     server.kill();
     hosting.kill();

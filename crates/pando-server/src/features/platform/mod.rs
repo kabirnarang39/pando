@@ -108,7 +108,7 @@ impl Platform {
             viewer_role: role as i32,
             archived: rec.archived,
             lands_24h: s.lands_24h,
-            open_change_requests: 0,
+            open_change_requests: self.reg().open_change_requests(&rec.key).unwrap_or(0),
             tip: s.tip.map(|t| t.0.to_vec()).unwrap_or_default(),
             tip_at_ms: s.tip_at_ms,
             topics: rec.topics.clone(),

@@ -51,3 +51,22 @@ test("server: a token issued in the console is a real platform token", async ({ 
   await expect(page.getByLabel("New token", { exact: true })).toContainText(/^pando_[0-9a-f]{64}$/);
   await expect(page.getByRole("row", { name: /e2e/ })).toContainText("Never");
 });
+
+test("demo: protect a branch, change it, remove it", async ({ page }) => {
+  await page.goto("/#/lumen/storefront/settings");
+  await page.getByRole("button", { name: "Protect a branch" }).click();
+  const form = page.getByRole("form", { name: "Protect a branch" });
+  await form.getByLabel("Branch").fill("release/*");
+  await form.getByLabel("Approvals", { exact: true }).fill("2");
+  await form.getByLabel("Checks that must pass").fill("build, e2e");
+  await form.getByRole("button", { name: "Protect" }).click();
+  const row = page.getByRole("listitem").filter({ hasText: "release/*" });
+  await expect(row).toContainText("2 approvals required");
+  await expect(row).toContainText("Checks must pass: build, e2e");
+  await row.getByRole("button", { name: "Edit protection of release/*" }).click();
+  await page.getByRole("form", { name: "Protection of release/*" }).getByLabel("Approvals", { exact: true }).fill("1");
+  await page.getByRole("form", { name: "Protection of release/*" }).getByRole("button", { name: "Save" }).click();
+  await expect(row).toContainText("1 approval required");
+  await row.getByRole("button", { name: "Stop protecting release/*" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "release/*" })).toHaveCount(0);
+});
