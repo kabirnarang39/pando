@@ -161,7 +161,7 @@ jobs:
       id-token: write  # PyPI trusted publishing: no token stored in the repository
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uv build
         working-directory: sdk/python
       - uses: pypa/gh-action-pypi-publish@release/v1
