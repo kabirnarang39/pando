@@ -164,12 +164,22 @@ async fn up(remotes: &[Arc<GrpcRemote>]) -> Result<Arc<GrpcRemote>> {
 
 async fn check(r: &GrpcRemote, start: Id, attempts: &[Attempt]) -> Result<()> {
     // History since this run started, oldest first.
+    // `log` returns at most 10,000 changesets per call, so page back from each oldest one.
     let mut history = Vec::new();
-    for cs in r.log("main", "", 10_000).await? {
-        if cs.id == start {
-            break;
+    let mut rev = "main".to_owned();
+    'pages: loop {
+        let page = r.log(&rev, "", 10_000).await?;
+        let Some(oldest) = page.last().map(|cs| cs.changeset.first_parent()) else { break };
+        for cs in page {
+            if cs.id == start {
+                break 'pages;
+            }
+            history.push(cs);
         }
-        history.push(cs);
+        match oldest? {
+            Some(parent) => rev = parent.to_string(),
+            None => break,
+        }
     }
     history.reverse();
     let position: HashMap<Id, usize> = history.iter().enumerate().map(|(i, cs)| (cs.id, i)).collect();
@@ -179,13 +189,16 @@ async fn check(r: &GrpcRemote, start: Id, attempts: &[Attempt]) -> Result<()> {
     for cs in &history {
         ensure!(seen.insert(cs.changeset.message.clone()), "change `{}` is in history twice", cs.changeset.message);
     }
-    // 1. Every acknowledged land is in history.
+    // 1. Every acknowledged land is in history: the id the server answered with, and the
+    // change itself (they differ when a retried change was already there and the server
+    // answered with the tip that holds it).
+    let by_msg: HashMap<&str, usize> =
+        history.iter().enumerate().map(|(i, cs)| (cs.changeset.message.as_str(), i)).collect();
     let mut landed = Vec::new();
     for a in attempts {
         if let Some(id) = a.landed {
-            let at = *position
-                .get(&id)
-                .with_context(|| format!("acknowledged land `{}` ({id}) is not in history", a.msg))?;
+            ensure!(position.contains_key(&id), "acknowledged land `{}` ({id}) is not in history", a.msg);
+            let at = *by_msg.get(a.msg.as_str()).with_context(|| format!("acknowledged change `{}` is not in history", a.msg))?;
             landed.push((at, a));
         }
     }
@@ -202,9 +215,9 @@ async fn check(r: &GrpcRemote, start: Id, attempts: &[Attempt]) -> Result<()> {
     // 3. A later change to a path must have been based on the earlier one.
     landed.sort_by_key(|(at, _)| *at);
     for (i, (_, b)) in landed.iter().enumerate() {
-        for (_, a) in &landed[..i] {
+        for (at_a, a) in &landed[..i] {
             if a.path == b.path && a.blob != b.blob {
-                let earlier = a.landed.unwrap();
+                let earlier = history[*at_a].id;
                 let base_has_it = r.merge_base(&earlier.to_string(), &b.base.to_string()).await? == Some(earlier);
                 ensure!(base_has_it, "`{}` landed over `{}` on `{}` without having seen it", b.msg, a.msg, b.path);
             }
