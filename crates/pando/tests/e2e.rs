@@ -1468,7 +1468,7 @@ async fn mirror_pushes_landed_changes_to_a_git_remote_incrementally() {
 
     // The destination: an empty bare repository, as on GitHub or Bitbucket.
     let dest = tempfile::tempdir().unwrap();
-    git_cmd(dest.path(), &["init", "-q", "--bare"]);
+    git_cmd(dest.path(), &["init", "-q", "--bare", "-b", "main"]);
     let to = dest.path().to_str().unwrap().to_owned();
     let cache = tempfile::tempdir().unwrap();
     let n = git::mirror(r.as_ref(), &flags(), "main", cache.path(), "main", &to).await.unwrap();
