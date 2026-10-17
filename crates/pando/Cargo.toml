@@ -41,9 +41,13 @@ rmcp.workspace = true
 schemars.workspace = true
 tokio.workspace = true
 tonic.workspace = true
+tracing-subscriber.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 fuser.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nfsserve = "0.11"
 
 [dev-dependencies]
 jsonwebtoken = { workspace = true, features = ["use_pem"] }
