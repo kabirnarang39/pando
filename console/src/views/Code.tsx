@@ -1,6 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import { decodeChange, hex, isNotFound, Mode, title, type Change } from "../api/client";
 import { useRepo, useRepoParams } from "../repo";
@@ -383,46 +383,44 @@ function Code({
   changes.forEach((q) => q.data && byId.set(q.data.id, q.data));
   const now = useNow();
 
+  const renderLine = (i: number) => {
+    const line = lines[i]!;
+    const n = i + 1;
+    const owner = owners.data?.[i];
+    const first = !!owner && owners.data?.[i - 1] !== owner;
+    const c = owner ? byId.get(owner) : undefined;
+    return (
+      <div className="line" id={`L${n}`} key={n} data-picked={picked && n >= picked[0] && n <= picked[1] ? "" : undefined}>
+        {blame && (
+          <span
+            className="blame-cell"
+            data-first={first || undefined}
+            title={c ? `${title(c.message)}, ${c.author}, ${ago(c.time, now)}` : undefined}
+            style={{ "--heat": c ? Math.max(0, 1 - (now - c.time) / (6 * 3600_000)) : 0 } as React.CSSProperties}
+          >
+            {first && c && (
+              <>
+                <Author author={c.author} compact />
+                <Link to="/$owner/$repo/changes" params={rp} search={{ c: c.id }} title={c.message}>
+                  {title(c.message)}
+                </Link>
+                <span className="age num">{ago(c.time, now)}</span>
+              </>
+            )}
+          </span>
+        )}
+        <span className="ln num" onClick={(e) => onPick(n, e.shiftKey)} aria-hidden="true">
+          {n}
+        </span>
+        <span className="src">{tokens?.[i] ? tokens[i]!.map(([t, color], j) => (color ? <span key={j} style={{ color }}>{t}</span> : t)) : line || " "}</span>
+      </div>
+    );
+  };
   const chunks = [];
   for (let start = 0; start < lines.length; start += CHUNK) {
     const end = Math.min(lines.length, start + CHUNK);
-    chunks.push(
-      <div className="code-chunk" key={start} style={{ "--rows": end - start } as React.CSSProperties}>
-        {lines.slice(start, end).map((line, k) => {
-          const i = start + k;
-          const n = i + 1;
-          const owner = owners.data?.[i];
-          const first = !!owner && owners.data?.[i - 1] !== owner;
-          const c = owner ? byId.get(owner) : undefined;
-          return (
-            <div className="line" id={`L${n}`} key={n} data-picked={picked && n >= picked[0] && n <= picked[1] ? "" : undefined}>
-              {blame && (
-                <span
-                  className="blame-cell"
-                  data-first={first || undefined}
-                  title={c ? `${title(c.message)}, ${c.author}, ${ago(c.time, now)}` : undefined}
-                  style={{ "--heat": c ? Math.max(0, 1 - (now - c.time) / (6 * 3600_000)) : 0 } as React.CSSProperties}
-                >
-                  {first && c && (
-                    <>
-                      <Author author={c.author} compact />
-                      <Link to="/$owner/$repo/changes" params={rp} search={{ c: c.id }} title={c.message}>
-                        {title(c.message)}
-                      </Link>
-                      <span className="age num">{ago(c.time, now)}</span>
-                    </>
-                  )}
-                </span>
-              )}
-              <span className="ln num" onClick={(e) => onPick(n, e.shiftKey)} aria-hidden="true">
-                {n}
-              </span>
-              <span className="src">{tokens?.[i] ? tokens[i]!.map(([t, color], j) => (color ? <span key={j} style={{ color }}>{t}</span> : t)) : line || " "}</span>
-            </div>
-          );
-        })}
-      </div>,
-    );
+    const eager = start < 2 * CHUNK || (!!picked && picked[0] > start && picked[0] <= end + 1);
+    chunks.push(<Chunk key={start} start={start} end={end} lines={lines} eager={eager} render={renderLine} />);
   }
   return (
     <div className="code" style={{ "--gutter": blame ? "300px" : "0px" } as React.CSSProperties} aria-label="File contents">
@@ -473,5 +471,41 @@ function FileHistory({ rev, path }: { rev: string; path: string }) {
         </button>
       )}
     </>
+  );
+}
+
+/**
+ * 200 lines of a file. Until it comes near the screen it is one block of plain text (so the
+ * browser's find still sees every line, at a fraction of the cost); then it becomes full lines
+ * with numbers, links, blame and colours.
+ */
+function Chunk({ start, end, lines, eager, render }: { start: number; end: number; lines: string[]; eager: boolean; render(i: number): React.ReactNode }) {
+  const [full, setFull] = useState(eager);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (full || !ref.current) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setFull(true);
+    }, { rootMargin: "1200px 0px" });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [full]);
+  const rows = end - start;
+  if (!full)
+    return (
+      <div className="code-chunk code-lite" ref={ref} style={{ "--rows": rows } as React.CSSProperties}>
+        <span />
+        <pre className="ln num" aria-hidden="true">
+          {Array.from({ length: rows }, (_, k) => start + k + 1).join("\n")}
+        </pre>
+        <pre className="src">{lines.slice(start, end).join("\n")}</pre>
+      </div>
+    );
+  const out = [];
+  for (let i = start; i < end; i++) out.push(render(i));
+  return (
+    <div className="code-chunk" style={{ "--rows": rows } as React.CSSProperties}>
+      {out}
+    </div>
   );
 }

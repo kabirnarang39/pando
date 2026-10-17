@@ -2652,3 +2652,16 @@ del {
 #main:focus {
   outline: none;
 }
+
+/* A chunk of a file that has not come near the screen yet: plain text, same metrics. */
+.code-lite {
+  display: grid;
+  grid-template-columns: var(--gutter, 0px) 6ch minmax(0, 1fr);
+}
+.code-lite pre {
+  margin: 0;
+  font: inherit;
+}
+.code-lite .ln {
+  cursor: default;
+}

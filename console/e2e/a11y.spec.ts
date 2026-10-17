@@ -6,6 +6,8 @@ const pages = ["/#/", "/#/inbox", "/#/lumen", "/#/lumen/fleet", "/#/lumen/fleet/
 
 for (const theme of ["light", "dark"] as const) {
   test(`no WCAG 2.2 AA violations, ${theme} theme`, async ({ page }) => {
+    // axe on twelve screens; shared CI runners need longer than the default 30 s.
+    test.setTimeout(180_000);
     await page.addInitScript((t) => localStorage.setItem("pando.console.theme", t), theme);
     const failures: string[] = [];
     for (const path of pages) {

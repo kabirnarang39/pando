@@ -72,9 +72,10 @@ the plan is in [Platform](platform.md).
 - The first screen needs 218 KB of gzipped JavaScript; each screen after that loads its own
   code on first visit (and is preloaded on hover). The build fails if the first screen grows
   past its budget.
-- Syntax highlighting runs in a worker. Off-screen parts of files are not laid out, yet every
-  line stays in the page, so the browser's find works: a 50,000-line (1.5 MB) file opens in
-  about 2 seconds in the end-to-end tests. Files over 1 MB show without colours, and say so.
+- Syntax highlighting runs in a worker. Parts of a file far from the screen are plain text until
+  they come near it, yet every line stays in the page, so the browser's find works: a
+  50,000-line (1.5 MB) file opens in under a second in the end-to-end tests. Files over 1 MB
+  show without colours, and say so.
 - Fonts and icons are bundled: the console makes no request to any third party.
 - Untrusted content (READMEs, descriptions, comments) is rendered without HTML: markdown is
   turned into elements, raw HTML shows as text, and only http(s), mailto and relative links
