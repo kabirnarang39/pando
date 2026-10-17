@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- Go SDK: requires Go 1.26.9 and uses `golang.org/x/net` 0.60.0 and `golang.org/x/text`
+  0.42.0, fixing six known HTTP/2 and text-parsing vulnerabilities (GO-2026-6603, 6610, 6611,
+  6612, 6617, 6629).
+- Releases attach their signed SLSA provenance (`*.intoto.jsonl`) next to the archives.
+- CI hardening: least-privilege workflow tokens, every action pinned to a commit, CodeQL on
+  every change, and Dependabot for Go, npm and Python as well as Rust and Actions.
+
 ## [3.3.0] - 2026-10-17
 
 ### Security
