@@ -158,6 +158,11 @@ enum Cmd {
         /// In-memory cache for file contents.
         #[arg(long, default_value_t = 256)]
         cache_mb: u64,
+        /// Serve the checkout over NFS on localhost and print the command that mounts it,
+        /// instead of mounting (for machines where only an administrator may mount, or
+        /// Linux machines without FUSE).
+        #[arg(long)]
+        serve_only: bool,
     },
     /// Serve Pando as MCP tools over stdio for AI agents (Claude Code, Codex, Cursor...).
     Mcp {
@@ -237,6 +242,10 @@ fn fmt_time(ms: i64) -> String {
 
 #[tokio::main]
 async fn main() {
+    // Library logs (mounts, transports) only when asked for, e.g. PANDO_LOG=debug.
+    if let Ok(filter) = std::env::var("PANDO_LOG") {
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
+    }
     if let Err(e) = run().await {
         eprintln!("error: {e:#}");
         std::process::exit(1);
@@ -467,27 +476,66 @@ async fn run() -> Result<()> {
                 }
             );
         }
-        Cmd::Mount { dir, server, objects, rev, cache_mb } => {
+        Cmd::Mount { dir, server, objects, rev, cache_mb, serve_only } => {
             pando_core::flags::require(&flags, pando_core::flags::Flag::VirtualCheckout)?;
             let remote = connect(&server_for(server)?, objects.as_deref(), token)?;
             let cs = remote.changeset(&rev).await?;
-            #[cfg(target_os = "linux")]
+            #[cfg(unix)]
             {
+                use std::os::unix::fs::MetadataExt;
+                let meta = std::fs::metadata(&dir)
+                    .with_context(|| format!("{} must be an existing directory", dir.display()))?;
                 let tree = Arc::new(pando::mount::VirtualTree::new(
                     remote.objects(),
                     tokio::runtime::Handle::current(),
                     cs.root_tree,
                     cache_mb << 20,
                 ));
-                let session = pando::mount::fuse::mount(tree, &dir)?;
-                eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
-                tokio::signal::ctrl_c().await?;
-                session.umount_and_join()?;
+                if serve_only || cfg!(target_os = "macos") {
+                    let port = pando::mount::nfs::serve(tree, meta.uid(), meta.gid()).await?;
+                    if serve_only {
+                        eprintln!("serving {rev} over NFS on 127.0.0.1:{port}; mount it with:");
+                        println!("{}", pando::mount::nfs::mount_command(port, &dir));
+                        tokio::signal::ctrl_c().await?;
+                        return Ok(());
+                    }
+                    let target = dir.clone();
+                    tokio::task::spawn_blocking(move || pando::mount::nfs::mount(port, &target)).await??;
+                    eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
+                    tokio::signal::ctrl_c().await?;
+                    let target = dir.clone();
+                    tokio::task::spawn_blocking(move || pando::mount::nfs::unmount(&target)).await??;
+                } else {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let session = pando::mount::fuse::mount(tree, &dir)?;
+                        eprintln!("mounted {rev} at {}; Ctrl-C to unmount", dir.display());
+                        tokio::signal::ctrl_c().await?;
+                        session.umount_and_join()?;
+                    }
+                }
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(windows)]
             {
-                let _ = (dir, cs, cache_mb);
-                anyhow::bail!("`pando mount` needs FUSE on Linux; use `pando clone --path` for a sparse checkout");
+                anyhow::ensure!(!serve_only, "--serve-only is for macOS and Linux; Windows projects files directly");
+                let tree = Arc::new(pando::mount::VirtualTree::new(
+                    remote.objects(),
+                    tokio::runtime::Handle::current(),
+                    cs.root_tree,
+                    cache_mb << 20,
+                ));
+                let target = dir.clone();
+                let session = tokio::task::spawn_blocking(move || pando::mount::projfs::mount(tree, &target)).await??;
+                eprintln!("projecting {rev} into {}; Ctrl-C to stop (files already read stay on disk)", dir.display());
+                tokio::signal::ctrl_c().await?;
+                drop(session);
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                let _ = (dir, cs, cache_mb, serve_only);
+                anyhow::bail!(
+                    "`pando mount` is not supported on this platform; use `pando clone --path` for a sparse checkout"
+                );
             }
         }
         Cmd::Mcp { server } => {

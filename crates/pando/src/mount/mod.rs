@@ -1,6 +1,7 @@
 //! Virtual checkout: a read-only view of one revision whose directories and files are
 //! fetched on first access. [`VirtualTree`] holds all the logic and is platform-independent;
-//! the FUSE adapter (Linux) only translates kernel requests.
+//! the FUSE adapter (Linux), the NFS adapter (macOS, or any Unix with `--serve-only`) and the
+//! ProjFS adapter (Windows) only translate operating-system requests.
 //!
 //! * Directories are loaded when first looked up or listed.
 //! * File sizes come from object headers or large-file manifests, without decompressing.
@@ -9,6 +10,10 @@
 
 #[cfg(target_os = "linux")]
 pub mod fuse;
+#[cfg(unix)]
+pub mod nfs;
+#[cfg(windows)]
+pub mod projfs;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
