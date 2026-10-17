@@ -51,17 +51,20 @@ demo that runs in the browser.
    storage (a `{repo}` template in the storage URLs). Requests name their repository; an older
    client that names none reaches the default repository. Organisation and repository pages,
    repository creation, a home page with your repositories and their activity.
-2. **People, agents and access.** Accounts from the identity provider (OIDC is already
+2. **Coexistence with GitHub, GitLab and Bitbucket.** A continuous mirror of every landed change
+   to an existing host, so CI, integrations and audit archives keep working while agents land in
+   Pando. This is how an enterprise adopts Pando without replacing anything.
+3. **People, agents and access.** Accounts from the identity provider (OIDC is already
    supported), personal and agent tokens, organisation members, teams, and per-repository roles
    (read, write, maintain, admin). Agents are accounts marked as agents and owned by a person or
    team.
-3. **Change requests and review.** Open a change request from a branch, review with comments on
+4. **Change requests and review.** Open a change request from a branch, review with comments on
    lines, suggestions, approvals and requests for changes; merge by landing. Protected branches
    with required approvals and checks; an agent's land on a protected branch becomes a change
    request automatically.
-4. **Inbox, checks and integrations.** Review inbox and notifications, check runs reported by CI,
+5. **Inbox, checks and integrations.** Review inbox and notifications, check runs reported by CI,
    webhooks, and an audit view.
-5. **Issues and releases** *(documented flows)*. Issues with the same live lists, labels and
+6. **Issues and releases** *(documented flows)*. Issues with the same live lists, labels and
    linking to change requests; releases with notes and assets.
 
 ## UX audit of the web app (2026-10-17)

@@ -6,7 +6,7 @@ import { title } from "../../api/client";
 import { useDir, useFile, useLive, useLocks } from "../../data";
 import { ChangeRequestState } from "../../gen/pando_platform_pb";
 import { Markdown } from "../../markdown";
-import { useChangeRequests } from "../../platform-data";
+import { useCapabilities, useChangeRequests } from "../../platform-data";
 import { useRepo, useRepoParams } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 
@@ -18,6 +18,7 @@ export function OverviewView() {
   const live = useLive(ref);
   const crs = useChangeRequests(key, [ChangeRequestState.OPEN]);
   const locks = useLocks();
+  const reviews = useCapabilities().data?.reviews ?? false;
   return (
     <div className="page">
       <div className="grid-2">
@@ -35,6 +36,7 @@ export function OverviewView() {
           <Readme />
         </div>
         <div className="stack">
+          {reviews && (
           <section className="panel" aria-labelledby="waiting-title">
             <div className="panel-head">
               <Icon name="review" />
@@ -70,6 +72,7 @@ export function OverviewView() {
               </ul>
             )}
           </section>
+          )}
           <section className="panel" aria-labelledby="recent-title">
             <div className="panel-head">
               <Icon name="changes" />

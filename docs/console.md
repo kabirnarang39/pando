@@ -39,18 +39,19 @@ links work from any path.
 
 ## What works where
 
-| Feature | Any `pandod` today | Platform server (in development) |
-|---|---|---|
-| Code, blame, file history, search by path | yes | yes |
-| Changes as they land, word-level diffs | yes | yes |
-| Locks, branch switching | yes | yes |
-| Fleet timeline (who landed what, when) | yes | yes |
-| Several repositories, organisations, people and agents | one repository | yes |
-| Change requests, reviews, line comments, land gate, rebase | no | yes |
-| Inbox, activity, protected branches, tokens | no | yes |
+| Feature | `pandod` | `pandod --platform` (3.1) | Coming next |
+|---|---|---|---|
+| Code, blame, file history, search by path | yes | yes | |
+| Changes as they land, word-level diffs | yes | yes | |
+| Locks, branch switching, fleet timeline | yes | yes | |
+| Many repositories, grouped by owner | one repository | yes | |
+| People, agents, teams and roles | | | yes |
+| Change requests, reviews, line comments, land gate, rebase | | | yes |
+| Inbox, activity, protected branches, tokens | | | yes |
 
-A server without the platform service answers those calls with `Unimplemented`; the console
-then shows its one repository and hides what it cannot do. The platform contract is
+The console asks the server what it supports and shows only that: a server without hosting
+shows its one repository, and a server without review hides reviews and the inbox. The demo shows
+everything. The platform contract is
 [`pando_platform.proto`](https://github.com/kabirnarang39/pando/blob/main/crates/pando-proto/proto/pando_platform.proto);
 the plan is in [Platform](platform.md).
 

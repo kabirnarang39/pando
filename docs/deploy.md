@@ -25,6 +25,33 @@ service, and hourly incremental backups to a free Neon database and R2 bucket. I
 until usage outgrows the free tiers, and moves to Postgres and object storage with `pandod copy`
 when it does.
 
+## Hosting many repositories
+
+One `pandod` can host any number of repositories, each with its own storage:
+
+```sh
+PANDO_TOKENS="admin:$ADMIN_TOKEN,ci:$CI_TOKEN" pandod server --listen 0.0.0.0:7420 \
+  --platform sqlite:///var/lib/pando/platform.db \
+  --repos-metadata 'sqlite:///var/lib/pando/repos/{repo}.db' \
+  --repos-objects 'file:///var/lib/pando/objects/{repo_id}' \
+  --platform-admins admin
+
+pando repo create lumen/fleet --server https://pando.example.com
+pando clone https://pando.example.com/lumen/fleet fleet
+```
+
+- `--platform` is the registry of which repositories exist. `--repos-metadata` and
+  `--repos-objects` are templates: `{repo}` becomes `OWNER/NAME` and `{repo_id}` becomes
+  `OWNER--NAME`. Each repository gets its own database and its own landing queues, so one busy
+  repository never slows another, and a repository can be backed up, moved or deleted on its own.
+- Clients name a repository by adding `/OWNER/NAME` to the server address; the web console lists
+  them. A client that names none reaches the server's default repository (`--metadata`), so
+  existing setups keep working.
+- Only principals in `--platform-admins` create repositories. Names are letters, digits, `.`, `_`
+  and `-`, so they are safe in paths and database names.
+- In this release, access rules apply to every repository alike, and caches and node daemons
+  serve the default repository only. Per-repository roles, accounts and teams come next.
+
 ## Roles
 
 | Process | Command | Runs where | State |

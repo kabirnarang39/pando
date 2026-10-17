@@ -5,7 +5,7 @@ import { Trunk } from "../../components/Fleet";
 import { useConnection } from "../../connection";
 import { useLive, useLocks, useRefs } from "../../data";
 import { Visibility } from "../../gen/pando_platform_pb";
-import { isSingle, useRepository } from "../../platform-data";
+import { isSingle, useCapabilities, useRepository } from "../../platform-data";
 import { RepoProvider, useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 import { ago, ErrorState, Icon, useNow, type IconName } from "../../ui";
@@ -33,6 +33,7 @@ function Layout() {
   const now = useNow();
   const rp = { owner, repo: name };
   const single = isSingle(key);
+  const reviews = useCapabilities().data?.reviews ?? !single;
   const { label } = useConnection();
 
   if (meta.error && !meta.data) return <ErrorState error={meta.error} title={`${owner}/${name} didn't load`} retry={() => meta.refetch()} />;
@@ -84,9 +85,11 @@ function Layout() {
               )}
               {!single && (
                 <>
-                  <span>
-                    <strong className="num">{r.openChangeRequests}</strong> open reviews
-                  </span>
+                  {reviews && (
+                    <span>
+                      <strong className="num">{r.openChangeRequests}</strong> open reviews
+                    </span>
+                  )}
                   <span>Last landing {r.tipAtMs ? ago(Number(r.tipAtMs), now) : "never"}</span>
                 </>
               )}
@@ -107,10 +110,10 @@ function Layout() {
           {tab("/$owner/$repo", "Overview", "repo")}
           {tab("/$owner/$repo/code/$", "Code", "code")}
           {tab("/$owner/$repo/changes", "Changes", "changes")}
-          {!single && tab("/$owner/$repo/reviews", "Reviews", "review", r?.openChangeRequests)}
+          {reviews && tab("/$owner/$repo/reviews", "Reviews", "review", r?.openChangeRequests)}
           {tab("/$owner/$repo/locks", "Locks", "lock", locks.data?.length)}
           {tab("/$owner/$repo/agents", "Agents", "bot")}
-          {!single && tab("/$owner/$repo/settings", "Settings", "settings")}
+          {reviews && tab("/$owner/$repo/settings", "Settings", "settings")}
         </nav>
       </header>
       <div className="repo-body">

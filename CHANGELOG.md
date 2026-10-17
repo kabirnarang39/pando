@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- One server, many repositories: `pandod server --platform REGISTRY --repos-metadata TEMPLATE
+  [--repos-objects TEMPLATE] --platform-admins NAMES`. Each repository has its own storage and
+  landing queues; clients address `SERVER/OWNER/NAME`; calls without a repository reach the
+  default one (ADR-022).
+- `pando repo create OWNER/NAME` and `pando repo list`.
+- The web console lists a server's repositories and shows only what the server supports.
+
+### Changed
+- `pandod server` and `pandod cache` listen on 127.0.0.1 by default; listening on a network is a
+  deliberate `--listen 0.0.0.0:7420`.
+
+### Fixed
+- The web console kept one data cache across connections, so data from the demo or a previous
+  server could appear after switching. Each connection now has its own cache.
+
 ## [3.0.0] - 2026-10-17
 
 ### Added

@@ -125,22 +125,30 @@ fn wire_change(c: FileChange) -> pando_proto::FileChange {
 impl GrpcRemote {
     /// `server` hosts all services; `objects_url` (daemon or cache) serves object reads,
     /// defaulting to the server.
+    /// `server` may end in `/OWNER/NAME` to name a repository on a server that hosts many.
     pub fn connect(server: &str, objects_url: Option<&str>, token: Option<&str>) -> Result<Self> {
-        let channel = Endpoint::from_shared(server.to_owned())
+        let (base, repo) = pando_proto::split_repo_url(server);
+        let channel = Endpoint::from_shared(base)
             .with_context(|| format!("bad server URL `{server}`"))?
             .tcp_nodelay(true)
             .http2_adaptive_window(true)
             .connect_lazy();
+        let auth =
+            BearerAuth::new(token).and_then(|a| a.with_repo(repo.as_deref())).map_err(|s| anyhow::anyhow!("{s}"))?;
         let objects: Arc<dyn ObjectStore> = match objects_url {
             Some(url) => Arc::new(GrpcObjects::connect(url, token)?),
-            None => Arc::new(GrpcObjects::from_channel(channel.clone(), token)?),
+            None => Arc::new(GrpcObjects::with_auth(channel.clone(), auth.clone())),
         };
-        let auth = BearerAuth::new(token).map_err(|s| anyhow::anyhow!("{s}"))?;
         Ok(Self { channel, auth, objects })
     }
 
     fn ch(&self) -> Ch {
         InterceptedService::new(self.channel.clone(), self.auth.clone())
+    }
+
+    /// The hosting API: repositories and organisations (servers started with `--platform`).
+    pub fn platform(&self) -> pando_proto::platform_client::PlatformClient<Ch> {
+        pando_proto::platform_client::PlatformClient::new(self.ch())
     }
 }
 
