@@ -67,17 +67,21 @@ function pairWords(lines: Line[]) {
   }
 }
 
-/** Unchanged runs longer than twice `context` fold away, keeping `context` lines around changes. */
-export function fold(lines: Line[], context = 3): Row[] {
+/**
+ * Unchanged runs longer than twice `context` fold away, keeping `context` lines around changes.
+ * Lines in `keep` (by new line number, e.g. lines with comments) never fold.
+ */
+export function fold(lines: Line[], context = 3, keep?: Set<number>): Row[] {
   const rows: Row[] = [];
   let id = 0;
+  const folds = (l: Line) => l.op === "ctx" && !keep?.has(l.new!);
   for (let i = 0; i < lines.length; ) {
-    if (lines[i]!.op !== "ctx") {
+    if (!folds(lines[i]!)) {
       rows.push({ kind: "line", line: lines[i++]! });
       continue;
     }
     let j = i;
-    while (j < lines.length && lines[j]!.op === "ctx") j++;
+    while (j < lines.length && folds(lines[j]!)) j++;
     const head = i === 0 ? 0 : context;
     const tail = j === lines.length ? 0 : context;
     if (j - i > head + tail + 1) {

@@ -40,6 +40,13 @@ describe("fold", () => {
     expect(rows.filter((r) => r.kind === "line")).toHaveLength(3 + 2 + 3);
   });
 
+  it("keeps commented lines visible", () => {
+    const a = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n");
+    const b = a.replace("line 25", "line twenty-five");
+    const rows = fold(lineDiff(a, b), 3, new Set([5]));
+    expect(rows.some((r) => r.kind === "line" && r.line.new === 5)).toBe(true);
+  });
+
   it("never folds a single line", () => {
     const rows = fold(lineDiff("a\nb\nc\nd\ne\nf\ng\nh\n", "a\nb\nc\nd\nE\nf\ng\nh\n"));
     expect(rows.every((r) => r.kind === "line")).toBe(true);

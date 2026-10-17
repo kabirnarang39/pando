@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { isNotFound, type FileChange } from "../api/client";
 import { useFile } from "../data";
 import { fold, lineDiff, stats, toSplit, type Line, type Piece } from "../diff";
@@ -9,7 +9,32 @@ export type Layout = "unified" | "split";
 const LARGE = 1500;
 
 /** One file's change, between the change's first parent (`from`) and the change itself (`to`). */
-export function FileDiff({ file, from, to, layout, open, onToggle }: { file: FileChange; from: string | undefined; to: string; layout: Layout; open: boolean; onToggle(open: boolean): void }) {
+export interface Annotations {
+  /** New-side line numbers that carry something (comments): they never fold away. */
+  lines: Set<number>;
+  /** What to show under a new-side line, if anything. */
+  render(line: number): ReactNode;
+  /** Start a comment on a new-side line. */
+  onLine?(line: number): void;
+}
+
+export function FileDiff({
+  file,
+  from,
+  to,
+  layout,
+  open,
+  onToggle,
+  annotations,
+}: {
+  file: FileChange;
+  from: string | undefined;
+  to: string;
+  layout: Layout;
+  open: boolean;
+  onToggle(open: boolean): void;
+  annotations?: Annotations;
+}) {
   const deleted = file.blob === "";
   const before = useFile(from, file.path, open && !!from);
   const after = useFile(to, file.path, open && !deleted);
@@ -61,15 +86,16 @@ export function FileDiff({ file, from, to, layout, open, onToggle }: { file: Fil
           </button>
         </p>
       ) : (
-        result && !result.binary && <Lines lines={result.lines} layout={layout} />
+        result && !result.binary && <Lines lines={result.lines} layout={layout} annotations={annotations} />
       )}
     </details>
   );
 }
 
-function Lines({ lines, layout }: { lines: Line[]; layout: Layout }) {
+function Lines({ lines, layout, annotations }: { lines: Line[]; layout: Layout; annotations?: Annotations }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const rows = useMemo(() => fold(lines), [lines]);
+  const keep = annotations?.lines;
+  const rows = useMemo(() => fold(lines, 3, keep), [lines, keep]);
   if (lines.length === 0) return <p className="notice">The file is empty.</p>;
   const groups: (Line[] | { fold: number; count: number })[] = [];
   for (const r of rows) {
@@ -87,9 +113,19 @@ function Lines({ lines, layout }: { lines: Line[]; layout: Layout }) {
         {groups.map((g, i) =>
           Array.isArray(g) ? (
             layout === "split" ? (
-              toSplit(g).map((r, k) => <SplitLine key={`${i}-${k}`} left={r.left} right={r.right} />)
+              toSplit(g).map((r, k) => (
+                <Fragment key={`${i}-${k}`}>
+                  <SplitLine left={r.left} right={r.right} onLine={annotations?.onLine} />
+                  {r.right?.new !== undefined && annotations?.render(r.right.new)}
+                </Fragment>
+              ))
             ) : (
-              g.map((l, k) => <UnifiedLine key={`${i}-${k}`} line={l} />)
+              g.map((l, k) => (
+                <Fragment key={`${i}-${k}`}>
+                  <UnifiedLine line={l} onLine={annotations?.onLine} />
+                  {l.new !== undefined && annotations?.render(l.new)}
+                </Fragment>
+              ))
             )
           ) : (
             <button key={`fold-${g.fold}`} type="button" className="fold" onClick={() => setExpanded((s) => new Set(s).add(g.fold))}>
@@ -115,12 +151,21 @@ function Text({ line }: { line: Line }) {
   );
 }
 
-function UnifiedLine({ line }: { line: Line }) {
+function NewNumber({ n, onLine, op }: { n: number | undefined; onLine?(line: number): void; op?: string }) {
+  if (n === undefined || !onLine) return <span className="dn num" data-op={op} role="cell">{n ?? ""}</span>;
+  return (
+    <span className="dn num" data-op={op} role="cell" data-commentable title="Comment on this line" onClick={() => onLine(n)}>
+      {n}
+    </span>
+  );
+}
+
+function UnifiedLine({ line, onLine }: { line: Line; onLine?(line: number): void }) {
   const op = line.op === "ctx" ? undefined : line.op;
   return (
     <div className="drow" data-op={op} role="row">
       <span className="dn num" role="cell">{line.old ?? ""}</span>
-      <span className="dn num" role="cell">{line.new ?? ""}</span>
+      <NewNumber n={line.new} onLine={onLine} />
       <span className="dm" role="cell" aria-label={opLabel[line.op] || undefined}>
         {marker[line.op]}
       </span>
@@ -131,7 +176,7 @@ function UnifiedLine({ line }: { line: Line }) {
   );
 }
 
-function SplitLine({ left, right }: { left?: Line; right?: Line }) {
+function SplitLine({ left, right, onLine }: { left?: Line; right?: Line; onLine?(line: number): void }) {
   const lo = left && left.op !== "ctx" ? left.op : undefined;
   const ro = right && right.op !== "ctx" ? right.op : undefined;
   return (
@@ -143,7 +188,7 @@ function SplitLine({ left, right }: { left?: Line; right?: Line }) {
       <span className="dsrc" data-op={lo} role="cell">
         {left ? <Text line={left} /> : ""}
       </span>
-      <span className="dn num" data-op={ro} role="cell">{right?.new ?? ""}</span>
+      <NewNumber n={right?.new} onLine={onLine} op={ro} />
       <span className="dm" data-op={ro} role="cell" aria-label={ro ? opLabel[ro] : undefined}>
         {ro ? marker[ro] : ""}
       </span>

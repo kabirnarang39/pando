@@ -1,14 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { DemoRepo, demoTransport } from "./api/demo";
-import { makeApi, serverTransport, type Api } from "./api/client";
+import { DemoPlatform, platformTransport } from "./api/demo-platform";
+import { makeApi, repoInterceptor, serverTransport, type Api } from "./api/client";
+import type { Transport } from "@connectrpc/connect";
 
-/** Where the console reads from: the built-in demo, or one pandod server. */
+/** Where the app reads from: the built-in demo, or one pandod server (which may host many repositories). */
 export type Target = { kind: "demo" } | { kind: "server"; url: string; token: string | null; remember: boolean };
 
 interface Connection {
   target: Target;
+  /** Calls that are not about one repository: accounts, organisations, the inbox. */
   api: Api;
-  /** A short name for the repository, shown in the header. */
+  /** Calls about one repository (`OWNER/NAME`). */
+  repoApi(repo: string): Api;
+  /** A short name for where we are connected, for the header. */
   label: string;
   connect(target: Target): void;
 }
@@ -34,10 +38,7 @@ function write(storage: () => Storage, key: string, value: unknown) {
   }
 }
 
-/**
- * The saved target. A token is kept for this tab only unless the person chose to remember it.
- * A `?server=` link (e.g. from `pandod`'s docs) preselects that server.
- */
+/** The saved target. A token is kept for this tab only unless the person chose to remember it. */
 function initial(): Target {
   const param = new URLSearchParams(location.search).get("server");
   if (param) return { kind: "server", url: param, token: read<string>(() => sessionStorage, KEY + ".token"), remember: false };
@@ -51,16 +52,34 @@ function initial(): Target {
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<Target>(initial);
-  const demo = useMemo(() => (target.kind === "demo" ? new DemoRepo() : null), [target.kind]);
+  const demo = useMemo(() => (target.kind === "demo" ? new DemoPlatform() : null), [target.kind]);
   useEffect(() => demo?.start(), [demo]);
 
   const value = useMemo<Connection>(() => {
-    const api = makeApi(target.kind === "demo" ? demoTransport(demo!) : serverTransport(target.url, target.token));
-    const label = target.kind === "demo" ? "fleet (demo)" : hostOf(target.url);
+    const transports = new Map<string, Transport>();
+    const transport = (repo?: string): Transport => {
+      const key = repo ?? "";
+      let t = transports.get(key);
+      if (!t) {
+        t =
+          target.kind === "demo"
+            ? platformTransport(demo!, { interceptors: [repoInterceptor(repo)] })
+            : serverTransport(target.url, target.token, repo);
+        transports.set(key, t);
+      }
+      return t;
+    };
+    const apis = new Map<string, Api>();
+    const repoApi = (repo: string) => {
+      let a = apis.get(repo);
+      if (!a) apis.set(repo, (a = makeApi(transport(repo))));
+      return a;
+    };
     return {
       target,
-      api,
-      label,
+      api: makeApi(transport()),
+      repoApi,
+      label: target.kind === "demo" ? "Demo" : hostOf(target.url),
       connect(next) {
         if (next.kind === "server") {
           write(() => localStorage, KEY, { ...next, token: next.remember ? next.token : null });
@@ -82,7 +101,8 @@ export function useConnection(): Connection {
   return c;
 }
 
-export const useApi = () => useConnection().api;
+/** The platform-level API (not about one repository). */
+export const usePlatformApi = () => useConnection().api;
 
 function hostOf(url: string) {
   try {

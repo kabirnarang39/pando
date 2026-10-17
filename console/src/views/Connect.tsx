@@ -31,7 +31,7 @@ export function ConnectView() {
       const text = await test();
       setCheck({ kind: "ok", text });
       connect({ kind: "server", url: url.trim(), token: token || null, remember });
-      navigate({ to: "/changes", search: {} });
+      navigate({ to: "/" });
     } catch (e) {
       setCheck({ kind: "error", text: explain(e, url) });
     } finally {
@@ -40,15 +40,15 @@ export function ConnectView() {
   };
 
   return (
-    <div className="page">
-      <div className="page-inner">
+    <div className="page page-narrow">
+      <div>
         <h1>Connection</h1>
         <p className="lede">
           The console reads one Pando server. It runs in your browser and talks to the server directly; nothing passes through anyone
           else.
         </p>
         <div className="choices">
-          <section className="choice" aria-labelledby="server-title">
+          <section className="panel panel-body" aria-labelledby="server-title">
             <h2 id="server-title">Your server</h2>
             <p>
               Start pandod with this site allowed: <code>--web-origins {location.origin}</code>
@@ -91,7 +91,7 @@ export function ConnectView() {
                   </>
                 )}
               </Checkbox>
-              <div className="row">
+              <div className="row-actions">
                 <button type="submit" className="button" data-primary disabled={busy || !url}>
                   {busy ? "Connecting…" : "Connect"}
                 </button>
@@ -104,7 +104,7 @@ export function ConnectView() {
               )}
             </Form>
           </section>
-          <section className="choice" aria-labelledby="demo-title">
+          <section className="panel panel-body" aria-labelledby="demo-title">
             <h2 id="demo-title">The demo</h2>
             <p>
               A sample monorepo where eight agents and one person land changes every few seconds. It runs entirely in this tab and
@@ -116,7 +116,7 @@ export function ConnectView() {
               disabled={target.kind === "demo"}
               onClick={() => {
                 connect({ kind: "demo" });
-                navigate({ to: "/changes", search: {} });
+                navigate({ to: "/" });
               }}
             >
               {target.kind === "demo" ? "Using the demo" : "Use the demo"}

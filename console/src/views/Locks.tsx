@@ -2,10 +2,12 @@ import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Cell, Column, Row, Table, TableBody, TableHeader, type SortDescriptor } from "react-aria-components";
 import { useLocks } from "../data";
+import { useRepoParams } from "../repo";
 import { Author, Empty, ErrorState, Icon, Skeleton, Time } from "../ui";
 
 /** Files that cannot be merged are locked while someone edits them; landing over a lock fails. */
 export function LocksView() {
+  const rp = useRepoParams();
   const locks = useLocks();
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortDescriptor>({ column: "at", direction: "descending" });
@@ -18,8 +20,8 @@ export function LocksView() {
   }, [locks.data, filter, sort]);
 
   return (
-    <div className="page">
-      <div className="page-inner">
+    <div className="page page-narrow">
+      <div>
         <h1>Locks</h1>
         <p className="lede">
           Files that can't be merged, such as designs and images, are locked while someone edits them. A change to a locked file lands
@@ -59,7 +61,7 @@ export function LocksView() {
                   {(l) => (
                     <Row id={l.path}>
                       <Cell>
-                        <Link to="/code/$" params={{ _splat: l.path }} search={(s) => ({ ref: s.ref })} className="mono">
+                        <Link to="/$owner/$repo/code/$" params={{ ...rp, _splat: l.path }} className="mono">
                           {l.path}
                         </Link>
                       </Cell>

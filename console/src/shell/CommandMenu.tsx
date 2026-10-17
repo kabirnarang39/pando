@@ -2,31 +2,30 @@ import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useDeferredValue, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { title, type Change } from "../api/client";
-import { useFind, useRefs } from "../data";
-import { Author, Icon, Time } from "../ui";
-import type { Theme } from "./hooks";
+import { useFind, useTip } from "../data";
+import { useInbox, useRepositories } from "../platform-data";
+import { useRepoMaybe } from "../repo";
+import { Author, Icon, type IconName } from "../ui";
+import { useRefName, type Theme } from "./hooks";
 
 export type MenuMode = "all" | "files";
 
 interface Props {
   open: MenuMode | null;
   onClose(): void;
-  tip: string | null | undefined;
-  refName: string;
-  recent: Change[] | undefined;
   theme: Theme;
   setTheme(t: Theme): void;
   showShortcuts(): void;
 }
 
-/** One place to reach anything: files, changes, branches and actions. */
-export function CommandMenu({ open, onClose, tip, refName, recent, theme, setTheme, showShortcuts }: Props) {
+/** One place to reach anything: files, repositories, reviews waiting on you, and actions. */
+export function CommandMenu({ open, onClose, theme, setTheme, showShortcuts }: Props) {
   const navigate = useNavigate();
+  const repo = useRepoMaybe();
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query.trim());
-  const files = useFind(open ? (tip ?? undefined) : undefined, deferred);
-  const refs = useRefs();
+  const repos = useRepositories();
+  const inbox = useInbox();
   const filesOnly = open === "files";
 
   const run = (f: () => void) => {
@@ -34,8 +33,14 @@ export function CommandMenu({ open, onClose, tip, refName, recent, theme, setThe
     setQuery("");
     f();
   };
-  const go = (to: "/changes" | "/locks" | "/connect") => run(() => navigate({ to, search: (s) => ({ ref: s.ref }) }));
   const nextTheme: Theme = theme === "system" ? "dark" : theme === "dark" ? "light" : "system";
+  const rp = repo ? { owner: repo.owner, repo: repo.name } : null;
+  const go = (label: string, icon: IconName, f: () => void, hint?: string) => (
+    <Command.Item key={label} value={`go ${label}`} onSelect={() => run(f)}>
+      <Icon name={icon} /> {label}
+      {hint && <span className="hint">{hint}</span>}
+    </Command.Item>
+  );
 
   return (
     <ModalOverlay className="overlay" isDismissable isOpen={open !== null} onOpenChange={(o) => !o && run(() => {})}>
@@ -46,85 +51,72 @@ export function CommandMenu({ open, onClose, tip, refName, recent, theme, setThe
               autoFocus
               value={query}
               onValueChange={setQuery}
-              placeholder={filesOnly ? `Go to a file on ${refName}…` : "Search files, changes, branches and actions…"}
+              placeholder={filesOnly && repo ? `Go to a file in ${repo.name}…` : "Search files, repositories, reviews and actions…"}
             />
             <Command.List>
-              <Command.Empty>
-                {deferred && files.isFetching ? "Searching…" : deferred ? `Nothing matches “${deferred}”.` : "Type to search files."}
-              </Command.Empty>
-
-              {deferred && files.data && files.data.paths.length > 0 && (
-                <Command.Group heading={files.data.truncated ? "Files (first 50)" : "Files"}>
-                  {files.data.paths.map((p) => (
-                    <Command.Item
-                      key={p}
-                      value={`file ${p}`}
-                      onSelect={() => run(() => navigate({ to: "/code/$", params: { _splat: p }, search: { ref: refName === "main" ? undefined : refName } }))}
-                    >
-                      <Icon name="file" />
-                      <Path path={p} query={deferred} />
-                    </Command.Item>
-                  ))}
-                </Command.Group>
-              )}
+              <Command.Empty>{deferred ? `Nothing matches “${deferred}”.` : "Type to search."}</Command.Empty>
+              {repo && open && <Files query={deferred} onPick={(p) => run(() => navigate({ to: "/$owner/$repo/code/$", params: { ...rp!, _splat: p } }))} />}
 
               {!filesOnly && (
                 <>
-                  <Command.Group heading="Go to">
-                    <Command.Item value="go changes landed feed" onSelect={() => go("/changes")}>
-                      <Icon name="changes" /> Changes <span className="hint">g then l</span>
-                    </Command.Item>
-                    <Command.Item
-                      value="go code browse files tree"
-                      onSelect={() => run(() => navigate({ to: "/code/$", params: { _splat: "" }, search: (s) => ({ ref: s.ref }) }))}
-                    >
-                      <Icon name="code" /> Code <span className="hint">g then c</span>
-                    </Command.Item>
-                    <Command.Item value="go locks locked files" onSelect={() => go("/locks")}>
-                      <Icon name="lock" /> Locks <span className="hint">g then k</span>
-                    </Command.Item>
-                    <Command.Item value="go connection server token settings" onSelect={() => go("/connect")}>
-                      <Icon name="plug" /> Connection
-                    </Command.Item>
-                  </Command.Group>
+                  {inbox.data && inbox.data.length > 0 && (
+                    <Command.Group heading="Waiting on you">
+                      {inbox.data.slice(0, deferred ? 50 : 4).map((i) => {
+                        const cr = i.changeRequest!;
+                        return (
+                          <Command.Item
+                            key={`${cr.repository?.name}#${cr.number}`}
+                            value={`review ${cr.repository?.name} ${cr.number} ${cr.title} ${cr.author}`}
+                            onSelect={() => run(() => navigate({ to: "/$owner/$repo/reviews/$number", params: { owner: cr.repository!.owner, repo: cr.repository!.name, number: String(cr.number) } }))}
+                          >
+                            <Author author={cr.author} compact />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cr.title}</span>
+                            <span className="hint">
+                              {cr.repository?.name} #{String(cr.number)}
+                            </span>
+                          </Command.Item>
+                        );
+                      })}
+                    </Command.Group>
+                  )}
 
-                  {recent && recent.length > 0 && (
-                    <Command.Group heading={`Recent changes on ${refName}`}>
-                      {recent.slice(0, deferred ? 100 : 6).map((c) => (
-                        <Command.Item
-                          key={c.id}
-                          value={`change ${c.id} ${c.author} ${c.message}`}
-                          onSelect={() => run(() => navigate({ to: "/changes", search: (s) => ({ ref: s.ref, c: c.id }) }))}
-                        >
-                          <Author author={c.author} compact />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title(c.message)}</span>
-                          <span className="hint">
-                            <Time ms={c.time} />
+                  {rp && (
+                    <Command.Group heading={`In ${repo!.name}`}>
+                      {go("Overview", "repo", () => navigate({ to: "/$owner/$repo", params: rp }))}
+                      {go("Code", "code", () => navigate({ to: "/$owner/$repo/code/$", params: { ...rp, _splat: "" } }), "g c")}
+                      {go("Changes", "changes", () => navigate({ to: "/$owner/$repo/changes", params: rp }), "g l")}
+                      {go("Reviews", "review", () => navigate({ to: "/$owner/$repo/reviews", params: rp }), "g r")}
+                      {go("Locks", "lock", () => navigate({ to: "/$owner/$repo/locks", params: rp }), "g k")}
+                      {go("Agents", "bot", () => navigate({ to: "/$owner/$repo/agents", params: rp }))}
+                      {go("Settings", "settings", () => navigate({ to: "/$owner/$repo/settings", params: rp }))}
+                    </Command.Group>
+                  )}
+
+                  {repos.data && (
+                    <Command.Group heading="Repositories">
+                      {repos.data.map((r) => (
+                        <Command.Item key={r.name} value={`repository ${r.owner}/${r.name} ${r.description}`} onSelect={() => run(() => navigate({ to: "/$owner/$repo", params: { owner: r.owner, repo: r.name } }))}>
+                          <Icon name="repo" />
+                          <span>
+                            <span className="muted">{r.owner}/</span>
+                            {r.name}
                           </span>
+                          <span className="hint">{r.lands24h} lands today</span>
                         </Command.Item>
                       ))}
                     </Command.Group>
                   )}
 
-                  {refs.data && refs.data.length > 1 && (
-                    <Command.Group heading="Switch branch">
-                      {refs.data.map((r) => (
-                        <Command.Item
-                          key={r.name}
-                          value={`branch ref switch ${r.name}`}
-                          onSelect={() => run(() => navigate({ to: ".", search: (s) => ({ ...s, ref: r.name === "main" ? undefined : r.name }) }))}
-                        >
-                          <Icon name="branch" />
-                          <span className="mono">{r.name}</span>
-                          {r.name === refName && <span className="hint">current</span>}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  )}
+                  <Command.Group heading="Go to">
+                    {go("Home", "home", () => navigate({ to: "/" }), "g h")}
+                    {go("Inbox", "inbox", () => navigate({ to: "/inbox" }), "g i")}
+                    {go("Tokens", "key", () => navigate({ to: "/settings/tokens" }))}
+                    {go("Connection", "plug", () => navigate({ to: "/connect" }))}
+                  </Command.Group>
 
                   <Command.Group heading="Actions">
                     <Command.Item value="theme appearance dark light system" onSelect={() => run(() => setTheme(nextTheme))}>
-                      <Icon name={nextTheme === "dark" ? "moon" : "sun"} /> Use {nextTheme === "system" ? "the system theme" : `${nextTheme} theme`}
+                      <Icon name={nextTheme === "dark" ? "moon" : "sun"} /> Use {nextTheme === "system" ? "the system theme" : `the ${nextTheme} theme`}
                     </Command.Item>
                     <Command.Item value="keyboard shortcuts help" onSelect={() => run(showShortcuts)}>
                       <Icon name="keyboard" /> Keyboard shortcuts <span className="hint">?</span>
@@ -151,14 +143,30 @@ export function CommandMenu({ open, onClose, tip, refName, recent, theme, setThe
   );
 }
 
-/** A path with the matched part emphasised, directory dimmed. */
+/** Files in the repository in view whose path contains the query. */
+function Files({ query, onPick }: { query: string; onPick(path: string): void }) {
+  const ref = useRefName();
+  const tip = useTip(ref);
+  const files = useFind(tip.data ?? undefined, query);
+  if (!query || !files.data?.paths.length) return null;
+  return (
+    <Command.Group heading={files.data.truncated ? "Files (first 50)" : "Files"}>
+      {files.data.paths.map((p) => (
+        <Command.Item key={p} value={`file ${p}`} onSelect={() => onPick(p)}>
+          <Icon name="file" />
+          <Path path={p} query={query} />
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
 function Path({ path, query }: { path: string; query: string }) {
   const at = path.indexOf(query);
-  const slash = path.lastIndexOf("/");
   if (at < 0) return <span className="mono">{path}</span>;
   return (
     <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-      <span className={at > slash ? "muted" : undefined}>{path.slice(0, at)}</span>
+      <span className="muted">{path.slice(0, at)}</span>
       <span className="match">{path.slice(at, at + query.length)}</span>
       {path.slice(at + query.length)}
     </span>

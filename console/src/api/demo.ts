@@ -2,12 +2,12 @@
 // fleet of simulated agents that keep landing small, real edits. It answers the same RPCs as
 // pandod, so every screen of the console runs against it unchanged.
 
-import { create, toBinary } from "@bufbuild/protobuf";
-import { Code, ConnectError, createRouterTransport, type Transport } from "@connectrpc/connect";
-import { diffArrays } from "diff";
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { Code, ConnectError, createRouterTransport, type ConnectRouter, type HandlerContext, type Transport } from "@connectrpc/connect";
+import { applyPatch, diffArrays, structuredPatch } from "diff";
 import { ChangesetSchema, FileChangeSchema, Mode } from "../gen/pando_objects_pb";
 import { Access, Browse, Changesets, Diff, History, Locks, Refs } from "../gen/pando_pb";
-import { binaryFiles, people, seedFiles } from "./demo-repo";
+import { fleetSeed, type RepoSeed } from "./demo-repo";
 import { hex } from "./client";
 
 interface FileState {
@@ -55,7 +55,6 @@ function rng(seed: number) {
 }
 
 const lines = (b: Uint8Array) => dec.decode(b).split("\n");
-const isText = (path: string) => !(path in binaryFiles);
 const overlaps = (path: string, filter: string) =>
   !filter || path === filter || path.startsWith(filter + "/") || filter.startsWith(path + "/");
 
@@ -66,30 +65,143 @@ export class DemoRepo {
   private changesets = new Map<string, Stored>();
   private refs = new Map<string, string>();
   private locks = new Map<string, { owner: string; at: number }>();
-  private random = rng(20261017);
+  private random: () => number;
+  readonly seed: RepoSeed;
   private listeners = new Set<() => void>();
   private counter = 0;
   private home: Record<string, number> = {};
+  private times = new Map<string, number>();
 
-  constructor(now = Date.now()) {
+  constructor(seed: RepoSeed = fleetSeed, now = Date.now()) {
+    this.seed = seed;
+    this.random = rng(seed.seed);
     const snapshot: Snapshot = new Map();
-    const seedTime = now - 6 * 3600_000;
+    const seedTime = now - seed.historyHours * 3600_000;
     const files: { path: string; bytes: Uint8Array }[] = [
-      ...Object.entries(seedFiles).map(([path, text]) => ({ path, bytes: enc.encode(text) })),
-      ...Object.entries(binaryFiles).map(([path, size]) => ({ path, bytes: this.binary(size) })),
+      ...Object.entries(seed.files).map(([path, text]) => ({ path, bytes: enc.encode(text) })),
+      ...Object.entries(seed.binaries).map(([path, size]) => ({ path, bytes: this.binary(size) })),
     ];
-    const root = this.commit(null, snapshot, files.map((f) => ({ path: f.path, bytes: f.bytes })), "kabir", "Import the Fleet monorepo", seedTime);
+    const root = this.commit(null, snapshot, files, seed.importer, seed.importMessage, seedTime);
     this.refs.set("main", root);
-    // A few hours of history, landing faster as the fleet scales up.
+    // Some hours of history, landing faster as the fleet scales up.
     let t = seedTime;
     while (t < now - 60_000) {
-      t += 4_000 + this.random() * 70_000 * (1 - (t - seedTime) / (now - seedTime));
+      t += seed.paceMs * (0.2 + this.random() * 3 * (1 - (t - seedTime) / (now - seedTime)));
       this.landRandom(Math.min(t, now - 60_000));
     }
-    this.refs.set("release/2.4", this.ancestor(this.refs.get("main")!, 40));
-    this.refs.set("agent/perf-05/batching", this.ancestor(this.refs.get("main")!, 3));
-    this.locks.set("design/checkout.fig", { owner: "kabir", at: now - 47 * 60_000 });
-    this.locks.set("assets/brand/hero.psd", { owner: "agent/docs-01", at: now - 6 * 60_000 });
+    for (const [name, back] of Object.entries(seed.branches)) this.refs.set(name, this.ancestor(this.refs.get("main")!, back));
+    for (const [path, l] of Object.entries(seed.locks)) this.locks.set(path, { owner: l.owner, at: now - l.minutesAgo * 60_000 });
+  }
+
+  private isText(path: string) {
+    return !(path in this.seed.binaries);
+  }
+
+  /** An agent's change on its own branch, off the current tip, for a change request. */
+  propose(author: string, branch: string, time = Date.now()): { base: string; tip: string; message: string; paths: string[] } | null {
+    const base = this.refs.get("main")!;
+    const snap = this.changesets.get(base)!.snapshot;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const edit = this.edit(snap, author);
+      if (!edit) continue;
+      const tip = this.commit(base, snap, [{ path: edit.path, bytes: edit.text === null ? null : enc.encode(edit.text) }], author, edit.message, time);
+      this.refs.set(branch, tip);
+      return { base, tip, message: edit.message, paths: [edit.path] };
+    }
+    return null;
+  }
+
+  /** Lands a branch's files onto main as one new change by `author`. */
+  landBranch(branch: string, author: string, message: string): string {
+    const src = this.resolve(branch);
+    const tip = this.refs.get("main")!;
+    const snap = this.changesets.get(tip)!.snapshot;
+    const edits = src.changes.map((c) => ({ path: c.path, bytes: src.snapshot.get(c.path)?.bytes ?? null }));
+    const id = this.commit(tip, snap, edits, author, message, Date.now());
+    this.refs.set("main", id);
+    this.listeners.forEach((l) => l());
+    return id;
+  }
+
+  /**
+   * Re-applies a branch's edits on main's tip, as a three-way merge per file. Returns the new
+   * tip and base, or the paths whose edits overlap what landed on main since `base`.
+   */
+  rebaseBranch(branch: string, base: string): { tip: string; base: string } | { conflicts: string[] } {
+    const src = this.resolve(branch);
+    const old = this.resolve(base).snapshot;
+    const mainId = this.refs.get("main")!;
+    const main = this.changesets.get(mainId)!.snapshot;
+    const edits: { path: string; bytes: Uint8Array | null }[] = [];
+    const conflicts: string[] = [];
+    for (const c of src.changes) {
+      const before = old.get(c.path);
+      const after = src.snapshot.get(c.path);
+      const now = main.get(c.path);
+      if (!after) {
+        edits.push({ path: c.path, bytes: null });
+        continue;
+      }
+      if (!this.isText(c.path) || !before || !now) {
+        if (now && before && dec.decode(now.bytes) !== dec.decode(before.bytes)) conflicts.push(c.path);
+        else edits.push({ path: c.path, bytes: after.bytes });
+        continue;
+      }
+      const patch = structuredPatch(c.path, c.path, dec.decode(before.bytes), dec.decode(after.bytes), "", "", { context: 2 });
+      const merged = applyPatch(dec.decode(now.bytes), patch);
+      if (merged === false) conflicts.push(c.path);
+      else edits.push({ path: c.path, bytes: enc.encode(merged) });
+    }
+    if (conflicts.length) return { conflicts };
+    const cs = this.parse(src);
+    const tip = this.commit(mainId, main, edits, cs.author, cs.message, Date.now());
+    this.refs.set(branch, tip);
+    return { tip, base: mainId };
+  }
+
+  /** Author and message of a stored changeset. */
+  private parse(cs: Stored) {
+    const decoded = fromBinary(ChangesetSchema, cs.encoded);
+    return { author: decoded.author, message: decoded.message };
+  }
+
+  /** Lands one file's new text on main directly (tests and scripted demos). */
+  landWith(path: string, text: string, author: string, message: string): string {
+    const tip = this.refs.get("main")!;
+    const id = this.commit(tip, this.changesets.get(tip)!.snapshot, [{ path, bytes: enc.encode(text) }], author, message, Date.now());
+    this.refs.set("main", id);
+    return id;
+  }
+
+  /** Paths a branch changed that main has also changed since `base`. */
+  conflicts(branch: string, base: string): string[] {
+    const src = this.resolve(branch);
+    const changed = new Set<string>();
+    let cur = this.refs.get("main");
+    while (cur && cur !== base) {
+      const cs = this.changesets.get(cur)!;
+      cs.changes.forEach((c) => changed.add(c.path));
+      cur = cs.parent ?? undefined;
+    }
+    return src.changes.map((c) => c.path).filter((p) => changed.has(p));
+  }
+
+  /** Tip id, its time, and how many changes landed in the last day. */
+  stats(now = Date.now()) {
+    const tip = this.changesets.get(this.refs.get("main")!)!;
+    let lands = 0;
+    let at = 0;
+    for (let cur: Stored | undefined = tip; cur; cur = cur.parent ? this.changesets.get(cur.parent) : undefined) {
+      const t = this.time(cur);
+      if (!at) at = t;
+      if (t < now - 86_400_000) break;
+      lands++;
+    }
+    return { tip: tip.id, at, lands };
+  }
+
+  private time(cs: Stored): number {
+    return this.times.get(hex(cs.id)) ?? 0;
   }
 
   /** Lands one change every couple of seconds until stopped. */
@@ -98,7 +210,7 @@ export class DemoRepo {
     const tick = () => {
       this.landRandom(Date.now());
       this.listeners.forEach((l) => l());
-      timer = setTimeout(tick, 900 + this.random() * 2600);
+      timer = setTimeout(tick, this.seed.livePaceMs * (0.4 + this.random() * 1.2));
     };
     timer = setTimeout(tick, 1500);
     return () => clearTimeout(timer);
@@ -153,13 +265,14 @@ export class DemoRepo {
       }
       const old = base.get(e.path);
       let blame: Uint8Array[] = [];
-      if (isText(e.path)) {
+      if (this.isText(e.path)) {
         const next = lines(e.bytes);
         blame = old ? this.remapBlame(old, next, id) : next.map(() => id);
       }
       snapshot.set(e.path, { bytes: e.bytes, mode: Mode.FILE, blob: digest(e.bytes), blame });
     }
     const key = hex(id);
+    this.times.set(key, time);
     const generation = parent ? this.changesets.get(parent)!.generation + 1n : 1n;
     this.changesets.set(key, { id, encoded, parent, generation, changes, snapshot });
     return key;
@@ -179,7 +292,7 @@ export class DemoRepo {
   private landRandom(time: number) {
     const tip = this.refs.get("main")!;
     const snap = this.changesets.get(tip)!.snapshot;
-    const author = people[Math.floor(this.random() * people.length)]!;
+    const author = this.seed.people[Math.floor(this.random() * this.seed.people.length)]!;
     const edit = this.edit(snap, author);
     if (!edit) return;
     const id = this.commit(tip, snap, [{ path: edit.path, bytes: edit.text === null ? null : enc.encode(edit.text) }], author, edit.message, time);
@@ -189,7 +302,7 @@ export class DemoRepo {
   /** A small, plausible change in the style of the agent making it. */
   private edit(snap: Snapshot, author: string): Edit | null {
     const pick = <T,>(xs: T[]) => xs[Math.floor(this.random() * xs.length)]!;
-    const textPaths = [...snap.keys()].filter(isText);
+    const textPaths = [...snap.keys()].filter((p) => this.isText(p));
     const n = ++this.counter;
     const kind = author.includes("docs")
       ? "doc"
@@ -210,7 +323,7 @@ export class DemoRepo {
     }
     if (kind === "tune") {
       // Only named settings, and never further than 3x from where they started.
-      const tunable = /(const [A-Z_]+(?:: \w+)? = |^\s*[a-z_]+\s+=\s+|timeout_minutes: |batchSize: )(\d{1,5})\b/;
+      const tunable = /(const [A-Z_]+(?:: \w+)? = |^\s*[a-z_]+\s+=\s+|^[A-Z_]+ = |timeout_minutes: |batchSize: )(\d{1,5})\b/;
       const candidates = textPaths.filter((p) => !p.endsWith(".md") && lines(snap.get(p)!.bytes).some((l) => tunable.test(l)));
       if (!candidates.length) return null;
       const path = pick(candidates);
@@ -231,15 +344,20 @@ export class DemoRepo {
     }
     if (kind === "test") {
       // At most three generated tests per file: a fleet that only ever adds tests is not believable.
-      const open = textPaths.filter((p) => (p.endsWith(".rs") || p.endsWith(".go")) && (dec.decode(snap.get(p)!.bytes).match(/[Hh]andles/g)?.length ?? 0) < 3);
+      const open = textPaths.filter((p) => /\.(rs|go|ts|py)$/.test(p) && !p.endsWith(".d.ts") && (dec.decode(snap.get(p)!.bytes).match(/[Hh]andles/g)?.length ?? 0) < 3);
       if (!open.length) return null;
       const path = pick(open);
       const text = dec.decode(snap.get(path)!.bytes);
       const thing = pick(["empty input", "zero quantity", "maximum price", "unicode titles", "duplicate ids", "retry exhaustion"]);
       const fn = thing.replace(/ /g, "_");
+      const camel = fn.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
       const added = path.endsWith(".rs")
         ? `\n#[cfg(test)]\nmod ${fn}_${n} {\n    #[test]\n    fn handles_${fn}() {\n        assert!(true, "${thing} is accepted");\n    }\n}\n`
-        : `\nfunc TestHandles${fn.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase())}${n}(t *testing.T) {\n\tt.Log("${thing}")\n}\n`;
+        : path.endsWith(".go")
+          ? `\nfunc TestHandles${camel}${n}(t *testing.T) {\n\tt.Log("${thing}")\n}\n`
+          : path.endsWith(".py")
+            ? `\n\ndef test_handles_${fn}_${n}():\n    assert True, "${thing} is accepted"\n`
+            : `\ntest("handles ${thing}", () => {\n  expect(true).toBe(true);\n});\n`;
       return { path, text: text.trimEnd() + "\n" + added, message: `Add test for ${thing} in ${path.split("/").pop()}` };
     }
     // Documentation: reword or add a line to a Markdown file or a doc comment.
@@ -338,7 +456,7 @@ export class DemoRepo {
 
   blame(rev: string, path: string) {
     const f = this.file(rev, path);
-    if (!isText(path)) throw new ConnectError(`\`${path}\` is not a text file`, Code.FailedPrecondition);
+    if (!this.isText(path)) throw new ConnectError(`\`${path}\` is not a text file`, Code.FailedPrecondition);
     return lines(f.bytes).map((text, i) => ({ changeset: f.blame[i]!, text }));
   }
 
@@ -349,71 +467,71 @@ export class DemoRepo {
   }
 }
 
-/** A transport answered by `repo`, with a little latency so loading states are real. */
-export function demoTransport(repo: DemoRepo): Transport {
+/** The repository services, answered by whichever demo repository `repoOf` picks for a call. */
+export function repoServices(router: ConnectRouter, repoOf: (ctx: HandlerContext) => DemoRepo, _services: unknown[] = []) {
   const wait = () => new Promise((r) => setTimeout(r, 15 + Math.random() * 45));
-  return createRouterTransport(({ service }) => {
-    service(Refs, {
-      async get(r) {
+
+    router.service(Refs, {
+      async get(r, ctx) {
         await wait();
-        return repo.ref(r.name);
+        return repoOf(ctx).ref(r.name);
       },
-      async list() {
+      async list(_r, ctx) {
         await wait();
-        return { refs: repo.refList() };
+        return { refs: repoOf(ctx).refList() };
       },
       compareAndSwap() {
         throw new ConnectError("the demo is read-only", Code.PermissionDenied);
       },
     });
-    service(Changesets, {
-      async get(r) {
+    router.service(Changesets, {
+      async get(r, ctx) {
         await wait();
-        return repo.info(repo.resolve(r.rev));
+        return repoOf(ctx).info(repoOf(ctx).resolve(r.rev));
       },
       create() {
         throw new ConnectError("the demo is read-only", Code.PermissionDenied);
       },
     });
-    service(History, {
-      async *log(r) {
+    router.service(History, {
+      async *log(r, ctx) {
         await wait();
-        yield* repo.log(r.rev, r.path, r.limit);
+        yield* repoOf(ctx).log(r.rev, r.path, r.limit);
       },
-      async blame(r) {
+      async blame(r, ctx) {
         await wait();
-        return { lines: repo.blame(r.rev, r.path) };
-      },
-    });
-    service(Diff, {
-      async diff(r) {
-        await wait();
-        return { changes: repo.diff(r.from, r.to) };
+        return { lines: repoOf(ctx).blame(r.rev, r.path) };
       },
     });
-    service(Browse, {
-      async listDir(r) {
+    router.service(Diff, {
+      async diff(r, ctx) {
         await wait();
-        return { entries: repo.listDir(r.rev, r.path) };
+        return { changes: repoOf(ctx).diff(r.from, r.to) };
       },
-      async readFile(r) {
+    });
+    router.service(Browse, {
+      async listDir(r, ctx) {
         await wait();
-        const f = repo.file(r.rev, r.path);
+        return { entries: repoOf(ctx).listDir(r.rev, r.path) };
+      },
+      async readFile(r, ctx) {
+        await wait();
+        const f = repoOf(ctx).file(r.rev, r.path);
         return { content: f.bytes, mode: f.mode, id: f.blob };
       },
-      async find(r) {
+      async find(r, ctx) {
         await wait();
-        return repo.find(r.rev, r.pattern, r.limit);
+        return repoOf(ctx).find(r.rev, r.pattern, r.limit);
       },
       // eslint-disable-next-line require-yield
       async *checkout() {
         throw new ConnectError("use `pando clone` to check out", Code.Unimplemented);
       },
     });
-    service(Locks, {
-      async list(r) {
+    router.service(Locks, {
+      async list(r, ctx) {
         await wait();
-        return { locks: repo.lockList(r.prefix) };
+        return { locks: repoOf(ctx).lockList(r.prefix) };
       },
       lock() {
         throw new ConnectError("the demo is read-only", Code.PermissionDenied);
@@ -422,11 +540,15 @@ export function demoTransport(repo: DemoRepo): Transport {
         throw new ConnectError("the demo is read-only", Code.PermissionDenied);
       },
     });
-    service(Access, {
+    router.service(Access, {
       async whoAmI() {
         await wait();
-        return { principal: "demo", fullRead: true, readPrefixes: [] };
+        return { principal: "kabir", fullRead: true, readPrefixes: [] };
       },
     });
-  });
+}
+
+/** A transport answered by one demo repository. */
+export function demoTransport(repo: DemoRepo): Transport {
+  return createRouterTransport((router) => repoServices(router, () => repo));
 }

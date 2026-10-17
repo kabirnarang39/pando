@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import { decodeChange, hex, isNotFound, Mode, title, type Change } from "../api/client";
-import { useConnection } from "../connection";
+import { useRepo, useRepoParams } from "../repo";
 import { useBlame, useDir, useFile, useHistory, useLocks, useTip } from "../data";
 import { HIGHLIGHT_LIMIT, useHighlight, type Token } from "../highlight";
 import { typing, useRefName } from "../shell/hooks";
@@ -13,10 +13,11 @@ const parentOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")
 const ancestors = (p: string) => p.split("/").slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join("/"));
 
 export function CodeView() {
+  const rp = useRepoParams();
   const refName = useRefName();
-  const { _splat } = useParams({ from: "/code/$" });
+  const { _splat } = useParams({ from: "/$owner/$repo/code/$" });
   const path = (_splat ?? "").replace(/^\/+|\/+$/g, "");
-  const { at } = useSearch({ from: "/code/$" });
+  const { at } = useSearch({ from: "/$owner/$repo/code/$" });
   const tip = useTip(refName);
   const rev = at ?? tip.data ?? undefined;
   const parent = useDir(rev, parentOf(path), !!path);
@@ -39,7 +40,7 @@ export function CodeView() {
           {at ? (
             <span className="muted" style={{ fontSize: "var(--t-xs)" }}>
               at <span className="mono">{at.slice(0, 12)}</span>{" "}
-              <Link to="/code/$" params={{ _splat: path }} search={(s) => ({ ref: s.ref })}>
+              <Link to="/$owner/$repo/code/$" params={{ owner: rp.owner, repo: rp.repo, _splat: path }} search={{}}>
                 latest
               </Link>
             </span>
@@ -67,17 +68,20 @@ interface Node {
 
 /** The repository as a tree; directories load the first time they open. */
 function FileTree({ rev, path }: { rev: string; path: string }) {
-  const { api } = useConnection();
+  const rp = useRepoParams();
+  const { api, key: repoKey } = useRepo();
   const navigate = useNavigate();
   const locks = useLocks();
   const locked = new Set(locks.data?.map((l) => l.path));
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(ancestors(path)));
-  useEffect(() => setExpanded((s) => (ancestors(path).every((a) => s.has(a)) ? s : new Set([...s, ...ancestors(path)]))), [path]);
+  useEffect(() => {
+    setExpanded((s) => (ancestors(path).every((a) => s.has(a)) ? s : new Set([...s, ...ancestors(path)])));
+  }, [path]);
 
   const dirs = ["", ...[...expanded]];
   const results = useQueries({
     queries: dirs.map((d) => ({
-      queryKey: ["dir", rev, d],
+      queryKey: [repoKey, "dir", rev, d],
       queryFn: async () => (await api.browse.listDir({ rev, path: d })).entries.map((e) => ({ name: e.name, mode: e.mode, id: hex(e.id) })),
       staleTime: Infinity,
     })),
@@ -107,7 +111,7 @@ function FileTree({ rev, path }: { rev: string; path: string }) {
       data-dir={n.dir || undefined}
       onAction={() => {
         if (n.id.endsWith("/…")) return;
-        navigate({ to: "/code/$", params: { _splat: n.id }, search: (s) => ({ ref: s.ref, at: s.at }) });
+        navigate({ to: "/$owner/$repo/code/$", params: { owner: rp.owner, repo: rp.repo, _splat: n.id }, search: (s) => ({ at: (s as { at?: string }).at }) });
         if (n.dir) setExpanded((s) => new Set(s).add(n.id));
       }}
     >
@@ -150,10 +154,11 @@ function FileTree({ rev, path }: { rev: string; path: string }) {
 }
 
 function Crumbs({ path }: { path: string }) {
+  const rp = useRepoParams();
   const parts = path ? path.split("/") : [];
   return (
     <nav className="crumbs" aria-label="Path">
-      <Link to="/code/$" params={{ _splat: "" }} search={(s) => ({ ref: s.ref, at: s.at })}>
+      <Link to="/$owner/$repo/code/$" params={{ owner: rp.owner, repo: rp.repo, _splat: "" }} search={(s) => ({ at: (s as { at?: string }).at })}>
         root
       </Link>
       {parts.map((p, i) => {
@@ -165,7 +170,7 @@ function Crumbs({ path }: { path: string }) {
             {last ? (
               <span aria-current="page">{p}</span>
             ) : (
-              <Link to="/code/$" params={{ _splat: to }} search={(s) => ({ ref: s.ref, at: s.at })}>
+              <Link to="/$owner/$repo/code/$" params={{ owner: rp.owner, repo: rp.repo, _splat: to }} search={(s) => ({ at: (s as { at?: string }).at })}>
                 {p}
               </Link>
             )}
@@ -177,6 +182,7 @@ function Crumbs({ path }: { path: string }) {
 }
 
 function DirView({ rev, path }: { rev: string; path: string }) {
+  const rp = useRepoParams();
   const dir = useDir(rev, path);
   const history = useHistory(rev, path);
   const last = history.data?.pages[0]?.[0];
@@ -188,7 +194,7 @@ function DirView({ rev, path }: { rev: string; path: string }) {
         {last && (
           <span className="file-meta">
             <Author author={last.author} compact />
-            <Link to="/changes" search={(s) => ({ ref: s.ref, c: last.id })} style={{ maxWidth: "36ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <Link to="/$owner/$repo/changes" params={rp} search={{ c: last.id }} style={{ maxWidth: "36ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {title(last.message)}
             </Link>
             <Time ms={last.time} />
@@ -214,7 +220,7 @@ function DirView({ rev, path }: { rev: string; path: string }) {
                         <Icon name={e.mode === Mode.DIR ? "chevron" : "file"} size={14} />
                       </td>
                       <td>
-                        <Link to="/code/$" params={{ _splat: path ? `${path}/${e.name}` : e.name }} search={(s) => ({ ref: s.ref, at: s.at })} className={e.mode === Mode.DIR ? undefined : "mono"}>
+                        <Link to="/$owner/$repo/code/$" params={{ ...rp, _splat: path ? `${path}/${e.name}` : e.name }} search={(s) => ({ at: (s as { at?: string }).at })} className={e.mode === Mode.DIR ? undefined : "mono"}>
                           {e.name}
                           {e.mode === Mode.DIR && "/"}
                         </Link>
@@ -258,8 +264,9 @@ function parseLines(L: string | undefined): [number, number] | null {
 }
 
 function FileView({ rev, path, pinned }: { rev: string; path: string; pinned: boolean }) {
-  const { blame, history, L } = useSearch({ from: "/code/$" });
-  const navigate = useNavigate({ from: "/code/$" });
+  const rp = useRepoParams();
+  const { blame, history, L } = useSearch({ from: "/$owner/$repo/code/$" });
+  const navigate = useNavigate({ from: "/$owner/$repo/code/$" });
   const file = useFile(rev, path);
   const locks = useLocks();
   const lock = locks.data?.find((l) => l.path === path);
@@ -294,7 +301,7 @@ function FileView({ rev, path, pinned }: { rev: string; path: string; pinned: bo
   return (
     <>
       <div className="pane-head">
-        <Link to="/code/$" params={{ _splat: parentOf(path) }} search={(s) => ({ ref: s.ref, at: s.at })} className="button back" aria-label="Back to folder">
+        <Link to="/$owner/$repo/code/$" params={{ owner: rp.owner, repo: rp.repo, _splat: parentOf(path) }} search={(s) => ({ at: (s as { at?: string }).at })} className="button back" aria-label="Back to folder">
           <Icon name="back" />
         </Link>
         <Crumbs path={path} />
@@ -352,12 +359,13 @@ function Code({
   onPick(n: number, extend: boolean): void;
   blame: { rev: string; path: string } | null;
 }) {
+  const rp = useRepoParams();
   const owners = useBlame(blame?.rev, blame?.path ?? "", !!blame);
   const ids = useMemo(() => [...new Set(owners.data ?? [])], [owners.data]);
-  const { api } = useConnection();
+  const { api, key: repoKey } = useRepo();
   const changes = useQueries({
     queries: ids.map((id) => ({
-      queryKey: ["change", id],
+      queryKey: [repoKey, "change", id],
       queryFn: async () => decodeChange(await api.changesets.get({ rev: id })),
       staleTime: Infinity,
     })),
@@ -389,7 +397,7 @@ function Code({
                   {first && c && (
                     <>
                       <Author author={c.author} compact />
-                      <Link to="/changes" search={(s) => ({ ref: s.ref, c: c.id })} title={c.message}>
+                      <Link to="/$owner/$repo/changes" params={rp} search={{ c: c.id }} title={c.message}>
                         {title(c.message)}
                       </Link>
                       <span className="age num">{ago(c.time, now)}</span>
@@ -417,6 +425,7 @@ function Code({
 }
 
 function FileHistory({ rev, path }: { rev: string; path: string }) {
+  const rp = useRepoParams();
   const history = useHistory(rev, path);
   if (history.isPending) return <Skeleton />;
   if (history.error) return <ErrorState error={history.error} retry={() => history.refetch()} />;
@@ -429,7 +438,7 @@ function FileHistory({ rev, path }: { rev: string; path: string }) {
           {all.map((c) => (
             <tr key={c.id}>
               <td>
-                <Link to="/changes" search={(s) => ({ ref: s.ref, c: c.id })}>
+                <Link to="/$owner/$repo/changes" params={rp} search={{ c: c.id }}>
                   {title(c.message)}
                 </Link>
               </td>
@@ -440,7 +449,7 @@ function FileHistory({ rev, path }: { rev: string; path: string }) {
                 <Time ms={c.time} />
               </td>
               <td>
-                <Link to="/code/$" params={{ _splat: path }} search={(s) => ({ ref: s.ref, at: c.id })}>
+                <Link to="/$owner/$repo/code/$" params={{ owner: rp.owner, repo: rp.repo, _splat: path }} search={{ at: c.id }}>
                   View file
                 </Link>{" "}
                 <CopyId id={c.id} label="Copy change id" />

@@ -3,6 +3,7 @@ import { Code, ConnectError, createClient, type Interceptor, type Transport } fr
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { ChangesetSchema, Mode } from "../gen/pando_objects_pb";
 import { Access, Browse, Changesets, Diff, History, Locks, Refs, type ChangesetInfo } from "../gen/pando_pb";
+import { Platform, Reviews } from "../gen/pando_platform_pb";
 
 export { Mode };
 
@@ -16,17 +17,31 @@ export function makeApi(transport: Transport) {
     history: createClient(History, transport),
     locks: createClient(Locks, transport),
     refs: createClient(Refs, transport),
+    platform: createClient(Platform, transport),
+    reviews: createClient(Reviews, transport),
   };
 }
 export type Api = ReturnType<typeof makeApi>;
 
+/** The request header naming the repository a call is about (`OWNER/NAME`). */
+export const REPO_HEADER = "x-pando-repo";
+
+/** Names `repo` on every call; servers without the header reach their default repository. */
+export const repoInterceptor =
+  (repo: string | undefined): Interceptor =>
+  (next) =>
+  (req) => {
+    if (repo) req.header.set(REPO_HEADER, repo);
+    return next(req);
+  };
+
 /** gRPC-Web to a pandod server, with the bearer token on every call. */
-export function serverTransport(baseUrl: string, token: string | null): Transport {
+export function serverTransport(baseUrl: string, token: string | null, repo?: string): Transport {
   const auth: Interceptor = (next) => (req) => {
     if (token) req.header.set("authorization", `Bearer ${token}`);
     return next(req);
   };
-  return createGrpcWebTransport({ baseUrl: baseUrl.replace(/\/+$/, ""), interceptors: [auth] });
+  return createGrpcWebTransport({ baseUrl: baseUrl.replace(/\/+$/, ""), interceptors: [auth, repoInterceptor(repo)] });
 }
 
 export function hex(bytes: Uint8Array): string {
@@ -101,3 +116,4 @@ export function explain(err: unknown, server?: string): string {
 }
 
 export const isNotFound = (err: unknown) => ConnectError.from(err).code === Code.NotFound;
+export const isUnimplemented = (err: unknown) => ConnectError.from(err).code === Code.Unimplemented;

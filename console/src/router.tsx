@@ -1,61 +1,102 @@
-import { createHashHistory, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
-import { Shell } from "./shell/Shell";
+import { createHashHistory, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { AppShell } from "./shell/AppShell";
+import { Empty, ErrorState } from "./ui";
+import { ConnectView } from "./views/Connect";
+import { HomeView } from "./views/Home";
+import { InboxView } from "./views/Inbox";
+import { OrgView } from "./views/Org";
+import { TokensView } from "./views/Tokens";
+import { AgentsView } from "./views/repo/Agents";
 import { ChangesView } from "./views/Changes";
 import { CodeView } from "./views/Code";
-import { ConnectView } from "./views/Connect";
 import { LocksView } from "./views/Locks";
-import { Empty, ErrorState } from "./ui";
+import { OverviewView } from "./views/repo/Overview";
+import { RepoLayout } from "./views/repo/RepoLayout";
+import { ReviewView } from "./views/repo/Review";
+import { ReviewsView } from "./views/repo/Reviews";
+import { RepoSettingsView } from "./views/repo/Settings";
 
-const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+const str = (v: unknown) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : undefined);
+const flag = (v: unknown) => v === true || v === "true" || v === 1 || undefined;
 
-/** `ref` is shared by every view: the branch being looked at. */
-export type RefSearch = { ref?: string };
-const refSearch = (s: Record<string, unknown>): RefSearch => ({ ref: str(s.ref) });
+const root = createRootRoute({ component: AppShell });
 
-const root = createRootRoute({ component: Shell, validateSearch: refSearch });
+const home = createRoute({ getParentRoute: () => root, path: "/", component: HomeView });
+const inbox = createRoute({ getParentRoute: () => root, path: "/inbox", component: InboxView });
+const connect = createRoute({ getParentRoute: () => root, path: "/connect", component: ConnectView });
+const tokens = createRoute({ getParentRoute: () => root, path: "/settings/tokens", component: TokensView });
 
-const index = createRoute({
+export type OrgSearch = { tab?: "repositories" | "people" | "agents" | "teams" };
+const org = createRoute({
   getParentRoute: () => root,
-  path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/changes", search: {} });
-  },
+  path: "/$owner",
+  validateSearch: (s): OrgSearch => ({ tab: (["repositories", "people", "agents", "teams"] as const).find((t) => t === s.tab) }),
+  component: OrgView,
 });
 
-export type ChangesSearch = RefSearch & { c?: string };
-const changes = createRoute({
+/** `ref` is shared by every view of a repository: the branch being looked at. */
+export type RefSearch = { ref?: string };
+const repo = createRoute({
   getParentRoute: () => root,
+  path: "/$owner/$repo",
+  validateSearch: (s): RefSearch => ({ ref: str(s.ref) }),
+  component: RepoLayout,
+});
+
+const overview = createRoute({ getParentRoute: () => repo, path: "/", component: OverviewView });
+
+export type ChangesSearch = { c?: string };
+const changes = createRoute({
+  getParentRoute: () => repo,
   path: "/changes",
-  validateSearch: (s): ChangesSearch => ({ ...refSearch(s), c: str(s.c) }),
+  validateSearch: (s): ChangesSearch => ({ c: str(s.c) }),
   component: ChangesView,
 });
 
-export type CodeSearch = RefSearch & { at?: string; blame?: boolean; history?: boolean; L?: string };
+export type CodeSearch = { at?: string; blame?: boolean; history?: boolean; L?: string };
 const code = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => repo,
   path: "/code/$",
-  validateSearch: (s): CodeSearch => ({
-    ...refSearch(s),
-    at: str(s.at),
-    blame: s.blame === true || s.blame === "true" || undefined,
-    history: s.history === true || s.history === "true" || undefined,
-    L: str(s.L) ?? (typeof s.L === "number" ? String(s.L) : undefined),
-  }),
+  validateSearch: (s): CodeSearch => ({ at: str(s.at), blame: flag(s.blame), history: flag(s.history), L: str(s.L) }),
   component: CodeView,
 });
 
-const locks = createRoute({ getParentRoute: () => root, path: "/locks", validateSearch: refSearch, component: LocksView });
-const connect = createRoute({ getParentRoute: () => root, path: "/connect", validateSearch: refSearch, component: ConnectView });
+export type ReviewsSearch = { q?: string; view?: "attention" | "open" | "agents" | "landed" | "closed" };
+const reviews = createRoute({
+  getParentRoute: () => repo,
+  path: "/reviews",
+  validateSearch: (s): ReviewsSearch => ({ q: str(s.q), view: (["attention", "open", "agents", "landed", "closed"] as const).find((v) => v === s.view) }),
+  component: ReviewsView,
+});
 
-// Hash URLs: the console is static files that work from any directory, any host, with deep links.
+export type ReviewSearch = { file?: string; layout?: "unified" | "split" };
+const review = createRoute({
+  getParentRoute: () => repo,
+  path: "/reviews/$number",
+  validateSearch: (s): ReviewSearch => ({ file: str(s.file), layout: s.layout === "split" ? "split" : undefined }),
+  component: ReviewView,
+});
+
+const locks = createRoute({ getParentRoute: () => repo, path: "/locks", component: LocksView });
+const agents = createRoute({ getParentRoute: () => repo, path: "/agents", component: AgentsView });
+const settings = createRoute({ getParentRoute: () => repo, path: "/settings", component: RepoSettingsView });
+
+// Hash URLs: the app is static files that work from any directory and any host, with deep links.
 export const router = createRouter({
-  routeTree: root.addChildren([index, changes, code, locks, connect]),
+  routeTree: root.addChildren([
+    home,
+    inbox,
+    connect,
+    tokens,
+    org,
+    repo.addChildren([overview, changes, code, reviews, review, locks, agents, settings]),
+  ]),
   history: createHashHistory(),
   defaultPreload: "intent",
-  // A failing view shows what went wrong in place; the header, trunk and navigation keep working.
-  defaultErrorComponent: ({ error, reset }) => <ErrorState error={error} retry={reset} title="This view hit an error" />,
-  defaultNotFoundComponent: () => <Empty title="There's nothing at this address">Use the sections on the left, or press / to search.</Empty>,
   scrollRestoration: true,
+  // A failing view shows what went wrong in place; navigation keeps working.
+  defaultErrorComponent: ({ error, reset }) => <ErrorState error={error} retry={reset} title="This view hit an error" />,
+  defaultNotFoundComponent: () => <Empty title="There's nothing at this address">Pick a repository on the left, or press / to search.</Empty>,
 });
 
 declare module "@tanstack/react-router" {

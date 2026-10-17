@@ -4,6 +4,7 @@ import { GridList, GridListItem } from "react-aria-components";
 import { title, type Change } from "../api/client";
 import { useChange, useHistory, useLive } from "../data";
 import { useRefName, typing } from "../shell/hooks";
+import { useRepoParams } from "../repo";
 import { Author, CopyId, Empty, ErrorState, Icon, Skeleton, Time, useNow } from "../ui";
 import { FileDiff, type Layout } from "./DiffView";
 
@@ -14,8 +15,8 @@ import { FileDiff, type Layout } from "./DiffView";
  */
 export function ChangesView() {
   const refName = useRefName();
-  const { c: selected } = useSearch({ from: "/changes" });
-  const navigate = useNavigate({ from: "/changes" });
+  const { c: selected } = useSearch({ from: "/$owner/$repo/changes" });
+  const navigate = useNavigate({ from: "/$owner/$repo/changes" });
   const live = useLive(refName);
   const [head, setHead] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -24,7 +25,9 @@ export function ChangesView() {
   const pointerInside = useRef(false);
 
   // Start reading from the tip; changing branch starts over.
-  useEffect(() => setHead(null), [refName]);
+  useEffect(() => {
+    setHead(null);
+  }, [refName]);
   const changes = live.changes;
   useEffect(() => {
     if (head === null && changes?.[0]) {
@@ -175,6 +178,7 @@ function storedLayout(): Layout {
 }
 
 export function ChangeDetail({ id, onBack }: { id: string; onBack(): void }) {
+  const rp = useRepoParams();
   const change = useChange(id);
   const [layout, setLayoutState] = useState<Layout>(storedLayout);
   // A file's open state: what the reader chose, else open (only the first 10 in a huge change).
@@ -236,7 +240,7 @@ export function ChangeDetail({ id, onBack }: { id: string; onBack(): void }) {
             <div>
               <dt>After</dt>
               <dd>
-                <Link to="/changes" search={(s) => ({ ...s, c: parent })} className="mono" style={{ fontSize: "var(--t-xs)" }}>
+                <Link to="/$owner/$repo/changes" params={rp} search={{ c: parent }} className="mono" style={{ fontSize: "var(--t-xs)" }}>
                   {parent.slice(0, 12)}
                 </Link>
               </dd>
@@ -245,7 +249,7 @@ export function ChangeDetail({ id, onBack }: { id: string; onBack(): void }) {
           <div>
             <dt>Browse</dt>
             <dd>
-              <Link to="/code/$" params={{ _splat: "" }} search={(s) => ({ ref: s.ref, at: c.id })}>
+              <Link to="/$owner/$repo/code/$" params={{ ...rp, _splat: "" }} search={{ at: c.id }}>
                 Files at this change
               </Link>
             </dd>
@@ -295,6 +299,7 @@ export function ChangeDetail({ id, onBack }: { id: string; onBack(): void }) {
 
 /** The last hour at a glance: who is landing, and where. Shown until a change is picked. */
 function Overview({ changes, onFilter }: { changes: Change[] | undefined; onFilter(f: string): void }) {
+  const rp = useRepoParams();
   const now = Math.max(useNow(), Date.now());
   if (!changes) return <Skeleton rows={6} />;
   const hour = changes.filter((c) => c.time > now - 3600_000);
@@ -336,7 +341,7 @@ function Overview({ changes, onFilter }: { changes: Change[] | undefined; onFilt
               <ul className="bars">
                 {areas.slice(0, 10).map(([a, n]) => (
                   <li key={a}>
-                    <Link to="/code/$" params={{ _splat: a }} search={(s) => ({ ref: s.ref })} className="mono">
+                    <Link to="/$owner/$repo/code/$" params={{ ...rp, _splat: a }} className="mono">
                       {a}
                     </Link>
                     <span className="bar" style={{ "--w": n / max } as React.CSSProperties} aria-hidden="true" />
