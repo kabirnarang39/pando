@@ -388,3 +388,22 @@ GitHub.
 change requests fix an issue is worked out when the issue is read, by scanning the repository's
 change requests, which a link table will replace if repositories reach many thousands of them.
 
+## ADR-028: Migration imports history with git and the rest through GitHub's API
+
+**Decision.** `pando migrate FROM --to SERVER/OWNER/NAME` mirror-clones the source with git,
+imports the default branch first and then every other branch with the existing incremental
+importer, and, when the source is on GitHub (or `--github-api` names a GitHub Enterprise
+Server), brings open pull requests across as change requests from `github/pr-N` branches and
+issues with their comments, labels and state. It finishes by printing the `pando mirror`
+command that keeps the old host current.
+
+**Why.** Moving must be one command and reversible, or nobody tries it: git already knows how to
+fetch everything, the importer is already deterministic and incremental, and the mirror turns
+"migrate" into "try it side by side". Pull requests and issues are what teams lose most often in
+moves, so they come too.
+
+**Trade-offs.** Commit ids change. Imported issues and change requests are posted by the person
+running the migration, with the original author named and linked, because Pando accounts don't
+map to GitHub logins. Only open pull requests move; review comments on them don't yet. Each
+branch is imported separately, so a repository with very many branches takes longer.
+

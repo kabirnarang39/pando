@@ -1,6 +1,7 @@
 mod admin;
 mod cr;
 mod issue;
+mod migrate;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -239,6 +240,27 @@ enum Cmd {
         #[command(subcommand)]
         action: admin::TokenCmd,
     },
+    /// Move a repository from any git host to Pando: full history, and from GitHub, open pull
+    /// requests (as change requests) and issues with their comments.
+    Migrate {
+        /// Where it is now: any URL git can clone.
+        from: String,
+        /// Where it goes: SERVER/OWNER/NAME.
+        #[arg(long)]
+        to: String,
+        /// For private GitHub repositories, and to avoid GitHub's rate limit.
+        #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true)]
+        github_token: Option<String>,
+        /// Skip issues.
+        #[arg(long)]
+        no_issues: bool,
+        /// Skip pull requests.
+        #[arg(long)]
+        no_pull_requests: bool,
+        /// GitHub Enterprise Server's API, e.g. https://github.example.com/api/v3.
+        #[arg(long)]
+        github_api: Option<String>,
+    },
     /// Keep a git repository (GitHub, GitLab, Bitbucket, any git remote) up to date with a
     /// branch: every landed change becomes the same git commit every time, pushed without force.
     Mirror {
@@ -382,16 +404,34 @@ fn fmt_time(ms: i64) -> String {
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02} UTC", tod / 3600, tod % 3600 / 60)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // Library logs (mounts, transports) only when asked for, e.g. PANDO_LOG=debug.
     if let Ok(filter) = std::env::var("PANDO_LOG") {
         let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     }
-    if let Err(e) = run().await {
-        eprintln!("error: {e:#}");
-        std::process::exit(1);
-    }
+    // The commands run on a thread with a roomy stack, and so do the runtime's workers: Windows
+    // gives the main thread only 1 MB, which deep imports and migrations can exceed.
+    let code = std::thread::Builder::new()
+        .name("pando".into())
+        .stack_size(16 << 20)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_stack_size(8 << 20)
+                .build()
+                .expect("starting the async runtime");
+            match runtime.block_on(Box::pin(run())) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("error: {e:#}");
+                    1
+                }
+            }
+        })
+        .expect("starting the main thread")
+        .join()
+        .unwrap_or(101);
+    std::process::exit(code);
 }
 
 async fn run() -> Result<()> {
@@ -763,6 +803,17 @@ async fn run() -> Result<()> {
                 }
                 RepoCmd::Grant { repo, principal, role, .. } => admin::grant(platform, &repo, principal, role).await?,
             }
+        }
+        Cmd::Migrate { from, to, github_token, no_issues, no_pull_requests, github_api } => {
+            let m = migrate::Migration {
+                from,
+                to,
+                github_token,
+                issues: !no_issues,
+                pull_requests: !no_pull_requests,
+                github_api,
+            };
+            migrate::run(m, token, &flags).await?;
         }
         Cmd::Mirror { to, server, rev, git_ref, dir, every } => {
             let remote = connect(&server_for(server)?, None, token)?;
