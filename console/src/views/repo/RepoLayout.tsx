@@ -1,5 +1,5 @@
-import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { Link, Outlet, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, DialogTrigger, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { Trunk } from "../../components/Fleet";
 import { useConnection } from "../../connection";
@@ -29,6 +29,23 @@ function Layout() {
   const locks = useLocks();
   const { pathname } = useLocation();
   const section = pathname.split("/")[3] ?? "";
+  const tabs = useRef<HTMLElement>(null);
+  const router = useRouter();
+  // On narrow screens the tabs scroll: keep the current one in view. Found by its address, since
+  // the router marks it current later; run after every render (the tabs appear once data loads)
+  // and after each navigation, when the router's scroll restoration has put back an old position.
+  useEffect(() => {
+    const show = () => {
+      const nav = tabs.current;
+      const here = router.state.location.pathname.split("/").filter(Boolean).slice(0, 3).join("/");
+      const on = nav && [...nav.querySelectorAll<HTMLAnchorElement>("a")].find((a) => a.getAttribute("href")?.replace(/^\/?#\/?|\/$/g, "") === here);
+      if (!nav || !on) return;
+      const left = on.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft;
+      if (left < nav.scrollLeft || left + on.offsetWidth > nav.scrollLeft + nav.clientWidth - 28) nav.scrollLeft = Math.max(0, left - 16);
+    };
+    show();
+    return router.subscribe("onRendered", () => requestAnimationFrame(show));
+  });
   const compact = section === "code" || section === "changes" || (section === "reviews" && !!pathname.split("/")[4]);
   const now = useNow();
   const rp = { owner, repo: name };
@@ -106,7 +123,7 @@ function Layout() {
             <Trunk changes={live.changes} />
           </>
         )}
-        <nav className="tabs" aria-label="Repository">
+        <nav className="tabs" aria-label="Repository" ref={tabs}>
           {tab("/$owner/$repo", "Overview", "repo")}
           {tab("/$owner/$repo/code/$", "Code", "code")}
           {tab("/$owner/$repo/changes", "Changes", "changes")}

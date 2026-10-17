@@ -2857,6 +2857,10 @@ del {
   .demo-chip .hide-small {
     display: none;
   }
+  /* More tabs than fit: fade the edge so it reads as scrollable. */
+  .tabs {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
   .inbox-row {
     grid-template-columns: 6px auto minmax(0, 1fr) auto;
     gap: 4px 8px;
