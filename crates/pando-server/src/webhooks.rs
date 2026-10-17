@@ -202,9 +202,13 @@ impl Registry {
             let id = random_hex(8)?;
             let mut body = payload.clone();
             body["delivery"] = json!(id);
+            // A delivery to one named hook (a ping) is sent by the caller right away; the worker
+            // only picks it up if that never happened, so it is never sent twice.
+            let now = now_ms();
+            let first = if only.is_some() { now + 60_000 } else { now };
             db.execute(
-                "INSERT INTO deliveries (id, hook, event, payload, next_at_ms, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                rusqlite::params![id, h.id, event, body.to_string(), now_ms()],
+                "INSERT INTO deliveries (id, hook, event, payload, next_at_ms, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, h.id, event, body.to_string(), first, now],
             )?;
             // Keep the log short.
             db.execute(
