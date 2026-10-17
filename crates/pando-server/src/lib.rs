@@ -3,10 +3,12 @@
 
 pub mod auth;
 pub mod config;
+pub mod directory;
 pub mod features;
 pub mod hosting;
 pub mod land_hook;
 pub mod oidc;
+pub mod permissions;
 mod status;
 pub mod telemetry;
 
@@ -138,6 +140,11 @@ pub async fn serve(
         .register_encoded_file_descriptor_set(pando_proto::FILE_DESCRIPTOR_SET)
         .build_v1()?;
     let mut routes = routes.add_service(health).add_service(reflection);
+    // Platform tokens first, then the server's own authentication; everyone gets an account.
+    let auth: Arc<dyn Authenticator> = match &hosting {
+        Some(h) => Arc::new(permissions::PlatformAuth::new(h.registry.clone(), auth)),
+        None => auth,
+    };
     if let Some(h) = &hosting {
         routes = routes.add_service(features::platform::service(features::platform::Platform::new(h.clone())));
     }

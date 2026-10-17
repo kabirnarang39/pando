@@ -1,3 +1,5 @@
+mod admin;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -174,6 +176,27 @@ enum Cmd {
         #[command(subcommand)]
         action: RepoCmd,
     },
+    /// Organisations and their members.
+    Org {
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: admin::OrgCmd,
+    },
+    /// Teams within an organisation, for granting access to many people at once.
+    Team {
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: admin::TeamCmd,
+    },
+    /// Access tokens for you and for agents you answer for.
+    Token {
+        #[arg(long, global = true)]
+        server: Option<String>,
+        #[command(subcommand)]
+        action: admin::TokenCmd,
+    },
     /// Keep a git repository (GitHub, GitLab, Bitbucket, any git remote) up to date with a
     /// branch: every landed change becomes the same git commit every time, pushed without force.
     Mirror {
@@ -223,6 +246,16 @@ enum RepoCmd {
         #[arg(long)]
         server: Option<String>,
     },
+    /// Give a person, agent or team (ORG/TEAM) a role on a repository; `none` removes it.
+    /// With only the repository, lists who has access.
+    Grant {
+        repo: String,
+        principal: Option<String>,
+        #[arg(value_enum)]
+        role: Option<admin::RoleArg>,
+        #[arg(long)]
+        server: Option<String>,
+    },
 }
 
 /// A path argument as a repository path: inside a workspace it is taken relative to the
@@ -256,6 +289,15 @@ fn ws_remote(ws: &Workspace, token: Option<&str>) -> Result<Arc<dyn Remote>> {
 }
 
 /// Server for workspace-free commands: $PANDO_SERVER, or the current workspace.
+/// The platform service of a server (its base URL, without any OWNER/NAME).
+fn platform_client(
+    server: Option<String>,
+    token: Option<&str>,
+) -> Result<pando_proto::platform_client::PlatformClient<pando::remote::Ch>> {
+    let base = pando_proto::split_repo_url(&server_for(server)?).0;
+    Ok(GrpcRemote::connect(&base, None, token)?.platform())
+}
+
 fn server_for(explicit: Option<String>) -> Result<String> {
     explicit
         .or_else(|| std::env::var("PANDO_SERVER").ok())
@@ -591,9 +633,14 @@ async fn run() -> Result<()> {
             drop(stdout);
             pando::mcp::SapMcp::new(remote, ws.map(|w| w.root)).serve_stdio().await?;
         }
+        Cmd::Org { server, action } => admin::org(platform_client(server, token)?, action).await?,
+        Cmd::Team { server, action } => admin::team(platform_client(server, token)?, action).await?,
+        Cmd::Token { server, action } => admin::token(platform_client(server, token)?, action).await?,
         Cmd::Repo { action } => {
             let server = match &action {
-                RepoCmd::Create { server, .. } | RepoCmd::List { server, .. } => server.clone(),
+                RepoCmd::Create { server, .. } | RepoCmd::List { server, .. } | RepoCmd::Grant { server, .. } => {
+                    server.clone()
+                }
             };
             let base = pando_proto::split_repo_url(&server_for(server)?).0;
             let mut platform = GrpcRemote::connect(&base, None, token)?.platform();
@@ -633,6 +680,7 @@ async fn run() -> Result<()> {
                         println!("{}/{}\t{} landed today\t{}", r.owner, r.name, r.lands_24h, r.description);
                     }
                 }
+                RepoCmd::Grant { repo, principal, role, .. } => admin::grant(platform, &repo, principal, role).await?,
             }
         }
         Cmd::Mirror { to, server, rev, git_ref, dir, every } => {

@@ -4,12 +4,20 @@
 use std::sync::Arc;
 
 use pando_core::acl::Principal;
+
+pub use crate::directory::TokenScope;
 use tonic::service::Interceptor;
 use tonic::{Request, Status};
 
 pub trait Authenticator: Send + Sync {
     /// The caller's identity when the bearer credential (if any) grants access.
     fn authenticate(&self, bearer: Option<&str>) -> Result<Principal, Status>;
+
+    /// The identity and, for a scoped credential such as a platform token, what it is limited
+    /// to.
+    fn identify(&self, bearer: Option<&str>) -> Result<(Principal, Option<TokenScope>), Status> {
+        self.authenticate(bearer).map(|p| (p, None))
+    }
 }
 
 /// Allows everything. Default for local development only.
@@ -66,12 +74,15 @@ impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
         let bearer =
             req.metadata().get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
-        let who = self.0.authenticate(bearer).inspect_err(|e| {
+        let (who, scope) = self.0.identify(bearer).inspect_err(|e| {
             let peer = req.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();
             let presented = bearer.is_some();
             tracing::info!(target: crate::telemetry::AUDIT, kind = "auth_failed", peer, presented, reason = e.message());
         })?;
         req.extensions_mut().insert(who);
+        if let Some(scope) = scope {
+            req.extensions_mut().insert(scope);
+        }
         Ok(req)
     }
 }

@@ -151,6 +151,10 @@ message SetMemberRequest {
   Role role = 3;
 }
 message ListTeamsResponse { repeated Team teams = 1; }
+message TeamRef {
+  string org = 1;
+  string slug = 2;
+}
 message ListGrantsResponse { repeated Grant grants = 1; }
 message SetGrantRequest {
   RepositoryRef repository = 1;
@@ -201,6 +205,9 @@ service Platform {
   rpc ListMembers(OrgName) returns (ListMembersResponse);
   rpc SetMember(SetMemberRequest) returns (Member);
   rpc ListTeams(OrgName) returns (ListTeamsResponse);
+  // Creates the team, or replaces its name, description and members.
+  rpc SetTeam(Team) returns (Team);
+  rpc DeleteTeam(TeamRef) returns (Empty);
 
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
   rpc GetRepository(RepositoryRef) returns (Repository);

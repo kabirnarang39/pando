@@ -11,6 +11,7 @@ use pando_core::ports::{LandCheck, NoChecks};
 use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
 use pando_server::land_hook::WebhookCheck;
 use pando_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
+use pando_server::permissions::{Access, NoOtherAuth};
 use pando_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
 
@@ -101,9 +102,25 @@ enum Role {
         /// Objects for each hosted repository (same placeholders), or `metadata`.
         #[arg(long, env = "PANDO_REPOS_OBJECTS", hide_env_values = true, default_value = "metadata")]
         repos_objects: String,
-        /// Principals that may create repositories.
+        /// Logins that administer the whole server: create organisations, and act as an
+        /// administrator of every organisation and repository.
         #[arg(long, env = "PANDO_PLATFORM_ADMINS", value_delimiter = ',')]
         platform_admins: Vec<String>,
+    },
+    /// Create an access token directly in a platform registry, without a running server: how
+    /// the first administrator gets in. Prints the token once.
+    Token {
+        #[arg(long, env = "PANDO_PLATFORM", hide_env_values = true)]
+        platform: String,
+        /// The account the token belongs to and acts as (list it in --platform-admins to make
+        /// it an administrator).
+        #[arg(long)]
+        account: String,
+        #[arg(long, default_value = "bootstrap")]
+        name: String,
+        /// Days until it expires (1–366).
+        #[arg(long, default_value_t = 30)]
+        expires_days: i64,
     },
     /// Delta-compress stored blob versions (single writer; safe to run while serving).
     Compact {
@@ -162,6 +179,31 @@ enum Role {
     },
 }
 
+fn create_token(platform: &str, account: &str, name: &str, days: i64) -> anyhow::Result<()> {
+    use pando_server::directory::{TokenRec, valid_login};
+    use pando_server::hosting::{Registry, now_ms};
+    anyhow::ensure!(valid_login(account), "`{account}` is not a valid login");
+    anyhow::ensure!((1..=366).contains(&days), "--expires-days must be between 1 and 366");
+    let registry = Registry::open(platform)?;
+    registry.ensure_account(account, "")?;
+    let now = now_ms();
+    let (t, secret) = registry.create_token(TokenRec {
+        id: String::new(),
+        account: account.to_owned(),
+        name: name.to_owned(),
+        acts_as: account.to_owned(),
+        repositories: vec![],
+        max_role: pando_proto::Role::Admin,
+        created_at_ms: now,
+        expires_at_ms: now + days * 86_400_000,
+        last_used_at_ms: 0,
+    })?;
+    tracing::info!(target: telemetry::AUDIT, kind = "create_token", principal = "pandod token", target = %format!("{} as {account}", t.id));
+    eprintln!("token {} for {account}, expires in {days} days; it is shown once:", t.id);
+    println!("{secret}");
+    Ok(())
+}
+
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
@@ -181,6 +223,9 @@ async fn main() -> anyhow::Result<()> {
     telemetry::init_logging(cli.log_json, cli.audit_log.as_deref())?;
     if let Some(addr) = cli.metrics {
         telemetry::init_metrics(addr)?;
+    }
+    if let Role::Token { platform, account, name, expires_days } = &cli.role {
+        return create_token(platform, account, name, *expires_days);
     }
     let flags = Arc::new(SpecFlags::from_env()?);
     let web = pando_server::WebAccess {
@@ -207,13 +252,9 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("--oidc-issuer ignored: feature `oidc` is disabled");
         }
     }
-    let anonymous = authenticators.is_empty();
-    let auth: Arc<dyn Authenticator> = if anonymous {
-        tracing::warn!("no PANDO_TOKENS or OIDC issuer set: authentication disabled");
-        Arc::new(AllowAll)
-    } else {
-        Arc::new(FirstMatch(authenticators))
-    };
+    let mut anonymous = authenticators.is_empty();
+    let mut auth: Arc<dyn Authenticator> =
+        if anonymous { Arc::new(AllowAll) } else { Arc::new(FirstMatch(authenticators)) };
     let tls = match (&cli.tls_cert, &cli.tls_key) {
         (Some(c), Some(k)) => {
             Some(ServerTlsConfig::new().identity(Identity::from_pem(std::fs::read(c)?, std::fs::read(k)?)))
@@ -261,16 +302,28 @@ async fn main() -> anyhow::Result<()> {
                 let (f, p, c) = (flags.clone(), policy.clone(), checks.clone());
                 let build: pando_server::hosting::BuildRoutes =
                     Arc::new(move |repo| authority_routes(repo, f.clone(), p.clone(), c.clone()));
+                let registry_db = Arc::new(pando_server::hosting::Registry::open(registry)?);
+                // Platform tokens count as authentication: once one exists, every call needs one
+                // (or a static token or single sign-on). With none of them, the server is open,
+                // for local development.
+                let open = anonymous && !registry_db.has_tokens()?;
+                if anonymous && !open {
+                    auth = Arc::new(NoOtherAuth);
+                }
+                anonymous = open;
+                let admins: Vec<String> =
+                    platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect();
                 hosting = Some(Arc::new(pando_server::hosting::Hosting::new(
                     templates,
-                    pando_server::hosting::Registry::open(registry)?,
+                    registry_db,
                     build,
-                    platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect(),
+                    Access { open, admins },
                 )?));
-                tracing::info!(registry = %config::redact(registry), "hosting many repositories");
+                tracing::info!(registry = %config::redact(registry), open, "hosting many repositories");
             }
             (listen, authority_routes(repo, flags, policy, checks))
         }
+        Role::Token { .. } => unreachable!("handled before authentication is set up"),
         Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {
             let from = config::open_storage(&from_metadata, &from_objects).await?;
             let to = config::open_storage(&to_metadata, &to_objects).await?;
@@ -329,10 +382,14 @@ async fn main() -> anyhow::Result<()> {
             (listen, tier_routes(store, flags))
         }
     };
+    if anonymous {
+        tracing::warn!("no PANDO_TOKENS, OIDC issuer or platform token: authentication disabled");
+    }
     if anonymous && !listen.ip().is_loopback() && !cli.allow_anonymous {
         anyhow::bail!(
             "refusing to serve {listen} without authentication: anyone who can reach it could read and change the repository. \
-             Set PANDO_TOKENS (or --oidc-issuer), listen on 127.0.0.1, or set PANDO_ALLOW_ANONYMOUS=1 to accept anonymous access on purpose"
+             Set PANDO_TOKENS (or --oidc-issuer), create a platform token with `pandod token`, listen on 127.0.0.1, \
+             or set PANDO_ALLOW_ANONYMOUS=1 to accept anonymous access on purpose"
         );
     }
     let limits = pando_server::Limits {

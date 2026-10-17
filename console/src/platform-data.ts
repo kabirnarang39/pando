@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "@bufbuild/protobuf";
 import { isUnimplemented } from "./api/client";
 import { useConnection, usePlatformApi } from "./connection";
-import { ChangeRequestState, RepositorySchema, Verdict, type Repository } from "./gen/pando_platform_pb";
+import { ChangeRequestState, RepositorySchema, Role, Verdict, type Repository } from "./gen/pando_platform_pb";
 
 /**
  * Servers without the platform service (one repository, today's pandod) answer Unimplemented.
@@ -131,6 +131,31 @@ export function useGrants(key: string) {
   const api = usePlatformApi();
   return useQuery({ queryKey: ["grants", key], queryFn: async () => (await or(api.platform.listGrants(ref(key)), { grants: [] })).grants });
 }
+
+/** A platform change, then refetching what it affects. */
+function usePlatformMutation<V, R>(run: (api: ReturnType<typeof usePlatformApi>, v: V) => Promise<R>, affects: readonly (readonly unknown[])[]) {
+  const api = usePlatformApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: V) => run(api, v),
+    onSuccess: () => Promise.all(affects.map((queryKey) => qc.invalidateQueries({ queryKey }))),
+  });
+}
+
+export const useCreateToken = () =>
+  usePlatformMutation(
+    (api, t: { name: string; actsAs: string; repositories: string[]; maxRole: Role; days: number }) =>
+      api.platform.createToken({ name: t.name, actsAs: t.actsAs, repositories: t.repositories, maxRole: t.maxRole, expiresAtMs: BigInt(Date.now() + t.days * 86_400_000) }),
+    [["tokens"]],
+  );
+
+export const useRevokeToken = () => usePlatformMutation((api, id: string) => api.platform.revokeToken({ id }), [["tokens"]]);
+
+export const useSetMember = (org: string) =>
+  usePlatformMutation((api, m: { login: string; role: Role }) => api.platform.setMember({ org, login: m.login, role: m.role }), [["members", org], ["org", org], ["viewer"]]);
+
+export const useSetGrant = (key: string) =>
+  usePlatformMutation((api, g: { principal: string; role: Role }) => api.platform.setGrant({ repository: ref(key), principal: g.principal, role: g.role }), [["grants", key]]);
 
 export function useProtections(key: string) {
   const api = usePlatformApi();

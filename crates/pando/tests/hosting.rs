@@ -8,9 +8,10 @@ use pando_adapters::flags::SpecFlags;
 use pando_core::acl::AllowAllPolicy;
 use pando_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
 use pando_core::ports::NoChecks;
-use pando_proto::{CreateRepositoryRequest, ListRepositoriesRequest};
+use pando_proto::{CreateRepositoryRequest, CreateTokenRequest, ListRepositoriesRequest, Role, SetMemberRequest};
 use pando_server::auth::StaticTokens;
 use pando_server::hosting::{BuildRoutes, Hosting, Registry, Templates};
+use pando_server::permissions::Access;
 use pando_server::{ServeOptions, WebAccess, authority_routes, config, serve};
 use tokio::net::TcpListener;
 use tonic::Code;
@@ -32,10 +33,15 @@ async fn start() -> Server {
         metadata: format!("sqlite://{}/repos/{{repo}}.db", dir.path().display()),
         objects: "metadata".into(),
     };
-    let hosting = Hosting::new(templates, Registry::open("memory").unwrap(), build, vec!["admin".into()]).unwrap();
+    let access = Access { open: false, admins: vec!["admin".into()] };
+    let hosting = Hosting::new(templates, Arc::new(Registry::open("memory").unwrap()), build, access).unwrap();
     let default = config::open_repo("memory", "metadata").await.unwrap();
     let routes = authority_routes(default, flags, policy, checks);
-    let auth = Arc::new(StaticTokens::new(["admin:admin-token".to_string(), "dev:dev-token".to_string()]));
+    let auth = Arc::new(StaticTokens::new([
+        "admin:admin-token".to_string(),
+        "dev:dev-token".to_string(),
+        "eve:eve-token".to_string(),
+    ]));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -104,6 +110,13 @@ async fn one_server_hosts_isolated_repositories() {
     assert_eq!(again.code(), Code::AlreadyExists);
     assert!(s.dir.path().join("repos/lumen/fleet.db").exists(), "each repository gets its own database");
 
+    // Repositories are private: only members of lumen may use them.
+    let member =
+        |login: &str, role: Role| SetMemberRequest { org: "lumen".into(), login: login.into(), role: role as i32 };
+    let e = dev.platform().set_member(member("dev", Role::Write)).await.unwrap_err();
+    assert_eq!(e.code(), Code::NotFound, "a non-member does not even see the organisation: {e:?}");
+    admin.platform().set_member(member("dev", Role::Write)).await.unwrap();
+
     // Each repository has its own history.
     land(&format!("{}/lumen/fleet", s.url), "billing/tax.rs", "rate = 19\n").await;
     land(&format!("{}/lumen/fleet", s.url), "billing/refund.rs", "window = 30\n").await;
@@ -127,6 +140,51 @@ async fn one_server_hosts_isolated_repositories() {
     let missing = GrpcRemote::connect(&format!("{}/lumen/nope", s.url), None, Some("dev-token")).unwrap();
     let e = missing.get_ref("main").await.unwrap_err();
     assert!(format!("{e:#}").contains("no repository `lumen/nope`"), "{e:#}");
+
+    // A stranger can't see private repositories, not even that they exist.
+    let eve = GrpcRemote::connect(&format!("{}/lumen/fleet", s.url), None, Some("eve-token")).unwrap();
+    let e = eve.get_ref("main").await.unwrap_err();
+    assert!(format!("{e:#}").contains("no repository `lumen/fleet`"), "{e:#}");
+    let eve_list = GrpcRemote::connect(&s.url, None, Some("eve-token")).unwrap();
+    let seen = eve_list.platform().list_repositories(ListRepositoriesRequest::default()).await.unwrap().into_inner();
+    assert!(seen.repositories.is_empty(), "{seen:?}");
+
+    // A token for an agent, limited to lumen/web and to reading.
+    let t = dev
+        .platform()
+        .create_token(CreateTokenRequest {
+            name: "web reader".into(),
+            acts_as: "agent/reader-01".into(),
+            repositories: vec!["lumen/web".into()],
+            max_role: Role::Read as i32,
+            expires_at_ms: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(t.secret.starts_with("pando_"));
+    let agent_web = GrpcRemote::connect(&format!("{}/lumen/web", s.url), None, Some(&t.secret)).unwrap();
+    assert_eq!(agent_web.get_ref("main").await.unwrap(), Some(web_tip), "the agent reads lumen/web as its owner may");
+    let e = agent_web.compare_and_swap("main", Some(web_tip), fleet_tip).await.unwrap_err();
+    assert!(format!("{e:#}").contains("this needs write"), "a read-only token can't write: {e:#}");
+    let agent_fleet = GrpcRemote::connect(&format!("{}/lumen/fleet", s.url), None, Some(&t.secret)).unwrap();
+    assert!(agent_fleet.get_ref("main").await.is_err(), "the token does not reach lumen/fleet");
+
+    // Even an administrator's token, once limited to some repositories, can't administer.
+    let limited = admin
+        .platform()
+        .create_token(CreateTokenRequest {
+            name: "web admin".into(),
+            repositories: vec!["lumen/web".into()],
+            max_role: Role::Admin as i32,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let as_limited = GrpcRemote::connect(&s.url, None, Some(&limited.secret)).unwrap();
+    let e = as_limited.platform().set_member(member("eve", Role::Admin)).await.unwrap_err();
+    assert_eq!(e.code(), Code::PermissionDenied, "{e:?}");
 
     // Listings report each repository's activity.
     let list = dev

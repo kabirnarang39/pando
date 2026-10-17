@@ -1,0 +1,275 @@
+//! `pando org`, `pando team`, `pando token` and `pando repo grant`: who may use a server that
+//! hosts many repositories (`pandod server --platform`).
+
+use anyhow::{Context, Result, anyhow};
+use clap::{Subcommand, ValueEnum};
+use pando::remote::Ch;
+use pando_proto::platform_client::PlatformClient;
+use pando_proto::{
+    CreateOrganizationRequest, CreateTokenRequest, Empty, OrgName, RepositoryRef, RevokeTokenRequest, Role,
+    SetGrantRequest, SetMemberRequest, Team, TeamRef,
+};
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+/// A role, as typed on the command line.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum RoleArg {
+    Read,
+    Triage,
+    Write,
+    Maintain,
+    Admin,
+    /// Removes the member or grant.
+    None,
+}
+
+impl From<RoleArg> for Role {
+    fn from(r: RoleArg) -> Self {
+        match r {
+            RoleArg::Read => Role::Read,
+            RoleArg::Triage => Role::Triage,
+            RoleArg::Write => Role::Write,
+            RoleArg::Maintain => Role::Maintain,
+            RoleArg::Admin => Role::Admin,
+            RoleArg::None => Role::Unspecified,
+        }
+    }
+}
+
+fn role_name(r: i32) -> &'static str {
+    match Role::try_from(r).unwrap_or(Role::Unspecified) {
+        Role::Unspecified => "-",
+        Role::Read => "read",
+        Role::Triage => "triage",
+        Role::Write => "write",
+        Role::Maintain => "maintain",
+        Role::Admin => "admin",
+    }
+}
+
+#[derive(Subcommand)]
+pub enum OrgCmd {
+    /// Organisations you belong to (all of them, for site administrators).
+    List,
+    /// Create an organisation; you become its administrator. Site administrators only.
+    Create {
+        name: String,
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+    /// List an organisation's members and their roles.
+    Members { org: String },
+    /// Add a member, change their role, or remove them with `none`.
+    Member { org: String, login: String, role: RoleArg },
+}
+
+#[derive(Subcommand)]
+pub enum TeamCmd {
+    /// List an organisation's teams.
+    List { org: String },
+    /// Create a team, or replace its members: `pando team set lumen/platform --member mira`.
+    Set {
+        /// ORG/TEAM
+        team: String,
+        /// A member of the organisation (repeatable).
+        #[arg(long = "member")]
+        members: Vec<String>,
+        #[arg(long, default_value = "")]
+        name: String,
+    },
+    /// Delete a team and its grants.
+    Delete {
+        /// ORG/TEAM
+        team: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TokenCmd {
+    /// Your tokens.
+    List,
+    /// Create a token. Prints it once: store it as PANDO_TOKEN.
+    Create {
+        name: String,
+        /// Act as an agent you answer for, e.g. `agent/refactor-07` (created if new).
+        #[arg(long = "as")]
+        acts_as: Option<String>,
+        /// Only these repositories, OWNER/NAME (repeatable); default: all you can reach.
+        #[arg(long = "repo")]
+        repositories: Vec<String>,
+        /// Highest role the token may use.
+        #[arg(long, value_enum, default_value = "write")]
+        role: RoleArg,
+        /// Days until it expires (1–366).
+        #[arg(long, default_value_t = 90)]
+        days: i64,
+    },
+    /// Revoke a token by its id.
+    Revoke { id: String },
+}
+
+fn explain(s: tonic::Status) -> anyhow::Error {
+    if s.code() == tonic::Code::Unimplemented {
+        anyhow!("this server hosts one repository; start pandod with --platform to manage organisations and tokens")
+    } else {
+        anyhow!("{}", s.message())
+    }
+}
+
+fn split(s: &str, what: &str) -> Result<(String, String)> {
+    let (a, b) = s.split_once('/').with_context(|| format!("give the {what} as OWNER/NAME"))?;
+    Ok((a.to_owned(), b.to_owned()))
+}
+
+pub async fn org(mut p: PlatformClient<Ch>, cmd: OrgCmd) -> Result<()> {
+    match cmd {
+        OrgCmd::List => {
+            for o in p.list_organizations(Empty {}).await.map_err(explain)?.into_inner().organizations {
+                println!(
+                    "{}\t{} repositories\t{} people\t{} agents\t{}",
+                    o.login,
+                    o.repositories,
+                    o.members,
+                    o.agents,
+                    role_name(o.viewer_role)
+                );
+            }
+        }
+        OrgCmd::Create { name, description } => {
+            let o = p
+                .create_organization(CreateOrganizationRequest {
+                    login: name,
+                    display_name: String::new(),
+                    description,
+                })
+                .await
+                .map_err(explain)?
+                .into_inner();
+            println!("created {}; add people with: pando org member {} LOGIN write", o.login, o.login);
+        }
+        OrgCmd::Members { org } => {
+            for m in p.list_members(OrgName { login: org }).await.map_err(explain)?.into_inner().members {
+                let login = m.account.map(|a| a.login).unwrap_or_default();
+                println!("{login}\t{}\t{}", role_name(m.role), m.teams.join(","));
+            }
+        }
+        OrgCmd::Member { org, login, role } => {
+            p.set_member(SetMemberRequest { org: org.clone(), login: login.clone(), role: Role::from(role) as i32 })
+                .await
+                .map_err(explain)?;
+            match role {
+                RoleArg::None => println!("removed {login} from {org}"),
+                r => println!("{login} is now {} in {org}", role_name(Role::from(r) as i32)),
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn team(mut p: PlatformClient<Ch>, cmd: TeamCmd) -> Result<()> {
+    match cmd {
+        TeamCmd::List { org } => {
+            for t in p.list_teams(OrgName { login: org }).await.map_err(explain)?.into_inner().teams {
+                println!("{}/{}\t{}\t{}", t.org, t.slug, t.name, t.members.join(","));
+            }
+        }
+        TeamCmd::Set { team, members, name } => {
+            let (org, slug) = split(&team, "team")?;
+            let t = p
+                .set_team(Team { org, slug, name, description: String::new(), members })
+                .await
+                .map_err(explain)?
+                .into_inner();
+            println!(
+                "{}/{}: {}",
+                t.org,
+                t.slug,
+                if t.members.is_empty() { "no members".into() } else { t.members.join(", ") }
+            );
+        }
+        TeamCmd::Delete { team } => {
+            let (org, slug) = split(&team, "team")?;
+            p.delete_team(TeamRef { org, slug }).await.map_err(explain)?;
+            println!("deleted {team}");
+        }
+    }
+    Ok(())
+}
+
+/// `pando repo grant OWNER/NAME PRINCIPAL ROLE`; without a principal, lists the grants.
+pub async fn grant(
+    mut p: PlatformClient<Ch>,
+    repo: &str,
+    principal: Option<String>,
+    role: Option<RoleArg>,
+) -> Result<()> {
+    let (owner, name) = split(repo, "repository")?;
+    let r = RepositoryRef { owner, name };
+    match (principal, role) {
+        (Some(principal), Some(role)) => {
+            p.set_grant(SetGrantRequest {
+                repository: Some(r),
+                principal: principal.clone(),
+                role: Role::from(role) as i32,
+            })
+            .await
+            .map_err(explain)?;
+            match role {
+                RoleArg::None => println!("removed {principal}'s access to {repo}"),
+                r => println!("{principal} has {} access to {repo}", role_name(Role::from(r) as i32)),
+            }
+        }
+        (None, None) => {
+            for g in p.list_grants(r).await.map_err(explain)?.into_inner().grants {
+                println!("{}\t{}", g.principal, role_name(g.role));
+            }
+        }
+        _ => return Err(anyhow!("give both a principal and a role, or neither to list access")),
+    }
+    Ok(())
+}
+
+pub async fn token(mut p: PlatformClient<Ch>, cmd: TokenCmd) -> Result<()> {
+    match cmd {
+        TokenCmd::List => {
+            let now = now_ms();
+            for t in p.list_tokens(Empty {}).await.map_err(explain)?.into_inner().tokens {
+                let days = ((t.expires_at_ms - now).max(0) + 86_399_999) / 86_400_000;
+                let scope = if t.repositories.is_empty() { "all".to_owned() } else { t.repositories.join(",") };
+                println!(
+                    "{}\t{}\tas {}\t{}\t{scope}\texpires in {days} days",
+                    t.id,
+                    t.name,
+                    t.acts_as,
+                    role_name(t.max_role)
+                );
+            }
+        }
+        TokenCmd::Create { name, acts_as, repositories, role, days } => {
+            anyhow::ensure!((1..=366).contains(&days), "--days must be between 1 and 366");
+            let expires_at_ms = now_ms() + days * 86_400_000;
+            let r = p
+                .create_token(CreateTokenRequest {
+                    name,
+                    acts_as: acts_as.unwrap_or_default(),
+                    repositories,
+                    max_role: Role::from(role) as i32,
+                    expires_at_ms,
+                })
+                .await
+                .map_err(explain)?
+                .into_inner();
+            let t = r.token.unwrap_or_default();
+            eprintln!("token {} acts as {}, expires in {days} days; it is shown once:", t.id, t.acts_as);
+            println!("{}", r.secret);
+        }
+        TokenCmd::Revoke { id } => {
+            p.revoke_token(RevokeTokenRequest { id: id.clone() }).await.map_err(explain)?;
+            println!("revoked {id}");
+        }
+    }
+    Ok(())
+}
