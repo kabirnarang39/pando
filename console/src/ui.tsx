@@ -4,7 +4,8 @@ import {
   Keyboard, Lock, MessageSquare, Moon, PanelLeft, Plug, Plus, Search, Settings, ShieldCheck, Sun, TriangleAlert, Users, X,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { explain } from "./api/client";
+import { explain, isNotFound } from "./api/client";
+import { Link } from "@tanstack/react-router";
 import { useConnection } from "./connection";
 
 const icons = {
@@ -154,6 +155,24 @@ export function ErrorState({ error, retry, title = "This didn't load" }: { error
       )}
     </div>
   );
+}
+
+/** A page for something that isn't on this server: say what was looked for and where to go. */
+export function NotFound({ what }: { what: string }) {
+  return (
+    <div className="state">
+      <h2>There's no {what} here</h2>
+      <p>
+        It may have been renamed, or you may not have access to it. <Link to="/">Go to Home</Link>
+      </p>
+    </div>
+  );
+}
+
+/** An error, or a "not found" page when the error says so. */
+export function LoadError({ error, what, title, retry }: { error: unknown; what: string; title: string; retry?(): void }) {
+  if (isNotFound(error)) return <NotFound what={what} />;
+  return <ErrorState error={error} title={title} retry={retry} />;
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {

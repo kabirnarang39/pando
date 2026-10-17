@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { AccountKind, Role } from "../gen/pando_platform_pb";
 import { useMembers, useOrganization, useRepositories, useTeams } from "../platform-data";
-import { ago, Author, ErrorState, Skeleton, useNow } from "../ui";
+import { ago, Author, LoadError, Skeleton, useNow } from "../ui";
 
 const roles: Record<number, string> = { [Role.READ]: "Read", [Role.TRIAGE]: "Triage", [Role.WRITE]: "Write", [Role.MAINTAIN]: "Maintain", [Role.ADMIN]: "Admin" };
 
@@ -14,7 +14,7 @@ export function OrgView() {
   const members = useMembers(owner);
   const teams = useTeams(owner);
   const now = Math.max(useNow(), Date.now());
-  if (org.error) return <ErrorState error={org.error} title={`${owner} didn't load`} />;
+  if (org.error) return <LoadError error={org.error} what={`organisation called “${owner}”`} title={`${owner} didn't load`} retry={() => org.refetch()} />;
   const people = members.data?.filter((m) => m.account?.kind === AccountKind.PERSON) ?? [];
   const agents = members.data?.filter((m) => m.account?.kind === AccountKind.AGENT) ?? [];
   const tabs = [

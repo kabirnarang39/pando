@@ -2857,6 +2857,15 @@ del {
   .demo-chip .hide-small {
     display: none;
   }
+  .inbox-row {
+    grid-template-columns: 6px auto minmax(0, 1fr) auto;
+    gap: 4px 8px;
+    padding: 12px;
+  }
+  .unread {
+    width: 6px;
+    height: 6px;
+  }
   .composer-hint {
     display: none;
   }

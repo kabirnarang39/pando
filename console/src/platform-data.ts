@@ -93,7 +93,18 @@ export function useRepositories(owner = "") {
 export function useRepository(key: string) {
   const api = usePlatformApi();
   const { label } = useConnection();
-  return useQuery({ queryKey: ["repo", key], queryFn: () => or(api.platform.getRepository(ref(key)), singleRepository(label)), refetchInterval: 10_000, retry: false });
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["repo", key],
+    queryFn: async () => {
+      const r = await or(api.platform.getRepository(ref(key)), singleRepository(label));
+      // One number everywhere: the sidebar and organisation lists show this repository as just read.
+      qc.setQueriesData<Repository[]>({ queryKey: ["repos"] }, (list) => list?.map((x) => (x.owner === r.owner && x.name === r.name ? r : x)));
+      return r;
+    },
+    refetchInterval: 10_000,
+    retry: false,
+  });
 }
 
 export function useOrganization(login: string) {
