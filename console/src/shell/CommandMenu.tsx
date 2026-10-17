@@ -1,9 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useFind, useTip } from "../data";
-import { useInbox, useRepositories } from "../platform-data";
+import { isSingle, useInbox, useRepositories, useViewer } from "../platform-data";
 import { useRepoMaybe } from "../repo";
 import { Author, Icon, type IconName } from "../ui";
 import { useRefName, type Theme } from "./hooks";
@@ -25,6 +25,12 @@ export function CommandMenu({ open, initialQuery = "", onClose, theme, setTheme,
   const navigate = useNavigate();
   const repo = useRepoMaybe();
   const [query, setQuery] = useState(initialQuery);
+  // Keys collected while this menu was mounting are appended once it can take them.
+  useEffect(() => {
+    if (initialQuery) setQuery((q) => (initialQuery.startsWith(q) ? initialQuery : q + initialQuery));
+  }, [initialQuery]);
+  const viewer = useViewer();
+  const platform = viewer.data?.platform !== false;
   const deferred = useDeferredValue(query.trim());
   const repos = useRepositories();
   const inbox = useInbox();
@@ -87,14 +93,14 @@ export function CommandMenu({ open, initialQuery = "", onClose, theme, setTheme,
                       {go("Overview", "repo", () => navigate({ to: "/$owner/$repo", params: rp }))}
                       {go("Code", "code", () => navigate({ to: "/$owner/$repo/code/$", params: { ...rp, _splat: "" } }), "g c")}
                       {go("Changes", "changes", () => navigate({ to: "/$owner/$repo/changes", params: rp }), "g l")}
-                      {go("Reviews", "review", () => navigate({ to: "/$owner/$repo/reviews", params: rp }), "g r")}
+                      {!isSingle(repo!.key) && go("Reviews", "review", () => navigate({ to: "/$owner/$repo/reviews", params: rp }), "g r")}
                       {go("Locks", "lock", () => navigate({ to: "/$owner/$repo/locks", params: rp }), "g k")}
                       {go("Agents", "bot", () => navigate({ to: "/$owner/$repo/agents", params: rp }))}
-                      {go("Settings", "settings", () => navigate({ to: "/$owner/$repo/settings", params: rp }))}
+                      {!isSingle(repo!.key) && go("Settings", "settings", () => navigate({ to: "/$owner/$repo/settings", params: rp }))}
                     </Command.Group>
                   )}
 
-                  {repos.data && (
+                  {repos.data && platform && (
                     <Command.Group heading="Repositories">
                       {repos.data.map((r) => (
                         <Command.Item key={r.name} value={`repository ${r.owner}/${r.name} ${r.description}`} onSelect={() => run(() => navigate({ to: "/$owner/$repo", params: { owner: r.owner, repo: r.name } }))}>
@@ -111,8 +117,8 @@ export function CommandMenu({ open, initialQuery = "", onClose, theme, setTheme,
 
                   <Command.Group heading="Go to">
                     {go("Home", "home", () => navigate({ to: "/" }), "g h")}
-                    {go("Inbox", "inbox", () => navigate({ to: "/inbox" }), "g i")}
-                    {go("Tokens", "key", () => navigate({ to: "/settings/tokens" }))}
+                    {platform && go("Inbox", "inbox", () => navigate({ to: "/inbox" }), "g i")}
+                    {platform && go("Tokens", "key", () => navigate({ to: "/settings/tokens" }))}
                     {go("Connection", "plug", () => navigate({ to: "/connect" }))}
                   </Command.Group>
 

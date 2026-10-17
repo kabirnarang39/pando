@@ -29,9 +29,33 @@ test("lists locked files", async ({ page }) => {
   await expect(page.getByRole("rowheader", { name: "design.psd" })).toBeVisible();
 });
 
-test("finds a file from the command menu", async ({ page }) => {
+test("finds a file from the command menu, keeping keys typed while it opens", async ({ page }) => {
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+k");
   await page.keyboard.type("tax");
   await page.getByRole("option", { name: /services\/billing\/tax\.rs/ }).click();
   await expect(page.getByLabel("File contents")).toContainText("pub fn tax");
+});
+
+test("opens a 50,000-line file quickly and keeps its last line in the page", async ({ page }) => {
+  await page.getByRole("link", { name: "Code" }).click();
+  const started = Date.now();
+  await page.getByRole("link", { name: "generated.rs" }).click();
+  await expect(page.getByLabel("File contents")).toContainText("ITEM_0: u32 = 0");
+  const opened = Date.now() - started;
+  // Every line is in the document (so the browser's find works), even though off-screen
+  // chunks are not laid out.
+  await expect(page.locator("#L50000")).toContainText("ITEM_49999");
+  // Above 1 MB the file shows uncoloured, and says so.
+  await expect(page.getByText("Highlighting is off for files over 1 MB.")).toBeVisible();
+  console.log(`50,000-line file opened in ${opened} ms`);
+  expect(opened).toBeLessThan(3000);
+});
+
+test("offers only what a single-repository server can do", async ({ page }) => {
+  await page.keyboard.press("ControlOrMeta+k");
+  const menu = page.getByRole("dialog", { name: "Command menu" });
+  await expect(menu.getByRole("option", { name: /^Code/ })).toBeVisible();
+  await expect(menu.getByRole("option", { name: /^Reviews/ })).toHaveCount(0);
+  await expect(menu.getByRole("option", { name: /^Inbox/ })).toHaveCount(0);
 });

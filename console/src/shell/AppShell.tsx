@@ -20,6 +20,8 @@ export function AppShell() {
   const [keys, setKeys] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const chord = useRef(0);
+  // What was typed before the menu could take focus; handed to it.
+  const [early, setEarly] = useState("");
   const menuOpen = useRef(false);
   menuOpen.current = menu !== null || keys;
   const location = useLocation();
@@ -34,7 +36,13 @@ export function AppShell() {
         setMenu((m) => (m ? null : "all"));
         return;
       }
-      // While a menu is open every key belongs to it, even before its input has focus.
+      // While a menu is open every key belongs to it. Printable keys that arrive before its input
+      // has focus are collected and handed to it, so nothing typed is lost.
+      if (menuOpen.current && !typing(e) && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setEarly((q) => q + e.key);
+        return;
+      }
       if (menuOpen.current || typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (Date.now() - chord.current < 1200) {
         chord.current = 0;
@@ -57,8 +65,6 @@ export function AppShell() {
   }, [navigate, params.owner, params.repo]);
 
   const [menuLoaded, setMenuLoaded] = useState(false);
-  // What was typed while the menu's code was still loading; handed to it when it arrives.
-  const [early, setEarly] = useState("");
   useEffect(() => {
     if (menu) setMenuLoaded(true);
   }, [menu]);
@@ -69,7 +75,7 @@ export function AppShell() {
   useEffect(() => {
     if (!menu) setEarly("");
   }, [menu]);
-  const commandMenu = menuLoaded ? (
+  const commandMenu = menuLoaded || menu ? (
     <Suspense
       fallback={
         menu && (

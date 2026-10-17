@@ -239,3 +239,22 @@ CI against the real kernels: a stock macOS runner mounts without admin rights, a
 runner projects with ProjFS, each compared file by file with `pando clone`. On managed Macs
 whose policy forbids user mounts, `--serve-only` prints the command for an administrator.
 
+## ADR-021: The web console and the platform contract
+
+**Decision.** The console is a static React 19 app (React Compiler, React Aria, TanStack
+Router and Query, Connect-ES over gRPC-Web, Shiki in a worker) that talks to `pandod`
+directly. Hosting features (organisations, repositories, accounts, change requests, reviews,
+protected branches) are specified first as `pando_platform.proto`, implemented by an
+in-browser demo, then by the server. Repository-scoped calls name their repository in the
+`x-pando-repo` header; a call without it reaches the default repository.
+**Why.** Solid, Svelte and Leptos were compared. Rendering cost is bounded by what is on
+screen, not by the framework, so the deciding factors were accessible components (React Aria
+has the most complete keyboard and screen-reader behaviour) and contributors. A static app with
+no backend of its own has nothing to operate and can be hosted anywhere, including for free. Contract
+first lets the whole interface be built, tested and demonstrated before the server work lands,
+and the header keeps every existing client working when a server starts hosting several
+repositories. Servers without the platform service answer `Unimplemented`, and the console
+shows their one repository. The cost is about 107 KB of gzipped JavaScript for React, the
+router and the gRPC-Web runtime before any interface code; the build enforces a budget for the
+first screen.
+

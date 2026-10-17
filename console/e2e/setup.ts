@@ -34,6 +34,7 @@ export default async function setup() {
   mkdirSync(join(src, "services/billing"), { recursive: true });
   writeFileSync(join(src, "README.md"), "# Orchard\n\nA small repository for the console's end-to-end tests.\n");
   writeFileSync(join(src, "services/billing/tax.rs"), "pub const RATE_BPS: u32 = 1900;\n\npub fn tax(cents: u64) -> u64 {\n    cents * RATE_BPS as u64 / 10_000\n}\n");
+  writeFileSync(join(src, "generated.rs"), Array.from({ length: 50_000 }, (_, i) => `pub const ITEM_${i}: u32 = ${i};`).join("\n") + "\n");
   writeFileSync(join(src, "design.psd"), Buffer.from([0x38, 0x42, 0x50, 0x53, 0, 1, 2, 3]));
   git(src, "init", "-q", "-b", "main");
   git(src, "add", "-A");

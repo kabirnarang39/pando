@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The web console (`console/`): browse code with blame and history, follow changes as they land
+  with word-level diffs, see who and which agent landed what on a live fleet timeline, find files
+  from a command menu, and see locks. Works with any `pandod`; a demo of the full platform (several
+  repositories, change requests, reviews, a land gate and rebase) runs in the browser. See
+  docs/console.md.
+- `pandod` accepts gRPC-Web from browsers (`web` feature flag, on by default) and allows the
+  origins in `--web-origins` / `PANDO_WEB_ORIGINS` to call it.
+- The platform contract, `pando_platform.proto`: organisations, repositories, accounts and agents,
+  tokens, change requests, reviews, comments, protected branches (ADR-021).
+
+### Changed
+- A new mark: the letter P drawn as a branch landing back on main.
+
 ## [2.4.0] - 2026-10-17
 
 ### Added
