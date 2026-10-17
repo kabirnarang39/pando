@@ -435,11 +435,11 @@ export class DemoPlatform {
     return this.comments.get(`${key}#${number}`) ?? [];
   }
 
-  addComment(key: string, number: bigint, body: string, path: string, line: number, thread: string, suggestion: string) {
+  addComment(key: string, number: bigint, body: string, path: string, line: number, thread: string, suggestion: string, endLine = 0) {
     const cr = this.changeRequest(key, number);
     if (!body.trim()) throw new ConnectError("a comment needs some text", Code.InvalidArgument);
     const id = `c${this.nextComment++}`;
-    const c = create(CommentSchema, { id, author: VIEWER, body, createdAtMs: BigInt(Date.now()), path, line, atTip: cr.sourceTip, thread: thread || id, suggestion });
+    const c = create(CommentSchema, { id, author: VIEWER, body, createdAtMs: BigInt(Date.now()), path, line, endLine, atTip: cr.sourceTip, thread: thread || id, suggestion });
     const list = this.comments.get(`${key}#${number}`) ?? [];
     list.push(c);
     this.comments.set(`${key}#${number}`, list);
@@ -643,7 +643,7 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
         return { comments: p.commentsOf(keyOf(r.repository), r.number) };
       },
       async addComment(r) {
-        return p.addComment(keyOf(r.ref?.repository), r.ref!.number, r.body, r.path, r.line, r.thread, r.suggestion);
+        return p.addComment(keyOf(r.ref?.repository), r.ref!.number, r.body, r.path, r.line, r.thread, r.suggestion, r.endLine);
       },
       async resolveThread(r) {
         return p.resolve(keyOf(r.ref?.repository), r.ref!.number, r.thread, r.resolved);

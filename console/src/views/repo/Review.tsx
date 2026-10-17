@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Tooltip, TooltipTrigger } from "react-aria-components";
 import { explain, hex, isNotFound, Mode, type FileChange } from "../../api/client";
-import { CheckPill, ReviewButton, reviewState, StatePill, Thread } from "../../components/ReviewParts";
+import { CheckPill, ReviewButton, reviewState, StatePill, Thread, type CommentTarget } from "../../components/ReviewParts";
 import { ChangeRequestState, Verdict, type Comment } from "../../gen/pando_platform_pb";
 import { Markdown } from "../../markdown";
 import { useChangeRequest, useCloseChangeRequest, useComments, useLandChangeRequest, useRebaseChangeRequest } from "../../platform-data";
@@ -46,7 +46,7 @@ function Page() {
     queryFn: async () => (await api.diff.diff({ from: base, to: tip })).changes.map((c): FileChange => ({ path: c.path, blob: hex(c.blob), mode: c.mode as Mode })),
     staleTime: Infinity,
   });
-  const [composing, setComposing] = useState<{ path: string; line: number } | null>(null);
+  const [composing, setComposing] = useState<CommentTarget | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
 
@@ -62,8 +62,10 @@ function Page() {
         conversation.push(t);
         continue;
       }
+      // A thread sits under the last line it is about.
+      const at = h.endLine > h.line ? h.endLine : h.line;
       const m = byLine.get(h.path) ?? new Map<number, Comment[][]>();
-      m.set(h.line, [...(m.get(h.line) ?? []), t]);
+      m.set(at, [...(m.get(at) ?? []), t]);
       byLine.set(h.path, m);
     }
     return { byLine, conversation };
@@ -243,7 +245,7 @@ function Page() {
         </section>
 
         <div className="toolbar">
-          <span className="num">{files.data ? `${files.data.length} files` : "Files"}</span>
+          <span className="num">{files.data ? `${files.data.length} ${files.data.length === 1 ? "file" : "files"}` : "Files"}</span>
           <div className="segmented" role="group" aria-label="Diff layout">
             {(["unified", "split"] as const).map((l) => (
               <button key={l} type="button" aria-pressed={layout === l} onClick={() => navigate({ search: (s) => ({ ...s, layout: l === "split" ? "split" : undefined }), replace: true })}>
@@ -251,7 +253,7 @@ function Page() {
               </button>
             ))}
           </div>
-          <span className="muted hide-small">Click a line number to comment. n and p move between files.</span>
+          <span className="muted hide-small">Click + on a line to comment, shift-click for several. n and p move between files.</span>
           {open && (
             <button type="button" className="button button-quiet" style={{ marginLeft: "auto" }} onClick={() => close.mutate(ChangeRequestState.CLOSED)}>
               Close without landing
@@ -263,7 +265,9 @@ function Page() {
         {files.error && <ErrorState error={files.error} />}
         {files.data?.map((f) => {
           const lines = byLine.get(f.path);
-          const keep = new Set([...(lines?.keys() ?? []), ...(composing?.path === f.path ? [composing.line] : [])]);
+          const mine = composing?.path === f.path ? composing : null;
+          const end = mine ? (mine.endLine ?? mine.line) : 0;
+          const keep = new Set([...(lines?.keys() ?? []), ...(mine ? Array.from({ length: end - mine.line + 1 }, (_, k) => mine.line + k) : [])]);
           return (
             <FileDiff
               key={f.path}
@@ -282,13 +286,20 @@ function Page() {
               }
               annotations={{
                 lines: keep,
-                onLine: open ? (line) => setComposing({ path: f.path, line }) : undefined,
-                render: (line) => (
+                selected: mine ? [mine.line, end] : undefined,
+                onLine: open
+                  ? (line, extend, textOf) => {
+                      const start = extend && mine ? Math.min(mine.line, line) : line;
+                      const stop = extend && mine ? Math.max(mine.endLine ?? mine.line, line) : line;
+                      setComposing({ path: f.path, line: start, endLine: stop > start ? stop : undefined, original: textOf(start, stop) });
+                    }
+                  : undefined,
+                render: (line, textOf) => (
                   <>
                     {lines?.get(line)?.map((t) => (
-                      <Thread key={t[0]!.id} repo={key} cr={cr} comments={t} />
+                      <Thread key={t[0]!.id} repo={key} cr={cr} comments={t} original={textOf(t[0]!.line, Math.max(t[0]!.line, t[0]!.endLine))} />
                     ))}
-                    {composing?.path === f.path && composing.line === line && <Thread repo={key} cr={cr} comments={[]} at={composing} onDone={() => setComposing(null)} />}
+                    {mine && end === line && <Thread key={`${mine.line}-${end}`} repo={key} cr={cr} comments={[]} at={mine} onDone={() => setComposing(null)} />}
                   </>
                 ),
               }}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Dialog, DialogTrigger, Popover, Tooltip, TooltipTrigger } from "react-aria-components";
 import { hex } from "../api/client";
 import { ChangeRequestState, CheckState, Verdict, type ChangeRequest, type Check, type Comment } from "../gen/pando_platform_pb";
@@ -141,48 +141,265 @@ export function ReviewButton({ repo, cr }: { repo: string; cr: ChangeRequest }) 
   );
 }
 
-/** A comment thread (on a line or on the change request), with reply and resolve. */
-export function Thread({ repo, cr, comments, at, onDone }: { repo: string; cr: ChangeRequest; comments: Comment[]; at?: { path: string; line: number }; onDone?(): void }) {
-  const [reply, setReply] = useState("");
+/** Where a new comment goes: a file and a line, or a range of lines. */
+export interface CommentTarget {
+  path: string;
+  line: number;
+  endLine?: number;
+  /** The current text of the commented lines, offered as the start of a suggestion. */
+  original?: string;
+}
+
+const SUGGESTION = /```suggestion\n([\s\S]*?)```/;
+const SUGGESTIONS = new RegExp(SUGGESTION.source, "g");
+
+/**
+ * Writing a comment: Markdown with a preview, a suggested change for commented lines,
+ * ⌘/Ctrl+Enter to send and Escape to cancel.
+ */
+export function Composer({
+  label,
+  submitLabel,
+  original,
+  autoFocus,
+  pending,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  submitLabel: string;
+  original?: string;
+  autoFocus?: boolean;
+  pending?: boolean;
+  error?: string | null;
+  onSubmit(body: string, suggestion: string): void;
+  onCancel?(): void;
+}) {
+  const [body, setBody] = useState("");
+  const [preview, setPreview] = useState(false);
+  const text = useRef<HTMLTextAreaElement>(null);
+  const send = () => {
+    const text = body.trim();
+    if (!text || pending) return;
+    const s = text.match(SUGGESTION);
+    onSubmit(text, s ? s[1]!.replace(/\n+$/, "") : "");
+  };
+  return (
+    <form
+      className="composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <div className="composer-head">
+        <span className="composer-label">{label}</span>
+        <div className="segmented" role="group" aria-label="Write or preview">
+          <button type="button" aria-pressed={!preview} onClick={() => setPreview(false)}>
+            Write
+          </button>
+          <button type="button" aria-pressed={preview} onClick={() => setPreview(true)}>
+            Preview
+          </button>
+        </div>
+      </div>
+      {preview ? (
+        <div className="composer-preview">{body.trim() ? <Markdown text={body} /> : <span className="muted">Nothing to preview.</span>}</div>
+      ) : (
+        <textarea
+          ref={text}
+          className="input composer-text"
+          value={body}
+          autoFocus={autoFocus}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              send();
+            }
+            if (e.key === "Escape" && onCancel) {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          placeholder="Leave a comment. Markdown works."
+          aria-label={label}
+          rows={3}
+        />
+      )}
+      {error && (
+        <p className="status" data-kind="error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="composer-foot">
+        {original !== undefined && (
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={() => {
+              const next = `${body}${body && !body.endsWith("\n") ? "\n" : ""}\`\`\`suggestion\n${original}\n\`\`\`\n`;
+              setPreview(false);
+              setBody(next);
+              // Back to the text, with the caret at the end of the proposed lines.
+              const caret = next.length - "\n```\n".length;
+              setTimeout(() => (text.current?.focus(), text.current?.setSelectionRange(caret, caret)));
+            }}
+            title="Propose replacement text for these lines"
+          >
+            <Icon name="code" size={14} /> Suggest a change
+          </button>
+        )}
+        <span className="muted composer-hint">
+          <kbd>⌘</kbd>
+          <kbd>↵</kbd> to send
+        </span>
+        {onCancel && (
+          <button type="button" className="button button-quiet" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+        <button type="submit" className="button" data-primary="" disabled={!body.trim() || pending}>
+          {pending ? "Sending…" : submitLabel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function lines(c: Comment) {
+  if (!c.path) return null;
+  return c.endLine && c.endLine > c.line ? `lines ${c.line}–${c.endLine}` : `line ${c.line}`;
+}
+
+/** A suggestion as a small diff: what the lines are now, and what the reviewer proposes. */
+function Suggestion({ text, original }: { text: string; original?: string }) {
+  return (
+    <div className="suggestion" aria-label="Suggested change">
+      <div className="suggestion-head">
+        <Icon name="code" size={13} /> Suggested change
+      </div>
+      {original !== undefined &&
+        original.split("\n").map((l, i) => (
+          <div className="drow" data-op="del" key={`o${i}`}>
+            <span className="dm" aria-label="removed">−</span>
+            <span className="dsrc">{l || " "}</span>
+          </div>
+        ))}
+      {text.split("\n").map((l, i) => (
+        <div className="drow" data-op="add" key={`n${i}`}>
+          <span className="dm" aria-label="added">+</span>
+          <span className="dsrc">{l || " "}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A comment thread (on lines of a file, or on the change request), with reply and resolve. */
+export function Thread({
+  repo,
+  cr,
+  comments,
+  at,
+  original,
+  onDone,
+}: {
+  repo: string;
+  cr: ChangeRequest;
+  comments: Comment[];
+  /** For a new thread: where it goes. */
+  at?: CommentTarget;
+  /** Current text of the commented lines (for suggestions). */
+  original?: string;
+  onDone?(): void;
+}) {
+  const [replying, setReplying] = useState(false);
   const add = useAddComment(repo, cr.number);
   const resolve = useResolveThread(repo, cr.number);
   const head = comments[0];
   const resolved = !!head?.resolved;
+  const inline = !!(at || head?.path);
+  const [collapsed, setCollapsed] = useState(resolved);
+  const submit = (body: string, suggestion: string) =>
+    add.mutate(
+      { body, suggestion, path: head?.path ?? at?.path, line: head?.line ?? at?.line, endLine: head?.endLine ?? at?.endLine, thread: head?.thread },
+      { onSuccess: () => (setReplying(false), onDone?.()) },
+    );
+
+  if (!head && at)
+    return (
+      <div className="thread" data-inline="">
+        <div className="thread-inner">
+          <Composer
+            label={`Comment on ${at.endLine && at.endLine > at.line ? `lines ${at.line}–${at.endLine}` : `line ${at.line}`} of ${at.path.split("/").pop()}`}
+            submitLabel="Comment"
+            original={at.original}
+            autoFocus
+            pending={add.isPending}
+            error={add.error ? (add.error as Error).message : null}
+            onSubmit={submit}
+            onCancel={onDone}
+          />
+        </div>
+      </div>
+    );
+
+  if (!head)
+    return (
+      <div className="thread">
+        <div className="thread-inner">
+          <Composer label="Add to the conversation" submitLabel="Comment" pending={add.isPending} error={add.error ? (add.error as Error).message : null} onSubmit={submit} />
+        </div>
+      </div>
+    );
+
   return (
-    <div className="thread" data-resolved={resolved || undefined} data-inline={at || head?.path ? "" : undefined}>
+    <div className="thread" data-resolved={resolved || undefined} data-inline={inline ? "" : undefined}>
       <div className="thread-inner">
-        {comments.map((c) => (
-          <div className="comment" key={c.id}>
-            <div className="comment-head">
-              <Author author={c.author} />
-              <Time ms={Number(c.createdAtMs)} />
-              {resolved && c === head && <span className="pill">Resolved</span>}
-            </div>
-            <Markdown text={c.body} className="comment-body markdown" />
-          </div>
-        ))}
-        <form
-          className="thread-foot"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate({ body: reply, path: head?.path ?? at?.path, line: head?.line ?? at?.line, thread: head?.thread }, { onSuccess: () => (setReply(""), onDone?.()) });
-          }}
-        >
-          <input className="input" style={{ flex: 1, minWidth: 160 }} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={head ? "Reply" : "Write a comment"} aria-label={head ? "Reply" : "Comment"} autoFocus={!head && !!at} />
-          <button type="submit" className="button" data-primary="" disabled={!reply.trim() || add.isPending}>
-            {head ? "Reply" : "Comment"}
+        {resolved && collapsed ? (
+          <button type="button" className="thread-collapsed" onClick={() => setCollapsed(false)}>
+            <Icon name="check" size={13} /> Resolved conversation{lines(head) ? ` on ${lines(head)}` : ""}, {comments.length} {comments.length === 1 ? "comment" : "comments"}. Show
           </button>
-          {head && (
-            <button type="button" className="button button-quiet" onClick={() => resolve.mutate({ thread: head.thread, resolved: !resolved })}>
-              {resolved ? "Reopen" : "Resolve"}
-            </button>
-          )}
-          {!head && onDone && (
-            <button type="button" className="button button-quiet" onClick={onDone}>
-              Cancel
-            </button>
-          )}
-        </form>
+        ) : (
+          <>
+            {comments.map((c) => (
+              <div className="comment" key={c.id}>
+                <div className="comment-head">
+                  <Author author={c.author} />
+                  <Time ms={Number(c.createdAtMs)} />
+                  {c === head && lines(c) && <span className="muted">on {lines(c)}</span>}
+                  {resolved && c === head && <span className="pill">Resolved</span>}
+                </div>
+                <Markdown text={c.body.replace(SUGGESTIONS, "").trim()} className="comment-body markdown" />
+                {c.suggestion && <Suggestion text={c.suggestion.replace(/\n+$/, "")} original={c === head ? original : undefined} />}
+              </div>
+            ))}
+            {replying ? (
+              <div className="thread-reply">
+                <Composer
+                  label="Reply"
+                  submitLabel="Reply"
+                  autoFocus
+                  pending={add.isPending}
+                  error={add.error ? (add.error as Error).message : null}
+                  onSubmit={submit}
+                  onCancel={() => setReplying(false)}
+                />
+              </div>
+            ) : (
+              <div className="thread-foot">
+                <button type="button" className="reply-field" onClick={() => setReplying(true)}>
+                  Reply…
+                </button>
+                <button type="button" className="button button-quiet" onClick={() => resolve.mutate({ thread: head.thread, resolved: !resolved })}>
+                  {resolved ? "Reopen" : "Resolve"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

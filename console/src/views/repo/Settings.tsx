@@ -20,7 +20,7 @@ export function RepoSettingsView() {
   const grants = useGrants(key);
   return (
     <div className="page page-narrow">
-      {target.kind === "demo" && <p className="status" data-kind="ok">The demo shows settings read-only. On your server, admins change them here.</p>}
+      {target.kind === "demo" && <p className="status" data-kind="info">The demo shows settings read-only. On your server, admins change them here.</p>}
       <section className="panel" aria-labelledby="protect-title" style={{ margin: "20px 0" }}>
         <div className="panel-head">
           <Icon name="shield" />

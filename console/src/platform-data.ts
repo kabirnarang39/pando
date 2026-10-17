@@ -188,8 +188,16 @@ export function useAddComment(key: string, number: bigint) {
   const api = usePlatformApi();
   const invalidate = useInvalidateReviews();
   return useMutation({
-    mutationFn: (c: { body: string; path?: string; line?: number; thread?: string; suggestion?: string }) =>
-      api.reviews.addComment({ ref: { repository: ref(key), number }, body: c.body, path: c.path ?? "", line: c.line ?? 0, thread: c.thread ?? "", suggestion: c.suggestion ?? "" }),
+    mutationFn: (c: { body: string; path?: string; line?: number; endLine?: number; thread?: string; suggestion?: string }) =>
+      api.reviews.addComment({
+        ref: { repository: ref(key), number },
+        body: c.body,
+        path: c.path ?? "",
+        line: c.line ?? 0,
+        endLine: c.endLine ?? 0,
+        thread: c.thread ?? "",
+        suggestion: c.suggestion ?? "",
+      }),
     onSuccess: invalidate,
   });
 }

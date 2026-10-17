@@ -49,7 +49,7 @@ function Layout() {
 
   return (
     <div className="repo-layout">
-      <header className="repo-head" data-compact={compact || undefined}>
+      <header className="repo-head" data-compact={compact || undefined} data-section={section}>
         <div className="repo-title">
           <h1>
             {single ? (
