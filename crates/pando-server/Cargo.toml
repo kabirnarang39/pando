@@ -49,10 +49,12 @@ tower.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 similar.workspace = true
+object_store.workspace = true
+tempfile.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
 base64 = "0.23"
 jsonwebtoken = { workspace = true, features = ["use_pem"] }
-tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

@@ -7,6 +7,32 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Security
+- Protected branches: a change's author can no longer approve it through an agent they mint,
+  approve an agent's change they answer for, or report its required checks; such approvals don't
+  count (ADR-030).
+- Single sign-on: `--oidc-require CLAIM=VALUE` binds tokens to your tenant, and pandod refuses to
+  start with GitHub Actions or Google as issuer without one. Tokens can't sign in as a platform
+  administrator (unless listed with `--oidc-admin`) or as an `agent/` or `bot/` account. Unknown
+  signing keys refetch the key set at most once a minute.
+- Paths named `.git` or `.pando` in any case, with trailing dots or spaces, as an NTFS stream or
+  as an 8.3 short name (`GIT~1`) are refused by the server, by checkouts and by imports, so a
+  writer can't plant git hooks or config in other people's checkouts. Existing history holding
+  such paths can no longer be read.
+- Static tokens that are empty, shorter than 16 characters or a placeholder (`CHANGE-ME`) are
+  refused at startup.
+- Access answers are no longer re-cached from a read that raced a write, so a removed member or
+  grant loses access at once.
+- `pando migrate`: the GitHub token comes from `PANDO_GITHUB_TOKEN` (or `GITHUB_TOKEN`) or
+  `--github-token-file`; `--github-token` warns that it is visible to other users. Source URLs
+  are printed without credentials, and the mirror clone goes to a private, randomly named
+  directory.
+
+### Added
+- `pandod backup` snapshots a platform server's registry and every repository's database to a
+  directory or object store while it runs; `docs/deploy.md` documents the restore.
+
+### Changed
+- Docs: a platform server (`--platform`) is single-node; only servers without it scale out.
 - Go SDK: requires Go 1.26.9 and uses `golang.org/x/net` 0.60.0 and `golang.org/x/text`
   0.42.0, fixing six known HTTP/2 and text-parsing vulnerabilities (GO-2026-6603, 6610, 6611,
   6612, 6617, 6629).

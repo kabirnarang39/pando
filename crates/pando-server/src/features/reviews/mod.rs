@@ -112,12 +112,19 @@ impl Reviews {
     /// The change request as clients see it, with reviews, checks, conflicts and what blocks it.
     async fn view(&self, repo: &Repo, cr: CrRec) -> Result<ChangeRequest, Status> {
         let reviews = self.reg().reviews(&cr.key, cr.number).map_err(internal)?;
+        // Approvals by the author's own person (the author, the human behind an agent author, or
+        // any agent that human answers for) never count towards the gate.
+        let counted: Vec<ReviewRec> = reviews
+            .iter()
+            .filter(|r| r.verdict != Verdict::Approved || !self.same_person(&r.reviewer, &cr.author))
+            .cloned()
+            .collect();
         let checks = self.reg().checks(&cr.key, &cr.source_tip).map_err(internal)?;
         let comments = self.reg().comments(&cr.key, cr.number).map_err(internal)?.len() as u32;
         let open = matches!(cr.state, ChangeRequestState::Open | ChangeRequestState::Draft);
         let conflicts = if open { conflicts(repo, &cr).await? } else { vec![] };
         let protection = self.reg().protection_for(&cr.key, &cr.target).map_err(internal)?;
-        let blockers = if open { blockers(&cr, &reviews, &checks, &conflicts, protection.as_ref()) } else { vec![] };
+        let blockers = if open { blockers(&cr, &counted, &checks, &conflicts, protection.as_ref()) } else { vec![] };
         Ok(ChangeRequest {
             repository: Some(RepositoryRef { owner: cr.key.owner.clone(), name: cr.key.name.clone() }),
             number: cr.number,
@@ -182,6 +189,25 @@ impl Reviews {
 
     fn answers_for(&self, who: &Principal, author: &str) -> bool {
         matches!(self.reg().account(author), Ok(Some(a)) if a.owner == who.0)
+    }
+
+    /// The person behind a login: an agent's owner, followed up the chain (an agent can mint
+    /// another agent), or the login itself.
+    fn person(&self, login: &str) -> String {
+        let mut at = login.to_owned();
+        // ponytail: 8 hops is far deeper than any real agent-of-agent chain.
+        for _ in 0..8 {
+            match self.reg().account(&at) {
+                Ok(Some(a)) if !a.owner.is_empty() && a.owner != at => at = a.owner,
+                _ => break,
+            }
+        }
+        at
+    }
+
+    /// Do two logins act for the same person (ADR-030: reviews and checks come from someone else).
+    fn same_person(&self, a: &str, b: &str) -> bool {
+        a == b || self.person(a) == self.person(b)
     }
 }
 
@@ -563,8 +589,10 @@ impl reviews_server::Reviews for Reviews {
         }
         match verdict {
             Verdict::Unspecified => return Err(Status::invalid_argument("approve, request changes or comment")),
-            Verdict::Approved | Verdict::ChangesRequested if who.0 == cr.author => {
-                return Err(Status::failed_precondition("you can't review your own change; ask someone else"));
+            Verdict::Approved | Verdict::ChangesRequested if self.same_person(&who.0, &cr.author) => {
+                return Err(Status::failed_precondition(
+                    "you can't review your own change (or your agent's, or as your agent); ask someone else",
+                ));
             }
             _ => {}
         }
@@ -728,6 +756,12 @@ impl reviews_server::Reviews for Reviews {
         let key = key_of(cref.repository.as_ref())?;
         let ctx = self.ctx(&who, scope.as_ref(), &key, Role::Write).await?;
         let cr = self.refresh(&ctx.repo, self.get_cr(&key, cref.number)?).await?;
+        // A change's author (or an agent of theirs) can't vouch for it: CI reports checks.
+        if self.same_person(&who.0, &cr.author) {
+            return Err(Status::permission_denied(
+                "the change's author (or their agent) can't report its checks; let CI report them",
+            ));
+        }
         let mut check = r.check.ok_or_else(|| Status::invalid_argument("give the check"))?;
         check.name = check.name.trim().to_owned();
         if check.name.is_empty() || check.name.len() > 100 {

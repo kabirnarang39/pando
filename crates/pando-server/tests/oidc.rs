@@ -32,7 +32,7 @@ fn sign(claims: &Value, kid: Option<&str>) -> String {
 }
 
 fn cfg(claim: &str) -> OidcConfig {
-    OidcConfig { issuer: ISS.into(), audience: AUD.into(), principal_claim: claim.into() }
+    OidcConfig { issuer: ISS.into(), audience: AUD.into(), principal_claim: claim.into(), ..Default::default() }
 }
 
 fn auth(claim: &str) -> OidcAuthenticator {
@@ -53,6 +53,56 @@ fn accepts_valid_tokens_and_maps_the_configured_claim() {
     let mut c = claims();
     c["exp"] = json!(now() - 30);
     assert!(auth("sub").verify(&sign(&c, Some("test-key-1"))).is_ok());
+}
+
+/// Required claims bind a tenant; reserved logins (platform admins, agents, bots) can't be
+/// claimed through single sign-on.
+#[test]
+fn required_claims_and_reserved_logins() {
+    let jwks = || serde_json::from_str::<JwkSet>(JWKS).unwrap();
+    let mut bound = cfg("email");
+    bound.require =
+        vec![OidcConfig::parse_require("hd=corp.example").unwrap(), ("email_verified".into(), "true".into())];
+    let a = OidcAuthenticator::with_jwks(bound, jwks());
+    let mut c = claims();
+    c["hd"] = json!("corp.example");
+    c["email_verified"] = json!(true);
+    assert_eq!(a.verify(&sign(&c, Some("test-key-1"))).unwrap().0, "dev@example.com");
+    c["hd"] = json!("gmail.com");
+    assert!(rejected(&a, &sign(&c, Some("test-key-1"))).contains("`hd` is not `corp.example`"));
+    c["hd"] = json!("corp.example");
+    c["email_verified"] = json!(false);
+    assert!(rejected(&a, &sign(&c, Some("test-key-1"))).contains("email_verified"));
+    assert!(rejected(&a, &sign(&claims(), Some("test-key-1"))).contains("`hd`"), "a missing claim fails");
+    assert!(OidcConfig::parse_require("hd").is_err() && OidcConfig::parse_require("=x").is_err());
+
+    // A token naming a platform administrator, an agent or a bot is refused.
+    let a = OidcAuthenticator::with_jwks(OidcConfig { reserved: vec!["root".into()], ..cfg("email") }, jwks());
+    for who in ["root", "agent/x", "bot/ci"] {
+        let mut c = claims();
+        c["email"] = json!(who);
+        assert!(rejected(&a, &sign(&c, Some("test-key-1"))).contains("reserved"), "{who}");
+    }
+}
+
+/// Issuers that sign tokens for anyone need a rule that binds the tenant.
+#[test]
+fn multi_tenant_issuers_need_a_tenant_rule() {
+    let gha = |require: &[(&str, &str)]| OidcConfig {
+        issuer: "https://token.actions.githubusercontent.com".into(),
+        audience: "pando".into(),
+        principal_claim: "sub".into(),
+        require: require.iter().map(|(c, v)| (c.to_string(), v.to_string())).collect(),
+        ..Default::default()
+    };
+    let e = gha(&[]).check().unwrap_err().to_string();
+    assert!(e.contains("repository_owner"), "{e}");
+    assert!(gha(&[("ref", "refs/heads/main")]).check().is_err(), "a non-tenant rule is not enough");
+    gha(&[("repository_owner", "acme")]).check().unwrap();
+    let google = OidcConfig { issuer: "https://accounts.google.com".into(), ..cfg("email") };
+    assert!(google.check().is_err());
+    OidcConfig { require: vec![("hd".into(), "corp.example".into())], ..google }.check().unwrap();
+    cfg("sub").check().unwrap();
 }
 
 #[test]
@@ -151,7 +201,12 @@ async fn discovery_and_rotation_on_unknown_key_id() {
     let rotated = JWKS.replace("test-key-1", "new");
     let jwks = Arc::new(Mutex::new(JWKS.replace("test-key-1", "old")));
     let issuer = idp(jwks.clone()).await;
-    let cfg = OidcConfig { issuer: issuer.clone(), audience: AUD.into(), principal_claim: "sub".into() };
+    let cfg = OidcConfig {
+        issuer: issuer.clone(),
+        audience: AUD.into(),
+        principal_claim: "sub".into(),
+        ..Default::default()
+    };
     let a = OidcAuthenticator::discover(cfg.clone()).await.unwrap();
     let mut c = claims();
     c["iss"] = json!(issuer);

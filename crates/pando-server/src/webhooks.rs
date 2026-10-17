@@ -127,12 +127,12 @@ impl Registry {
     ) -> anyhow::Result<(Webhook, String)> {
         let id = random_hex(8)?;
         let secret = if secret.is_empty() { random_hex(32)? } else { secret.to_owned() };
-        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "INSERT INTO webhooks (id, owner, name, url, secret, events, created_at_ms, created_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![id, key.owner, key.name, url, secret, events.join(","), now_ms(), by],
         )?;
+        self.invalidate();
         drop(db);
         Ok((self.webhook(&id)?.expect("just added").0, secret))
     }
@@ -154,10 +154,11 @@ impl Registry {
     }
 
     pub fn delete_webhook(&self, id: &str) -> anyhow::Result<bool> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute("DELETE FROM deliveries WHERE hook = ?1", [id])?;
-        Ok(db.execute("DELETE FROM webhooks WHERE id = ?1", [id])? == 1)
+        let n = db.execute("DELETE FROM webhooks WHERE id = ?1", [id])?;
+        self.invalidate();
+        Ok(n == 1)
     }
 
     pub fn deliveries(&self, hook: &str, limit: usize) -> anyhow::Result<Vec<WebhookDelivery>> {

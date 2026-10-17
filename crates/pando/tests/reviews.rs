@@ -8,8 +8,8 @@ use pando_core::Id;
 use pando_core::object::{Changeset, FileChange, Kind, Mode, encode_object};
 use pando_proto::{
     AddCommentRequest, ChangeRequestRef, ChangeRequestState, Check, CheckState, CreateChangeRequestRequest,
-    CreateRepositoryRequest, InboxRequest, ListChangeRequestsRequest, ListEventsRequest, Protection,
-    ReportCheckRequest, RepositoryRef, Role, SetMemberRequest, SubmitReviewRequest, Verdict,
+    CreateRepositoryRequest, CreateTokenRequest, InboxRequest, ListChangeRequestsRequest, ListEventsRequest,
+    Protection, ReportCheckRequest, RepositoryRef, Role, SetMemberRequest, SubmitReviewRequest, Verdict,
 };
 use tokio::net::TcpListener;
 use tonic::Code;
@@ -161,11 +161,13 @@ async fn change_requests_gate_protected_branches() {
         r#ref: Some(cr_ref(1)),
         check: Some(Check { name: "build".into(), state: state as i32, ..Default::default() }),
     };
-    let cr = dev.reviews().report_check(check(CheckState::Failed)).await.unwrap().into_inner();
+    let e = dev.reviews().report_check(check(CheckState::Passed)).await.unwrap_err();
+    assert_eq!(e.code(), Code::PermissionDenied, "the author can't vouch for their own change");
+    let cr = mira.reviews().report_check(check(CheckState::Failed)).await.unwrap().into_inner();
     assert_eq!(cr.blockers, vec!["Check build failed"]);
     let e = dev.reviews().land(cr_ref(1)).await.unwrap_err();
     assert!(e.message().contains("Check build failed"), "{e:?}");
-    let cr = dev.reviews().report_check(check(CheckState::Passed)).await.unwrap().into_inner();
+    let cr = mira.reviews().report_check(check(CheckState::Passed)).await.unwrap().into_inner();
     assert!(cr.blockers.is_empty(), "{:?}", cr.blockers);
     let landed = dev.reviews().land(cr_ref(1)).await.unwrap().into_inner();
     assert_eq!(landed.change_request.unwrap().state, ChangeRequestState::Landed as i32);
@@ -389,4 +391,95 @@ async fn changes_are_attributed_to_who_made_them() {
     // An administrator importing history keeps the original authors.
     let imported = admin.create_changeset(claim("Ada <ada@example.com>")).await.unwrap();
     assert_eq!(imported.changeset.author, "Ada <ada@example.com>");
+}
+
+/// Regression (security review H1): an author can't get their own change past a protected
+/// branch by approving it through an agent they mint, by having their agent open it and
+/// approving it themselves, or by reporting its required checks.
+#[tokio::test(flavor = "multi_thread")]
+async fn authors_cannot_approve_or_check_their_own_change_through_agents() {
+    let s = start().await;
+    let admin = as_(&s, "admin");
+    admin
+        .platform()
+        .create_repository(CreateRepositoryRequest {
+            owner: "lumen".into(),
+            name: "fleet".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    for who in ["dev", "mira"] {
+        let m = SetMemberRequest { org: "lumen".into(), login: who.into(), role: Role::Write as i32 };
+        admin.platform().set_member(m).await.unwrap();
+    }
+    let (dev, mira) = (as_(&s, "dev"), as_(&s, "mira"));
+    let first = changeset(&dev, None, &[("a.rs", "1\n")], "Start").await;
+    assert!(dev.compare_and_swap("main", None, first).await.unwrap());
+    admin
+        .reviews()
+        .set_protection(Protection {
+            repository: repo(),
+            pattern: "main".into(),
+            required_approvals: 1,
+            required_checks: vec!["build".into()],
+            dismiss_stale: true,
+            agents_land_directly: false,
+            bypass: vec![],
+        })
+        .await
+        .unwrap();
+    push(&dev, "evil", "main", &[("a.rs", "evil\n")]).await;
+    dev.reviews().create_change_request(open("evil", "t", &[])).await.unwrap();
+    let agent =
+        |name: &str| CreateTokenRequest { name: name.into(), acts_as: format!("agent/{name}"), ..Default::default() };
+    let sock = dev.platform().create_token(agent("sock")).await.unwrap().into_inner().secret;
+    let sock = GrpcRemote::connect(&format!("{}/lumen/fleet", s.url), None, Some(&sock)).unwrap();
+    let e = sock.reviews().submit_review(verdict(1, Verdict::Approved)).await.unwrap_err();
+    assert_eq!(e.code(), Code::FailedPrecondition, "{e:?}");
+    let build = |state: CheckState| ReportCheckRequest {
+        r#ref: Some(cr_ref(1)),
+        check: Some(Check { name: "build".into(), state: state as i32, ..Default::default() }),
+    };
+    for who in [&dev, &sock] {
+        let e = who.reviews().report_check(build(CheckState::Passed)).await.unwrap_err();
+        assert_eq!(e.code(), Code::PermissionDenied, "{e:?}");
+    }
+    let e = dev.reviews().land(cr_ref(1)).await.unwrap_err();
+    assert!(e.message().contains("Needs 1 more approval") && e.message().contains("Waiting for check build"), "{e:?}");
+    assert_eq!(pando::features::browse::cat(&dev, "main", "a.rs").await.unwrap(), b"1\n");
+
+    // The agent opens the change; its owner can't approve it either.
+    push(&sock, "agent-work", "main", &[("a.rs", "2\n")]).await;
+    sock.reviews().create_change_request(open("agent-work", "t", &[])).await.unwrap();
+    let e = dev.reviews().submit_review(verdict(2, Verdict::Approved)).await.unwrap_err();
+    assert_eq!(e.code(), Code::FailedPrecondition, "{e:?}");
+
+    // Someone else's approval and CI's check do count.
+    mira.reviews().submit_review(verdict(1, Verdict::Approved)).await.unwrap();
+    admin.reviews().report_check(build(CheckState::Passed)).await.unwrap();
+    dev.reviews().land(cr_ref(1)).await.expect("approved by mira and checked by CI");
+}
+
+/// Regression (security review H3): a writer can't plant `.git/hooks/*` (or `.pando` under
+/// another case) for other users' checkouts: the server refuses the changeset.
+#[tokio::test(flavor = "multi_thread")]
+async fn changesets_cannot_carry_git_or_pando_dirs() {
+    let s = start().await;
+    let eve = GrpcRemote::connect(&s.url, None, Some("eve-token")).unwrap();
+    let (blob, payload) = encode_object(Kind::Blob, b"#!/bin/sh\necho owned\n");
+    eve.objects().put_many(vec![(blob, payload)]).await.unwrap();
+    for path in [".git/hooks/post-checkout", "src/.Git/config", ".PANDO/config.json", "git~1/config"] {
+        let e = eve
+            .create_changeset(Changeset {
+                parents: vec![],
+                changes: vec![FileChange::upsert(path, Mode::Exec, blob)],
+                author: "eve".into(),
+                message: "m".into(),
+                timestamp_ms: 1,
+            })
+            .await
+            .unwrap_err();
+        assert!(format!("{e:#}").contains("reserved"), "{path}: {e:#}");
+    }
 }

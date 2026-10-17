@@ -7,8 +7,30 @@ use crate::{Error, Result};
 pub const META_DIR: &str = ".pando";
 
 pub fn validate_name(name: &str) -> Result<()> {
-    let bad = name.is_empty() || name == "." || name == ".." || name == META_DIR || name.contains(['/', '\\', '\0']);
-    if bad { Err(Error::invalid(format!("invalid path component `{name}`"))) } else { Ok(()) }
+    let bad = name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']);
+    if bad {
+        return Err(Error::invalid(format!("invalid path component `{name}`")));
+    }
+    if reserved(name) {
+        return Err(Error::invalid(reserved_why(name)));
+    }
+    Ok(())
+}
+
+fn reserved_why(name: &str) -> String {
+    format!("`{name}` is reserved: a file under `.git` or `.pando` would change the tools of whoever checks it out")
+}
+
+/// Is `name`, as some filesystem would see it, `.git` or `.pando`? Like git's `verify_path`:
+/// case-insensitive (macOS, Windows), ignoring trailing dots and spaces and an NTFS stream
+/// suffix (`.git. `, `.git::$INDEX_ALLOCATION`), the 8.3 short names (`GIT~1`), and the
+/// characters HFS+ ignores (`.g\u{200c}it`).
+fn reserved(name: &str) -> bool {
+    let ignorable =
+        |c: char| matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{206a}'..='\u{206f}' | '\u{feff}');
+    let n: String = name.chars().filter(|c| !ignorable(*c)).collect::<String>().to_lowercase();
+    let n = n.split(':').next().unwrap_or("").trim_end_matches(['.', ' ']);
+    matches!(n, ".git" | "git~1" | META_DIR | "pando~1")
 }
 
 /// Split a repo-relative path (`a/b/c`) into validated components.
@@ -18,7 +40,10 @@ pub fn components(path: &str) -> Result<Vec<&str>> {
     }
     let parts: Vec<&str> = path.split('/').collect();
     for p in &parts {
-        validate_name(p).map_err(|_| Error::invalid(format!("invalid path `{path}`")))?;
+        validate_name(p).map_err(|_| match reserved(p) {
+            true => Error::invalid(format!("invalid path `{path}`: {}", reserved_why(p))),
+            false => Error::invalid(format!("invalid path `{path}`")),
+        })?;
     }
     Ok(parts)
 }
@@ -40,6 +65,26 @@ mod tests {
             assert!(components(bad).is_err(), "{bad:?} accepted");
         }
         assert_eq!(components("src/main.rs").unwrap(), ["src", "main.rs"]);
+        // Paths a filesystem treats as `.git` / `.pando` (hooks or config planted in a checkout).
+        for bad in [
+            ".git/config",
+            "a/.git/hooks/post-checkout",
+            ".GIT/config",
+            ".Git./config",
+            ".git /x",
+            ".git::$INDEX_ALLOCATION/x",
+            "GIT~1/config",
+            ".g\u{200c}it/config",
+            ".PANDO/config.json",
+            "x/.pando.",
+            "PANDO~1",
+        ] {
+            let e = components(bad).unwrap_err().to_string();
+            assert!(e.contains("reserved"), "{bad:?}: {e}");
+        }
+        for ok in [".gitignore", ".github/ci.yml", ".gitattributes", "git~2", "pando", "x.git"] {
+            assert!(components(ok).is_ok(), "{ok:?} refused");
+        }
         assert!(components_or_root("/").unwrap().is_empty());
     }
 

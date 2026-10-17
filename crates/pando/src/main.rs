@@ -248,9 +248,14 @@ enum Cmd {
         /// Where it goes: SERVER/OWNER/NAME.
         #[arg(long)]
         to: String,
-        /// For private GitHub repositories, and to avoid GitHub's rate limit.
-        #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true)]
+        /// For private GitHub repositories, and to avoid GitHub's rate limit. Prefer the
+        /// PANDO_GITHUB_TOKEN (or GITHUB_TOKEN) environment variable or --github-token-file: a
+        /// value given here is visible to other users of the machine (`ps`).
+        #[arg(long, env = "PANDO_GITHUB_TOKEN", hide_env_values = true)]
         github_token: Option<String>,
+        /// Read the GitHub token from this file.
+        #[arg(long, conflicts_with = "github_token")]
+        github_token_file: Option<std::path::PathBuf>,
         /// Skip issues.
         #[arg(long)]
         no_issues: bool,
@@ -804,7 +809,19 @@ async fn run() -> Result<()> {
                 RepoCmd::Grant { repo, principal, role, .. } => admin::grant(platform, &repo, principal, role).await?,
             }
         }
-        Cmd::Migrate { from, to, github_token, no_issues, no_pull_requests, github_api } => {
+        Cmd::Migrate { from, to, github_token, github_token_file, no_issues, no_pull_requests, github_api } => {
+            if std::env::args().any(|a| a == "--github-token" || a.starts_with("--github-token=")) {
+                eprintln!(
+                    "warning: --github-token is visible to other users of this machine; set PANDO_GITHUB_TOKEN or use --github-token-file"
+                );
+            }
+            let github_token = match github_token_file {
+                Some(f) => Some(
+                    std::fs::read_to_string(&f).with_context(|| format!("reading {}", f.display()))?.trim().to_owned(),
+                ),
+                None => github_token.or_else(|| std::env::var("GITHUB_TOKEN").ok()),
+            }
+            .filter(|t| !t.is_empty());
             let m = migrate::Migration {
                 from,
                 to,

@@ -111,6 +111,8 @@ pub struct Registry {
     /// Answers to the reads every request makes (a repository, a role, branch protection),
     /// dropped by any write that could change them (ADR-029).
     cache: quick_cache::sync::Cache<String, (Instant, Arc<dyn std::any::Any + Send + Sync>)>,
+    /// Bumped by every invalidation, so an answer read before a write is never cached after it.
+    generation: std::sync::atomic::AtomicU64,
 }
 
 /// How long a cached answer may be used: writes in this process clear the cache at once; this
@@ -145,7 +147,11 @@ impl Registry {
                PRIMARY KEY (owner, name)
              );",
         )?;
-        let reg = Self { db: Mutex::new(conn), cache: quick_cache::sync::Cache::new(100_000) };
+        let reg = Self {
+            db: Mutex::new(conn),
+            cache: quick_cache::sync::Cache::new(100_000),
+            generation: Default::default(),
+        };
         reg.migrate()?;
         Ok(reg)
     }
@@ -162,13 +168,21 @@ impl Registry {
         {
             return Ok(v.clone());
         }
+        use std::sync::atomic::Ordering::SeqCst;
+        let generation = self.generation.load(SeqCst);
         let v = load()?;
-        self.cache.insert(key, (Instant::now(), Arc::new(v.clone())));
+        self.cache.insert(key.clone(), (Instant::now(), Arc::new(v.clone())));
+        // A write committed while we read: what we read may predate it, so don't keep it.
+        if self.generation.load(SeqCst) != generation {
+            self.cache.remove(&key);
+        }
         Ok(v)
     }
 
-    /// Forgets every cached answer; called by every write that changes who may do what.
+    /// Forgets every cached answer; called after (never before) every write that changes who
+    /// may do what, so a concurrent read can't re-cache the old answer.
     pub(crate) fn invalidate(&self) {
+        self.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.cache.clear();
     }
 
@@ -222,7 +236,6 @@ impl Registry {
 
     /// Replaces a repository's settings (everything but its name and creation time).
     pub fn update(&self, rec: &RepoRecord) -> anyhow::Result<()> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "UPDATE repositories SET description = ?3, visibility = ?4, default_branch = ?5, archived = ?6, topics = ?7
@@ -237,12 +250,12 @@ impl Registry {
                 rec.topics.join(","),
             ),
         )?;
+        self.invalidate();
         Ok(())
     }
 
     /// Adds a repository; false if it already exists.
     pub fn create(&self, rec: &RepoRecord) -> anyhow::Result<bool> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         let n = db.execute(
             "INSERT OR IGNORE INTO repositories (owner, name, description, visibility, default_branch, created_at_ms, archived, topics)
@@ -258,6 +271,7 @@ impl Registry {
                 rec.topics.join(","),
             ),
         )?;
+        self.invalidate();
         Ok(n == 1)
     }
 }

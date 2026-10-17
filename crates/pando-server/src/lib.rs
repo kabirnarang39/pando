@@ -2,6 +2,7 @@
 //! to adapters. The binary (`main.rs`) is a thin CLI over [`serve`].
 
 pub mod auth;
+pub mod backup;
 pub mod config;
 pub mod directory;
 pub mod features;

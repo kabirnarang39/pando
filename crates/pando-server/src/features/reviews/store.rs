@@ -427,7 +427,6 @@ impl Registry {
     }
 
     pub fn set_protection(&self, key: &RepoKey, p: &Protection) -> anyhow::Result<()> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
         db.execute(
             "INSERT INTO protections (owner, name, pattern, required_approvals, required_checks, dismiss_stale, agents_land_directly, bypass)
@@ -446,16 +445,18 @@ impl Registry {
                 p.bypass.join(","),
             ],
         )?;
+        self.invalidate();
         Ok(())
     }
 
     pub fn delete_protection(&self, key: &RepoKey, pattern: &str) -> anyhow::Result<bool> {
-        self.invalidate();
         let db = self.db.lock().unwrap();
-        Ok(db.execute(
+        let n = db.execute(
             "DELETE FROM protections WHERE owner = ?1 AND name = ?2 AND pattern = ?3",
             (&key.owner, &key.name, pattern),
-        )? == 1)
+        )?;
+        self.invalidate();
+        Ok(n == 1)
     }
 
     pub fn record_event(

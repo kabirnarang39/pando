@@ -16,19 +16,6 @@ use pando_proto::{
 };
 use serde_json::Value;
 
-/// A scratch directory removed when dropped.
-struct TempDir(std::path::PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn hex_of(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
 pub struct Migration {
     /// Where the repository is now: any URL git can clone.
     pub from: String,
@@ -104,7 +91,7 @@ impl GitHub {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let hint = if status.as_u16() == 403 || status.as_u16() == 429 {
-                    " (rate limited: pass --github-token or set GITHUB_TOKEN)"
+                    " (rate limited: set PANDO_GITHUB_TOKEN or pass --github-token-file)"
                 } else {
                     ""
                 };
@@ -178,15 +165,12 @@ pub async fn run(m: Migration, token: Option<&str>, flags: &dyn FeatureFlags) ->
         Err(e) => bail!("creating {owner}/{name}: {}", e.message()),
     }
 
-    // 2. History: a bare mirror clone, then every branch.
-    let mut nonce = [0u8; 6];
-    nonce
-        .iter_mut()
-        .zip(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos().to_le_bytes())
-        .for_each(|(a, b)| *a = b);
-    let work = TempDir(std::env::temp_dir().join(format!("pando-migrate-{}-{}", std::process::id(), hex_of(&nonce))));
-    let dir = work.0.join("mirror.git");
-    println!("cloning {} ...", m.from);
+    // 2. History: a bare mirror clone (in a fresh, private, randomly named directory), then
+    // every branch.
+    let work = tempfile::Builder::new().prefix("pando-migrate-").tempdir().context("creating a scratch directory")?;
+    let dir = work.path().join("mirror.git");
+    let shown = git::redact(&m.from);
+    println!("cloning {shown} ...");
     let mut clone = Command::new("git");
     clone.env("GIT_TERMINAL_PROMPT", "0");
     if let (Some(_), Some(t)) = (&gh, &m.github_token)
@@ -201,7 +185,7 @@ pub async fn run(m: Migration, token: Option<&str>, flags: &dyn FeatureFlags) ->
     let status =
         clone.args(["clone", "--mirror", "--quiet", &m.from]).arg(&dir).status().context("running git clone")?;
     if !status.success() {
-        bail!("git could not clone {}", m.from);
+        bail!("git could not clone {shown}");
     }
     let default = git(&dir, &["symbolic-ref", "--short", "HEAD"]).unwrap_or_else(|_| "main".into());
     let remote = GrpcRemote::connect(&format!("{base}/{owner}/{name}"), None, token)?;
@@ -310,7 +294,7 @@ pub async fn run(m: Migration, token: Option<&str>, flags: &dyn FeatureFlags) ->
     println!("done. Clone it: pando clone {base}/{owner}/{name}");
     println!(
         "to keep {} current while you move over: pando mirror --to {} --server {base}/{owner}/{name} --every 10",
-        gh.repo, m.from
+        gh.repo, shown
     );
     Ok(())
 }

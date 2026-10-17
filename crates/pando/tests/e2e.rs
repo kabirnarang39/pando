@@ -756,6 +756,7 @@ async fn oidc_tokens_authenticate_and_drive_permissions() {
             issuer: "https://idp.example.com".into(),
             audience: "pando".into(),
             principal_claim: "email".into(),
+            ..Default::default()
         },
         serde_json::from_str(jwks).unwrap(),
     );
