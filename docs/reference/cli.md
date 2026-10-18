@@ -352,11 +352,19 @@ Usage: pando mcp [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>                 Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
-      --http <ADDR>                   Serve the whole server to remote agents over HTTP at this address (e.g. 0.0.0.0:7430), instead of one workspace over stdio. Each request's bearer token is passed through to the server
-      --allowed-host <ALLOWED_HOSTS>  Host names clients use to reach the HTTP endpoint (repeatable); default: loopback only, against DNS rebinding
-  -h, --help                          Print help
-  -V, --version                       Print version
+
+      --token <TOKEN>
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+      --http <ADDR>
+          Serve the whole server to remote agents over HTTP at this address (e.g. 0.0.0.0:7430), instead of one workspace over stdio. Each request's bearer token is passed through to the server
+      --allowed-host <ALLOWED_HOSTS>
+          Host names clients use to reach the HTTP endpoint (repeatable); default: loopback only, against DNS rebinding
+      --allowed-origin <ALLOWED_ORIGINS>
+          Browser origins allowed to call the HTTP endpoint (repeatable), e.g. https://app.example.com:443; default: none (requests with an Origin are refused)
+  -h, --help
+          Print help
+  -V, --version
+          Print version
 ```
 
 ## `pando login`

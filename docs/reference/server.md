@@ -13,6 +13,7 @@ Usage: pandod [OPTIONS] <COMMAND>
 
 Commands:
   server   Authoritative server: all features, durable storage
+  repo     Operator actions on one hosted repository, straight on the registry (site administration; works while the server runs, which notices within seconds)
   token    Create an access token directly in a platform registry, without a running server: how the first administrator gets in. Prints the token once
   backup   Back up a platform server while it runs: a consistent snapshot of the registry and of every hosted repository's metadata database, with a manifest of where each belongs and where objects live. Restore by copying back while stopped (docs/deploy.md)
   compact  Delta-compress stored blob versions (single writer; safe to run while serving)
@@ -23,13 +24,23 @@ Commands:
 
 Options:
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -101,30 +112,25 @@ Options:
 
           [default: 10]
 
-      --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420
-
-          [env: PANDO_METRICS=]
-
       --platform <PLATFORM>
           Host many repositories: the registry of which exist (sqlite://PATH or memory). Without it the server hosts one repository, `--metadata` / `--objects`
 
           [env: PANDO_PLATFORM]
 
-      --log-json
-          Emit JSON logs
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420
 
-          [env: PANDO_LOG_JSON=]
+          [env: PANDO_METRICS=]
 
       --repos-metadata <REPOS_METADATA>
           Storage for each hosted repository; `{repo}` becomes OWNER/NAME and `{repo_id}` OWNER--NAME, e.g. sqlite:///var/lib/pando/repos/{repo}.db
 
           [env: PANDO_REPOS_METADATA]
 
-      --audit-log <AUDIT_LOG>
-          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request
+      --log-json
+          Emit JSON logs
 
-          [env: PANDO_AUDIT_LOG=]
+          [env: PANDO_LOG_JSON=]
 
       --repos-objects <REPOS_OBJECTS>
           Objects for each hosted repository (same placeholders), or `metadata`
@@ -132,31 +138,93 @@ Options:
           [env: PANDO_REPOS_OBJECTS]
           [default: metadata]
 
+      --audit-log <AUDIT_LOG>
+          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request
+
+          [env: PANDO_AUDIT_LOG=]
+
       --platform-admins <PLATFORM_ADMINS>
           Logins that administer the whole server: create organisations, and act as an administrator of every organisation and repository
 
           [env: PANDO_PLATFORM_ADMINS=]
 
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only)
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md)
 
-          [env: PANDO_WEB_ORIGINS=]
-
-      --allow-anonymous
-          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident
-
-          [env: PANDO_ALLOW_ANONYMOUS=]
+          [env: PANDO_AUDIT_RETENTION_DAYS=]
+          [default: 365]
 
       --multi-tenant
           Strangers share this server (a hosted service): internal repositories are for the owning organisation only, organisations add existing accounts only, and any person may create a few organisations
 
           [env: PANDO_MULTI_TENANT=]
 
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only)
+
+          [env: PANDO_WEB_ORIGINS=]
+          [alias: --web-origins]
+
       --max-orgs-per-account <MAX_ORGS_PER_ACCOUNT>
           With --multi-tenant: how many organisations a person may administer
 
           [env: PANDO_MAX_ORGS_PER_ACCOUNT=]
           [default: 3]
+
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback)
+
+          [env: PANDO_TRUST_PROXY=]
+
+      --webhook-allow-private
+          Let webhooks call loopback and private networks (self-hosted CI on an internal network). Cloud metadata addresses stay refused
+
+          [env: PANDO_WEBHOOK_ALLOW_PRIVATE=]
+
+      --login-listen <LOGIN_LISTEN>
+          Serve the sign-in pages (`/login/*`: OpenID Connect providers such as Google, and email links) on this address, behind the same host name as the console
+
+          [env: PANDO_LOGIN_LISTEN=]
+
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks
+
+          [env: PANDO_MAX_REQUEST_MB=]
+
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise
+
+          [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+
+      --public-url <PUBLIC_URL>
+          Where people reach this server, e.g. https://pando.example.com: the base of sign-in redirect addresses and email links
+
+          [env: PANDO_PUBLIC_URL=]
+
+      --oidc <ID=ISSUER_URL>
+          A sign-in provider, ID=ISSUER_URL (repeatable), e.g. google=https://accounts.google.com. Its client comes from PANDO_OIDC_<ID>_CLIENT_ID and PANDO_OIDC_<ID>_CLIENT_SECRET (or _FILE variants)
+
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk
+
+          [env: PANDO_SQLITE_SYNCHRONOUS=]
+          [default: full]
+          [possible values: full, normal]
+
+      --allow-anonymous
+          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident
+
+          [env: PANDO_ALLOW_ANONYMOUS=]
+
+      --smtp-url <SMTP_URL>
+          Mail server for sign-in links: smtps://HOST:465 or smtp://HOST:587?tls=required. Credentials from PANDO_SMTP_USERNAME and PANDO_SMTP_PASSWORD (or _FILE variants)
+
+          [env: PANDO_SMTP_URL]
+
+      --mail-from <MAIL_FROM>
+          Sender of sign-in links, e.g. "Pando <login@example.com>"
+
+          [env: PANDO_MAIL_FROM=]
 
       --request-timeout <REQUEST_TIMEOUT>
           Longest any one call may run, in seconds
@@ -169,65 +237,6 @@ Options:
 
           [env: PANDO_MAX_IN_FLIGHT=]
           [default: 4096]
-
-      --webhook-allow-private
-          Let webhooks call loopback and private networks (self-hosted CI on an internal network). Cloud metadata addresses stay refused
-
-          [env: PANDO_WEBHOOK_ALLOW_PRIVATE=]
-
-      --login-listen <LOGIN_LISTEN>
-          Serve the sign-in pages (`/login/*`: OpenID Connect providers such as Google, and email links) on this address, behind the same host name as the console
-
-          [env: PANDO_LOGIN_LISTEN=]
-
-      --tokens <TOKENS>
-          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only)
-
-          [env: PANDO_TOKENS]
-
-      --oidc-issuer <OIDC_ISSUER>
-          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens
-
-          [env: PANDO_OIDC_ISSUER=]
-
-      --public-url <PUBLIC_URL>
-          Where people reach this server, e.g. https://pando.example.com: the base of sign-in redirect addresses and email links
-
-          [env: PANDO_PUBLIC_URL=]
-
-      --oidc <ID=ISSUER_URL>
-          A sign-in provider, ID=ISSUER_URL (repeatable), e.g. google=https://accounts.google.com. Its client comes from PANDO_OIDC_<ID>_CLIENT_ID and PANDO_OIDC_<ID>_CLIENT_SECRET (or _FILE variants)
-
-      --oidc-audience <OIDC_AUDIENCE>
-          Expected `aud` claim of OIDC tokens
-
-          [env: PANDO_OIDC_AUDIENCE=]
-
-      --oidc-claim <OIDC_CLAIM>
-          Claim used as the principal for access rules (sub, email, preferred_username...)
-
-          [env: PANDO_OIDC_CLAIM=]
-          [default: sub]
-
-      --smtp-url <SMTP_URL>
-          Mail server for sign-in links: smtps://HOST:465 or smtp://HOST:587?tls=required. Credentials from PANDO_SMTP_USERNAME and PANDO_SMTP_PASSWORD (or _FILE variants)
-
-          [env: PANDO_SMTP_URL]
-
-      --mail-from <MAIL_FROM>
-          Sender of sign-in links, e.g. "Pando <login@example.com>"
-
-          [env: PANDO_MAIL_FROM=]
-
-      --oidc-require <OIDC_REQUIRE>
-          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google)
-
-          [env: PANDO_OIDC_REQUIRE=]
-
-      --oidc-admin <OIDC_ADMINS>
-          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator
-
-          [env: PANDO_OIDC_ADMINS=]
 
       --turnstile-site-key <TURNSTILE_SITE_KEY>
           Cloudflare Turnstile site key for the email form; its secret comes from PANDO_TURNSTILE_SECRET (or _FILE). Unset: no challenge
@@ -245,26 +254,302 @@ Options:
           [env: PANDO_SIGNUP=]
           [default: waitlist]
 
-      --tls-cert <TLS_CERT>
-          PEM certificate and key for TLS
+      --tokens <TOKENS>
+          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only)
 
-          [env: PANDO_TLS_CERT=]
+          [env: PANDO_TOKENS]
+
+      --oidc-issuer <OIDC_ISSUER>
+          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens
+
+          [env: PANDO_OIDC_ISSUER=]
 
       --terms-url <TERMS_URL>
           Your terms of service, linked from the box people tick (18 or older, accept the terms) before an account is made
 
           [env: PANDO_TERMS_URL=]
 
-      --tls-key <TLS_KEY>
-          [env: PANDO_TLS_KEY=]
+      --oidc-audience <OIDC_AUDIENCE>
+          Expected `aud` claim of OIDC tokens
+
+          [env: PANDO_OIDC_AUDIENCE=]
 
       --privacy-url <PRIVACY_URL>
           Your privacy policy, linked next to the terms
 
           [env: PANDO_PRIVACY_URL=]
 
+      --max-open-repos <MAX_OPEN_REPOS>
+          Most hosted repositories open at once; the least recently used idle ones close
+
+          [env: PANDO_MAX_OPEN_REPOS=]
+          [default: 256]
+
+      --oidc-claim <OIDC_CLAIM>
+          Claim used as the principal for access rules (sub, email, preferred_username...)
+
+          [env: PANDO_OIDC_CLAIM=]
+          [default: sub]
+
+      --oidc-require <OIDC_REQUIRE>
+          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google)
+
+          [env: PANDO_OIDC_REQUIRE=]
+
+      --repo-idle-minutes <REPO_IDLE_MINUTES>
+          Minutes an unused hosted repository stays open
+
+          [env: PANDO_REPO_IDLE_MINUTES=]
+          [default: 10]
+
+      --oidc-admin <OIDC_ADMINS>
+          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator
+
+          [env: PANDO_OIDC_ADMINS=]
+
+      --tls-cert <TLS_CERT>
+          PEM certificate and key for TLS
+
+          [env: PANDO_TLS_CERT=]
+
+      --tls-key <TLS_KEY>
+          [env: PANDO_TLS_KEY=]
+
   -h, --help
           Print help (see a summary with '-h')
+```
+
+## `pandod repo`
+
+```text
+Operator actions on one hosted repository, straight on the registry (site administration; works while the server runs, which notices within seconds)
+
+Usage: pandod repo [OPTIONS] --platform <PLATFORM> <COMMAND>
+
+Commands:
+  disable  Take a repository down at once: every read and write is refused ("disabled by the operator"); nothing is deleted. Undo with `enable`
+  enable   Serve a disabled repository again
+  delete   Delete a repository: its registry rows (reviews, issues, webhooks, grants) and its storage files. Cannot be undone; take a backup first
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --platform <PLATFORM>
+          [env: PANDO_PLATFORM]
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+      --log-json
+          Emit JSON logs [env: PANDO_LOG_JSON=]
+      --audit-log <AUDIT_LOG>
+          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
+      --allow-anonymous
+          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
+      --request-timeout <REQUEST_TIMEOUT>
+          Longest any one call may run, in seconds [env: PANDO_REQUEST_TIMEOUT=] [default: 600]
+      --max-in-flight <MAX_IN_FLIGHT>
+          Calls in progress at once across all clients; beyond this, calls are refused with Unavailable (clients retry) instead of queueing [env: PANDO_MAX_IN_FLIGHT=] [default: 4096]
+      --tokens <TOKENS>
+          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only) [env: PANDO_TOKENS]
+      --oidc-issuer <OIDC_ISSUER>
+          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens [env: PANDO_OIDC_ISSUER=]
+      --oidc-audience <OIDC_AUDIENCE>
+          Expected `aud` claim of OIDC tokens [env: PANDO_OIDC_AUDIENCE=]
+      --oidc-claim <OIDC_CLAIM>
+          Claim used as the principal for access rules (sub, email, preferred_username...) [env: PANDO_OIDC_CLAIM=] [default: sub]
+      --oidc-require <OIDC_REQUIRE>
+          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google) [env: PANDO_OIDC_REQUIRE=]
+      --oidc-admin <OIDC_ADMINS>
+          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator [env: PANDO_OIDC_ADMINS=]
+      --tls-cert <TLS_CERT>
+          PEM certificate and key for TLS [env: PANDO_TLS_CERT=]
+      --tls-key <TLS_KEY>
+          [env: PANDO_TLS_KEY=]
+  -h, --help
+          Print help
+```
+
+### `pandod repo disable`
+
+```text
+Take a repository down at once: every read and write is refused ("disabled by the operator"); nothing is deleted. Undo with `enable`
+
+Usage: pandod repo --platform <PLATFORM> disable [OPTIONS] --reason <REASON> <REPO>
+
+Arguments:
+  <REPO>
+
+Options:
+      --reason <REASON>
+
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+      --log-json
+          Emit JSON logs [env: PANDO_LOG_JSON=]
+      --audit-log <AUDIT_LOG>
+          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
+      --allow-anonymous
+          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
+      --request-timeout <REQUEST_TIMEOUT>
+          Longest any one call may run, in seconds [env: PANDO_REQUEST_TIMEOUT=] [default: 600]
+      --max-in-flight <MAX_IN_FLIGHT>
+          Calls in progress at once across all clients; beyond this, calls are refused with Unavailable (clients retry) instead of queueing [env: PANDO_MAX_IN_FLIGHT=] [default: 4096]
+      --tokens <TOKENS>
+          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only) [env: PANDO_TOKENS]
+      --oidc-issuer <OIDC_ISSUER>
+          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens [env: PANDO_OIDC_ISSUER=]
+      --oidc-audience <OIDC_AUDIENCE>
+          Expected `aud` claim of OIDC tokens [env: PANDO_OIDC_AUDIENCE=]
+      --oidc-claim <OIDC_CLAIM>
+          Claim used as the principal for access rules (sub, email, preferred_username...) [env: PANDO_OIDC_CLAIM=] [default: sub]
+      --oidc-require <OIDC_REQUIRE>
+          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google) [env: PANDO_OIDC_REQUIRE=]
+      --oidc-admin <OIDC_ADMINS>
+          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator [env: PANDO_OIDC_ADMINS=]
+      --tls-cert <TLS_CERT>
+          PEM certificate and key for TLS [env: PANDO_TLS_CERT=]
+      --tls-key <TLS_KEY>
+          [env: PANDO_TLS_KEY=]
+  -h, --help
+          Print help
+```
+
+### `pandod repo enable`
+
+```text
+Serve a disabled repository again
+
+Usage: pandod repo --platform <PLATFORM> enable [OPTIONS] <REPO>
+
+Arguments:
+  <REPO>
+
+Options:
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+      --log-json
+          Emit JSON logs [env: PANDO_LOG_JSON=]
+      --audit-log <AUDIT_LOG>
+          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
+      --allow-anonymous
+          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
+      --request-timeout <REQUEST_TIMEOUT>
+          Longest any one call may run, in seconds [env: PANDO_REQUEST_TIMEOUT=] [default: 600]
+      --max-in-flight <MAX_IN_FLIGHT>
+          Calls in progress at once across all clients; beyond this, calls are refused with Unavailable (clients retry) instead of queueing [env: PANDO_MAX_IN_FLIGHT=] [default: 4096]
+      --tokens <TOKENS>
+          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only) [env: PANDO_TOKENS]
+      --oidc-issuer <OIDC_ISSUER>
+          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens [env: PANDO_OIDC_ISSUER=]
+      --oidc-audience <OIDC_AUDIENCE>
+          Expected `aud` claim of OIDC tokens [env: PANDO_OIDC_AUDIENCE=]
+      --oidc-claim <OIDC_CLAIM>
+          Claim used as the principal for access rules (sub, email, preferred_username...) [env: PANDO_OIDC_CLAIM=] [default: sub]
+      --oidc-require <OIDC_REQUIRE>
+          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google) [env: PANDO_OIDC_REQUIRE=]
+      --oidc-admin <OIDC_ADMINS>
+          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator [env: PANDO_OIDC_ADMINS=]
+      --tls-cert <TLS_CERT>
+          PEM certificate and key for TLS [env: PANDO_TLS_CERT=]
+      --tls-key <TLS_KEY>
+          [env: PANDO_TLS_KEY=]
+  -h, --help
+          Print help
+```
+
+### `pandod repo delete`
+
+```text
+Delete a repository: its registry rows (reviews, issues, webhooks, grants) and its storage files. Cannot be undone; take a backup first
+
+Usage: pandod repo --platform <PLATFORM> delete [OPTIONS] --repos-metadata <REPOS_METADATA> --confirm <CONFIRM> <REPO>
+
+Arguments:
+  <REPO>
+
+Options:
+      --repos-metadata <REPOS_METADATA>
+          [env: PANDO_REPOS_METADATA]
+      --repos-objects <REPOS_OBJECTS>
+          [env: PANDO_REPOS_OBJECTS] [default: metadata]
+      --confirm <CONFIRM>
+          Confirm by repeating OWNER/NAME
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+      --log-json
+          Emit JSON logs [env: PANDO_LOG_JSON=]
+      --audit-log <AUDIT_LOG>
+          Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
+      --allow-anonymous
+          Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
+      --request-timeout <REQUEST_TIMEOUT>
+          Longest any one call may run, in seconds [env: PANDO_REQUEST_TIMEOUT=] [default: 600]
+      --max-in-flight <MAX_IN_FLIGHT>
+          Calls in progress at once across all clients; beyond this, calls are refused with Unavailable (clients retry) instead of queueing [env: PANDO_MAX_IN_FLIGHT=] [default: 4096]
+      --tokens <TOKENS>
+          Comma-separated bearer tokens accepted by this process. Unset = no auth (dev only) [env: PANDO_TOKENS]
+      --oidc-issuer <OIDC_ISSUER>
+          OpenID Connect issuer URL; enables SSO bearer tokens (JWTs) alongside static tokens [env: PANDO_OIDC_ISSUER=]
+      --oidc-audience <OIDC_AUDIENCE>
+          Expected `aud` claim of OIDC tokens [env: PANDO_OIDC_AUDIENCE=]
+      --oidc-claim <OIDC_CLAIM>
+          Claim used as the principal for access rules (sub, email, preferred_username...) [env: PANDO_OIDC_CLAIM=] [default: sub]
+      --oidc-require <OIDC_REQUIRE>
+          CLAIM=VALUE every OIDC token must carry (repeatable; all must match), e.g. `repository_owner=acme`, `hd=corp.example`, `email_verified=true`. Required for issuers that serve anyone (GitHub Actions, Google) [env: PANDO_OIDC_REQUIRE=]
+      --oidc-admin <OIDC_ADMINS>
+          Platform administrators who may sign in through OIDC (repeatable). Any other `--platform-admins` login is refused from an OIDC token, so an identity provider that lets users pick their name can't make someone an administrator [env: PANDO_OIDC_ADMINS=]
+      --tls-cert <TLS_CERT>
+          PEM certificate and key for TLS [env: PANDO_TLS_CERT=]
+      --tls-key <TLS_KEY>
+          [env: PANDO_TLS_KEY=]
+  -h, --help
+          Print help
 ```
 
 ## `pandod token`
@@ -284,13 +569,23 @@ Options:
       --expires-days <EXPIRES_DAYS>
           Days until it expires (1–366) [default: 30]
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -336,13 +631,23 @@ Options:
       --to <TO>
           A new or empty directory, or an object store URL (s3://BUCKET/PREFIX, gs://, az://)
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -384,13 +689,23 @@ Options:
       --force-unlock
           Take over the lease of a compaction that crashed
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -434,13 +749,23 @@ Options:
       --to-objects <TO_OBJECTS>
           [default: metadata]
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -482,13 +807,23 @@ Options:
       --capacity-mb <CAPACITY_MB>
           [default: 4096]
       --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
@@ -537,16 +872,26 @@ Options:
           Warm the cache with this revision (e.g. `main`) at startup
       --prefetch-path <PREFETCH_PATHS>
           Limit prefetch to these paths (repeatable)
-      --metrics <METRICS>
-          Prometheus metrics listen address, e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --prefetch-interval <PREFETCH_INTERVAL>
           Re-prefetch periodically (seconds) to follow a moving branch
+      --metrics <METRICS>
+          Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g. 0.0.0.0:9420 [env: PANDO_METRICS=]
       --log-json
           Emit JSON logs [env: PANDO_LOG_JSON=]
       --audit-log <AUDIT_LOG>
           Append an audit trail (JSON lines: who read or changed what, from where, with what result) to this file. Off by default; it grows with every request [env: PANDO_AUDIT_LOG=]
-      --web-origins <WEB_ORIGINS>
-          Comma-separated origins allowed to call this server from a browser on another site, e.g. the web console's address; `*` allows any (development only) [env: PANDO_WEB_ORIGINS=]
+      --audit-retention-days <AUDIT_RETENTION_DAYS>
+          Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted services (docs/deploy.md) [env: PANDO_AUDIT_RETENTION_DAYS=] [default: 365]
+      --cors-origin <WEB_ORIGINS>
+          Origins allowed to call this server from a browser on another site (repeatable or comma-separated), e.g. your own console's address. Default: none (same origin only); `*` allows any (development only) [env: PANDO_WEB_ORIGINS=] [alias: --web-origins]
+      --trust-proxy
+          Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when the connection comes from a reverse proxy on this host (loopback) [env: PANDO_TRUST_PROXY=]
+      --max-request-mb <MAX_REQUEST_MB>
+          Largest request message in MiB (an uploaded object batch, a changeset). Default: 64 with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks [env: PANDO_MAX_REQUEST_MB=]
+      --max-calls-per-principal <MAX_CALLS_PER_PRINCIPAL>
+          Calls one account may have in progress at once (0: no limit). Default: 128 with --platform, no limit otherwise [env: PANDO_MAX_CALLS_PER_PRINCIPAL=]
+      --sqlite-synchronous <SQLITE_SYNCHRONOUS>
+          SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives power loss; `normal` survives process crashes only, for more throughput on a slow disk [env: PANDO_SQLITE_SYNCHRONOUS=] [default: full] [possible values: full, normal]
       --allow-anonymous
           Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod otherwise listens only on localhost, so a server is never open to a network by accident [env: PANDO_ALLOW_ANONYMOUS=]
       --request-timeout <REQUEST_TIMEOUT>
