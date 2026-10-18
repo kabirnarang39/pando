@@ -1,4 +1,4 @@
-# Getting started
+# Try it in 5 minutes
 
 This page takes you from nothing to a landed change in about five minutes.
 
@@ -33,8 +33,11 @@ pandod server --listen 127.0.0.1:7420
 ```
 
 With no options the server keeps everything in `./pando-data/` on SQLite and accepts
-requests without authentication. That is fine on a laptop; see
-[Deploying Pando](deploy.md) before you expose it.
+requests without authentication, so it listens only on 127.0.0.1.
+
+> [!NOTE]
+> That is fine on a laptop. Before anyone else connects, give it tokens or single sign-on: see
+> [Deploy](deploy.md) and [Security and audit](security.md).
 
 ## Import a git repository
 
@@ -110,5 +113,7 @@ every lock and unlock is recorded in the audit log.
 
 ## Next
 
+- Point agents at it: [Agents and MCP](agents.md).
 - Keep using git against the same server: [Coming from git](git-users.md).
-- Run it for a team: [Deploying Pando](deploy.md).
+- Keep GitHub current while you try it: [Mirror to a git host](mirror.md).
+- Run it for a team: [Deploy](deploy.md).

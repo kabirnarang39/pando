@@ -8,22 +8,15 @@ merges and rebases to the server, keeps clients thin, and makes every read an AP
 
 ## Topology
 
-```mermaid
-flowchart LR
-  subgraph node["Build node / dev machine / agent sandbox"]
-    sap1["pando (CLI / MCP)"] -->|objects| daemon["pandod daemon\nmemory + disk"]
-    sap2["CI job"] -->|objects| daemon
-  end
-  daemon -->|objects| cache["pandod cache\n(regional, memory)"]
-  cache -->|objects| server["pandod server\n(authoritative)"]
-  sap1 -->|metadata RPCs| server
-  sap2 -->|metadata RPCs| server
-  server --> meta[("Metadata\nSQLite | Postgres | CockroachDB")]
-  server --> blobs[("Objects\nS3 | GCS | Azure | disk | DB")]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/charts/architecture-dark.svg">
+  <img src="assets/charts/architecture-light.svg" width="840" alt="Clients fetch file contents through a node daemon and a regional cache from the pandod server; commits, lands and history queries go straight to the server, which stores metadata in SQLite, Postgres or CockroachDB and objects in S3, GCS, Azure or disk.">
+</picture>
 
 * **Server**: every feature. Stateless apart from its storage adapters, so several replicas
-  can share one Postgres/CockroachDB + object store.
+  can share one Postgres/CockroachDB + object store. A server that hosts many repositories
+  (`--platform`) keeps its registry in one process and runs as a single node; see
+  [Scaling and operations](scaling.md).
 * **Cache** and **daemon**: serve only the `Objects` service. Objects are immutable and
   content-addressed, so a cached object is correct forever: no invalidation, no coherence
   protocol. Tiers speak the identical RPC, so a client cannot tell which tier answered.

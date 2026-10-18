@@ -21,9 +21,11 @@
 
 <p align="center">
   <a href="https://kabirnarang39.github.io/pando/docs/">Documentation</a> ·
-  <a href="https://kabirnarang39.github.io/pando/docs/getting-started.html">Getting started</a> ·
-  <a href="docs/comparisons/git-vs-pando.md">Benchmarks</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  <a href="https://kabirnarang39.github.io/pando/docs/getting-started.html">Try it in 5 minutes</a> ·
+  <a href="https://kabirnarang39.github.io/pando/docs/agents.html">Agents and MCP</a> ·
+  <a href="https://kabirnarang39.github.io/pando/docs/mirror.html">Beside GitHub</a> ·
+  <a href="https://kabirnarang39.github.io/pando/docs/deploy.html">Self-host</a> ·
+  <a href="docs/comparisons/git-vs-pando.md">Benchmarks</a>
 </p>
 
 <p align="center">
@@ -110,8 +112,10 @@ echo hello > hello.txt && pando commit -m "Say hello" && pando land
   <img src="docs/assets/demo.gif" width="760" alt="Terminal recording on git/git's 82,443-commit history: git clone takes about 22 seconds, pando clone under one second; then pando log and pando cat answer in about 10 ms without a clone.">
 </p>
 
-Docker, Postgres and S3 setups are in the [deployment guide](https://kabirnarang39.github.io/pando/docs/deploy.html).
-Coming from git? The [command map](https://kabirnarang39.github.io/pando/docs/git-users.html) lists every equivalent.
+Everything else is in the [documentation](https://kabirnarang39.github.io/pando/docs/): Docker, Postgres and S3 setups in
+[Deploy](https://kabirnarang39.github.io/pando/docs/deploy.html), every git equivalent in [Coming from git](https://kabirnarang39.github.io/pando/docs/git-users.html), and
+every command and flag in the [CLI](https://kabirnarang39.github.io/pando/docs/reference/cli.html) and [server](https://kabirnarang39.github.io/pando/docs/reference/server.html)
+references.
 
 ## How it works
 

@@ -18,7 +18,7 @@ Please include the affected version (`pando --version`), the component (client, 
 SDK, console), steps to reproduce and the impact you expect. We fix confirmed medium or
 higher severity issues within 60 days, coordinate the disclosure date with the reporter,
 publish a GitHub security advisory, and list the fix, with its CVE or advisory id, under
-**Security** in [CHANGELOG.md](CHANGELOG.md) and the release notes.
+**Security** in [CHANGELOG.md](https://github.com/kabirnarang39/pando/blob/main/CHANGELOG.md) and the release notes.
 
 ## Security model (v1)
 
@@ -46,7 +46,7 @@ publish a GitHub security advisory, and list the fix, with its CVE or advisory i
 
 Run the server with `--audit-log FILE` to record who read or changed what, from where,
 with what result, including rejected requests. The format is described in the
-[deployment guide](https://kabirnarang39.github.io/pando/docs/deploy.html#audit-log).
+[security guide](https://kabirnarang39.github.io/pando/docs/security.html#audit-log).
 
 ## Verifying a release
 
