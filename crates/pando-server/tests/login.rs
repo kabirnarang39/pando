@@ -529,6 +529,50 @@ async fn providers_are_listed_for_the_console() {
     assert_eq!(v, json!({ "providers": [{ "id": "mock", "name": "mock", "url": "/login/oidc/mock" }], "email": true }));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn sign_in_pages_are_branded_self_contained_and_labelled() {
+    let w = world().await;
+    let get = |path: &str| w.http.get(format!("{}{path}", w.login)).send();
+    let r = get("/login/email").await.unwrap();
+    let csp = r.headers()["content-security-policy"].to_str().unwrap().to_owned();
+    assert!(csp.starts_with("default-src 'none'"), "{csp}");
+    let html = r.text().await.unwrap();
+    // The brand, light and dark, with nothing fetched from anywhere.
+    assert!(
+        html.contains("<title>Sign in to Pando – Pando</title>") || html.contains("<h1>Sign in to Pando</h1>"),
+        "{html}"
+    );
+    assert!(html.contains("class=brand role=img aria-label=Pando"), "{html}");
+    assert!(
+        html.contains("prefers-color-scheme:dark") && html.contains("<meta name=color-scheme content=\"light dark\">")
+    );
+    assert!(!html.contains("src=\"http") && !html.contains("@import") && !html.contains("url("), "self-contained");
+    // Every way in, labelled; with a provider above, email is the second choice.
+    assert!(html.contains(">Continue with mock</a>"), "{html}");
+    assert!(
+        html.contains("<label>Email address") && html.contains("type=email name=email required autocomplete=email")
+    );
+    assert!(html.contains("<button class=quiet>Email me a sign-in link</button>"), "{html}");
+    // After asking for a link: how long it lasts and a way back (the same page for every address).
+    let r = w.http.post(format!("{}/login/email", w.login)).form(&[("email", "Nora@B.example")]).send().await.unwrap();
+    let html = r.text().await.unwrap();
+    assert!(html.contains("<h1>Check your email</h1>") && !html.contains("nora@b.example"), "{html}");
+    assert!(
+        html.contains("It works once, for 15 minutes.") && html.contains("href=\"/login/email?next=%2F\""),
+        "{html}"
+    );
+    // Errors say what happened, as an alert, with a way back.
+    let html = get("/login/email/verify?token=nope").await.unwrap().text().await.unwrap();
+    assert!(
+        html.contains("<h1>We couldn&#39;t sign you in</h1>")
+            && html.contains("<p role=alert>That sign-in link is not valid.</p>"),
+        "{html}"
+    );
+    // The CLI code page: a labelled field and the command it comes from.
+    let html = get("/login/device").await.unwrap().text().await.unwrap();
+    assert!(html.contains("<label>Code") && html.contains("<code>pando login</code>"), "{html}");
+}
+
 fn authed<T>(token: &str, msg: T) -> tonic::Request<T> {
     let mut req = tonic::Request::new(msg);
     req.metadata_mut().insert("authorization", format!("Bearer {token}").parse().unwrap());

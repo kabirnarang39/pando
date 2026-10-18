@@ -64,6 +64,12 @@ All notable changes to this project are documented here. The format follows
   free-tier cloud-init no longer trusts a demo console origin; a stored object that fails its
   hash check is repaired by pushing it again.
 
+### Changed
+- The sign-in pages (`/login/*`: sign in, check your email, create your account, CLI approval,
+  invitations, errors) carry the console's brand: the Pando mark, its palette in light and dark,
+  labelled fields, a clear primary action and plain error messages, still self-contained under
+  `default-src 'none'`.
+
 ## [3.4.0] - 2026-10-18
 
 ### Added
