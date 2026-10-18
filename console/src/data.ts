@@ -173,5 +173,6 @@ export function useLive(ref: string) {
     staleTime: Infinity,
     gcTime: 60_000,
   });
-  return { tip, changes: live.data, error: tip.error ?? live.error, isPending: tip.isPending || (!!tip.data && live.isPending) };
+  // An empty repository (no tip) has no changes, rather than changes still loading.
+  return { tip, changes: tip.data === null ? [] : live.data, error: tip.error ?? live.error, isPending: tip.isPending || (!!tip.data && live.isPending) };
 }

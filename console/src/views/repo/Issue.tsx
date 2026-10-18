@@ -1,4 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
+import { explain } from "../../api/client";
 import { useState } from "react";
 import { IssueStateIcon, issueWord } from "../../components/IssueParts";
 import { Composer } from "../../components/ReviewParts";
@@ -68,7 +69,7 @@ export function IssueView() {
               label="Add to the discussion"
               submitLabel="Comment"
               pending={comment.isPending}
-              error={comment.error ? (comment.error as Error).message : null}
+              error={comment.error ? explain(comment.error) : null}
               onSubmit={(body) => comment.mutate(body)}
             />
           </section>

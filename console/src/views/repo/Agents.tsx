@@ -7,6 +7,8 @@ import { useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 import { ago, Author, Icon, parseAuthor, Skeleton, useNow } from "../../ui";
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 /** Who is landing in this repository: a lane per author, and a table to compare them. */
 export function AgentsView() {
   const { key, owner } = useRepo();
@@ -33,15 +35,15 @@ export function AgentsView() {
           <Icon name="activity" />
           <h2 id="lanes-title">Last hour</h2>
           <span className="muted" style={{ marginLeft: "auto", fontSize: "var(--t-xs)" }}>
-            {hour.length} landings from {new Set(hour.map((c) => c.author)).size} authors
+            {plural(hour.length, "landing")} from {plural(new Set(hour.map((c) => c.author)).size, "author")}
           </span>
         </div>
         <FleetLanes changes={live.changes} minutes={60} max={16} />
       </section>
       <section className="panel" aria-labelledby="table-title">
         <div className="panel-head">
-          <Icon name="bot" />
-          <h2 id="table-title">Authors</h2>
+          <Icon name="users" />
+          <h2 id="table-title">Who lands here</h2>
         </div>
         {!live.changes ? (
           <Skeleton />
@@ -65,7 +67,7 @@ export function AgentsView() {
                       <td>
                         <Author author={author} />
                       </td>
-                      <td>{parseAuthor(author).agent ? owners.get(author) ? <Author author={owners.get(author)!} /> : <span className="muted">unknown</span> : <span className="muted">a person</span>}</td>
+                      <td>{parseAuthor(author).agent ? owners.get(author) ? <Author author={owners.get(author)!} /> : <span className="muted">Unknown</span> : <span className="muted" aria-label="Not an agent">–</span>}</td>
                       <td className="num">{a.lands}</td>
                       <td className="num">{open > 0 ? <Link to="/$owner/$repo/reviews" params={{ owner, repo: key.split("/")[1]! }} search={{ q: `author:${author}`, view: "open" }}>{open}</Link> : 0}</td>
                       <td className="muted">{ago(a.last, now)}</td>

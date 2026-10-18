@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "@bufbuild/protobuf";
 import { isUnimplemented } from "./api/client";
 import { useConnection, usePlatformApi } from "./connection";
-import { ChangeRequestState, IssueState, RepositorySchema, Role, Verdict, type Repository } from "./gen/pando_platform_pb";
+import { ChangeRequestState, IssueState, RepositorySchema, Role, Verdict, type Repository, type Visibility } from "./gen/pando_platform_pb";
 
 /**
  * Servers without the platform service (one repository, today's pandod) answer Unimplemented.
@@ -163,6 +163,9 @@ export const useCreateInvitation = (org: string) =>
   usePlatformMutation((api, i: { email: string; role: Role }) => api.platform.createInvitation({ org, email: i.email, role: i.role }), [["invitations", org]]);
 
 export const useRevokeInvitation = (org: string) => usePlatformMutation((api, id: string) => api.platform.revokeInvitation({ org, id }), [["invitations", org]]);
+
+export const useCreateRepository = () =>
+  usePlatformMutation((api, r: { owner: string; name: string; description: string; visibility: Visibility }) => api.platform.createRepository(r), [["repos"], ["viewer"], ["org"]]);
 
 export const useCreateOrganization = () =>
   usePlatformMutation((api, o: { login: string; displayName: string }) => api.platform.createOrganization({ login: o.login, displayName: o.displayName }), [["viewer"], ["repos"]]);

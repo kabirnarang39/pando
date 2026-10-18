@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { explain } from "../api/client";
 import type { Webhook } from "../gen/pando_platform_pb";
 import { useCreateWebhook, useDeleteWebhook, useDeliveries, usePingWebhook, useWebhooks } from "../platform-data";
 import { ago, Icon, Skeleton, useNow } from "../ui";
@@ -61,7 +62,7 @@ export function Webhooks({ repo }: { repo: string }) {
           </fieldset>
           {create.error && (
             <p className="status" data-kind="error" role="alert">
-              {(create.error as Error).message}
+              {explain(create.error)}
             </p>
           )}
           <div className="token-form-actions">

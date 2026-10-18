@@ -3,6 +3,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles.css";
 
+import { Code, ConnectError } from "@connectrpc/connect";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode, useState } from "react";
@@ -21,8 +22,12 @@ function App() {
   return <Scoped key={key} />;
 }
 
+/** Retry what may pass on a second try; a refused token or a missing thing will not. */
+const final = [Code.Unauthenticated, Code.PermissionDenied, Code.NotFound, Code.InvalidArgument];
+const retry = (n: number, e: unknown) => n < 2 && !final.includes(ConnectError.from(e).code);
+
 function Scoped() {
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 2, refetchOnWindowFocus: false } } }));
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry, refetchOnWindowFocus: false } } }));
   return (
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />

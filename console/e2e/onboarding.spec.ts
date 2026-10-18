@@ -58,7 +58,7 @@ test("server: a person with no organisation is guided from naming one to connect
   await page.getByRole("button", { name: "Create organisation" }).click();
   await expect(page.getByRole("alert")).toContainText("Names use letters, digits");
   await name.fill("acme");
-  await page.getByLabel("Display name (optional)").fill("Acme Labs");
+  await page.getByLabel("Organisation name").fill("Acme Labs");
   await page.getByRole("button", { name: "Create organisation" }).click();
 
   await expect(page.getByRole("heading", { name: "Invite teammates" })).toBeVisible();

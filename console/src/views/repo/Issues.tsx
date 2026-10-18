@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { explain } from "../../api/client";
 import { useState } from "react";
 import { IssueStateIcon } from "../../components/IssueParts";
 import { IssueState } from "../../gen/pando_platform_pb";
@@ -33,7 +34,7 @@ export function IssuesView() {
             Closed <span className="count">{done.data?.length ?? 0}</span>
           </button>
         </div>
-        <div className="query grow" role="search">
+        <div className="query grow" data-plain="" role="search">
           <Icon name="search" size={15} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by title, assignee or label" aria-label="Filter issues" />
         </div>
@@ -129,7 +130,7 @@ function NewIssue({ onDone }: { onDone(): void }) {
       </div>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
-          {(create.error as Error).message}
+          {explain(create.error)}
         </p>
       )}
       <div className="token-form-actions">

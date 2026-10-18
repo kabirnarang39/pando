@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { explain } from "../api/client";
 import { RoleSelect, roleNames } from "../components/Access";
 import { Role } from "../gen/pando_platform_pb";
 import { useCreateToken, useRevokeToken, useTokens } from "../platform-data";
 import { ago, Author, ErrorState, Icon, Skeleton, useNow } from "../ui";
+import { CopyCommand } from "../components/CopyCommand";
+import { useConnection } from "../connection";
 
 /** Your tokens, and the agent tokens you issued: what each may do and when it was last used. */
 export function TokensView() {
@@ -94,7 +97,7 @@ export function TokensView() {
         )}
         {revoke.error && (
           <p className="status" data-kind="error" role="alert">
-            {(revoke.error as Error).message}
+            {explain(revoke.error)}
           </p>
         )}
       </div>
@@ -151,7 +154,7 @@ function NewToken({ onCancel, onCreated }: { onCancel(): void; onCreated(id: str
       </div>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
-          {(create.error as Error).message}
+          {explain(create.error)}
         </p>
       )}
       <div className="token-form-actions">
@@ -169,10 +172,12 @@ function NewToken({ onCancel, onCreated }: { onCancel(): void; onCreated(id: str
 /** The new token, shown once. */
 function Secret({ value, onDone }: { value: string; onDone(): void }) {
   const [copied, setCopied] = useState(false);
+  const { target } = useConnection();
+  const server = target.kind === "server" ? target.url.replace(/\/+$/, "") : "https://pando.example.com";
   return (
     <div className="panel token-secret" role="status">
       <p>
-        <strong>Copy the token now.</strong> It isn't shown again; the server keeps only a hash. Use it as <span className="mono">PANDO_TOKEN</span>.
+        <strong>Copy the token now.</strong> It isn't shown again: the server keeps only a hash.
       </p>
       <div className="token-secret-row">
         <code className="mono" aria-label="New token">
@@ -193,6 +198,14 @@ function Secret({ value, onDone }: { value: string; onDone(): void }) {
         <button type="button" className="button button-quiet" onClick={onDone}>
           Done
         </button>
+      </div>
+      <div className="commands">
+        <CopyCommand label="Use it from the command line" cmd={`export PANDO_TOKEN=${value}`} note="Every pando command in this shell then acts with this token." />
+        <CopyCommand
+          label="Connect an AI agent (MCP)"
+          cmd={`claude mcp add --transport http pando ${server}/mcp --header "Authorization: Bearer ${value}"`}
+          note="For Claude Code; Cursor, Codex and other MCP clients take the same address and header. Needs the server's MCP gateway at /mcp (pando mcp --http)."
+        />
       </div>
     </div>
   );

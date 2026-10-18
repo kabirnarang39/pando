@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button, Dialog, DialogTrigger, Popover, Tooltip, TooltipTrigger } from "react-aria-components";
-import { hex } from "../api/client";
+import { hex, explain } from "../api/client";
 import { ChangeRequestState, CheckState, Verdict, type ChangeRequest, type Check, type Comment } from "../gen/pando_platform_pb";
 import { Markdown } from "../markdown";
 import { useAddComment, useResolveThread, useSubmitReview } from "../platform-data";
@@ -98,7 +98,7 @@ export function ReviewButton({ repo, cr }: { repo: string; cr: ChangeRequest }) 
                 </label>
               ))}
             </div>
-            {submit.error && <p className="status" data-kind="error">{(submit.error as Error).message}</p>}
+            {submit.error && <p className="status" data-kind="error">{explain(submit.error)}</p>}
             <div className="row-actions" style={{ justifyContent: "flex-end" }}>
               <button type="button" className="button button-quiet" onClick={() => setOpen(false)}>
                 Cancel
@@ -311,7 +311,7 @@ export function Thread({
             original={at.original}
             autoFocus
             pending={add.isPending}
-            error={add.error ? (add.error as Error).message : null}
+            error={add.error ? explain(add.error) : null}
             onSubmit={submit}
             onCancel={onDone}
           />
@@ -323,7 +323,7 @@ export function Thread({
     return (
       <div className="thread">
         <div className="thread-inner">
-          <Composer label="Add to the conversation" submitLabel="Comment" pending={add.isPending} error={add.error ? (add.error as Error).message : null} onSubmit={submit} />
+          <Composer label="Add to the conversation" submitLabel="Comment" pending={add.isPending} error={add.error ? explain(add.error) : null} onSubmit={submit} />
         </div>
       </div>
     );
@@ -356,7 +356,7 @@ export function Thread({
                   submitLabel="Reply"
                   autoFocus
                   pending={add.isPending}
-                  error={add.error ? (add.error as Error).message : null}
+                  error={add.error ? explain(add.error) : null}
                   onSubmit={submit}
                   onCancel={() => setReplying(false)}
                 />

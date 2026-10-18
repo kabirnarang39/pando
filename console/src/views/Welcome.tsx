@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { explain } from "../api/client";
+import { useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Role } from "../gen/pando_platform_pb";
 import { CopyValue, InviteForm } from "../components/Invitations";
@@ -37,9 +38,13 @@ function orgError(e: unknown, name: string): string {
  */
 export function WelcomeView() {
   const viewer = useViewer();
-  const first = viewer.data?.platform && viewer.data.organizations.length === 0;
   const [step, setStep] = useState<Step>("org");
+  // Whether this is the person's first organisation, decided before they create it.
+  const firstRef = useRef<boolean | undefined>(undefined);
+  if (firstRef.current === undefined && viewer.data) firstRef.current = viewer.data.platform && viewer.data.organizations.length === 0;
+  const first = firstRef.current;
   const [org, setOrg] = useState("");
+  const [orgName, setOrgName] = useState("");
   const at = steps.findIndex(([s]) => s === step);
   return (
     <div className="page page-narrow">
@@ -58,8 +63,8 @@ export function WelcomeView() {
           ))}
         </ol>
         <section className="panel panel-body" aria-labelledby="step-title">
-          {step === "org" && <NameStep onDone={(login) => (setOrg(login), setStep("invite"))} />}
-          {step === "invite" && <InviteStep org={org} onNext={() => setStep("agent")} />}
+          {step === "org" && <NameStep onDone={(login, name) => (setOrg(login), setOrgName(name || login), setStep("invite"))} />}
+          {step === "invite" && <InviteStep org={org} name={orgName} onNext={() => setStep("agent")} />}
           {step === "agent" && <AgentStep org={org} />}
         </section>
       </div>
@@ -67,30 +72,42 @@ export function WelcomeView() {
   );
 }
 
-function NameStep({ onDone }: { onDone(login: string): void }) {
+/** A short name for addresses from a display name: "Acme Labs" → "acme-labs". */
+export const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "")
+    .slice(0, 39);
+
+function NameStep({ onDone }: { onDone(login: string, name: string): void }) {
   const create = useCreateOrganization();
-  const [login, setLogin] = useState("");
   const [name, setName] = useState("");
+  // The short name follows the display name until the person edits it.
+  const [typed, setTyped] = useState<string | null>(null);
+  const login = typed ?? slug(name);
+  const setLogin = setTyped;
   return (
     <form
       className="stack"
       onSubmit={(e) => {
         e.preventDefault();
         const l = login.trim();
-        if (l) create.mutate({ login: l, displayName: name.trim() }, { onSuccess: () => onDone(l) });
+        if (l) create.mutate({ login: l, displayName: name.trim() }, { onSuccess: () => onDone(l, name.trim()) });
       }}
     >
       <h2 id="step-title">Name your organisation</h2>
       <label className="field">
-        <span>Short name, used in addresses</span>
-        <input className="input" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="acme" required autoFocus autoComplete="off" spellCheck={false} aria-describedby="org-hint" />
+        <span>Organisation name</span>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Labs" autoFocus autoComplete="organization" />
       </label>
-      <p id="org-hint" className="muted" style={{ margin: 0 }}>
-        Repositories live at <span className="mono">{login.trim() || "acme"}/REPOSITORY</span>. Letters, digits, “.”, “_” and “-”.
-      </p>
       <label className="field">
-        <span>Display name (optional)</span>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Labs" autoComplete="organization" />
+        <span>Short name, used in addresses</span>
+        <input className="input" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="acme-labs" required autoComplete="off" spellCheck={false} aria-describedby="org-hint" />
+        <span id="org-hint" className="hint">
+          Repositories live at <span className="mono">{login.trim() || "acme-labs"}/REPOSITORY</span>. Letters, digits, “.”, “_” and “-”.
+        </span>
       </label>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
@@ -106,12 +123,12 @@ function NameStep({ onDone }: { onDone(login: string): void }) {
   );
 }
 
-function InviteStep({ org, onNext }: { org: string; onNext(): void }) {
+function InviteStep({ org, name, onNext }: { org: string; name: string; onNext(): void }) {
   return (
     <div className="stack">
       <h2 id="step-title">Invite teammates</h2>
       <p style={{ margin: 0 }}>
-        <strong>{org}</strong> is ready. Invite people by email: each gets a link that works once, for 7 days. You can do this later from the organisation's People tab.
+        <strong>{name}</strong> is ready. Invite people by email: each gets a link that works once, for 7 days. You can do this later from the organisation's People tab.
       </p>
       <InviteForm org={org} />
       <div className="row-actions">
@@ -131,7 +148,8 @@ function AgentStep({ org }: { org: string }) {
   const navigate = useNavigate();
   const create = useCreateToken();
   const [who, setWho] = useState<"agent" | "me">("agent");
-  const [agent, setAgent] = useState("claude");
+  // Agent names are shared by the whole server, so suggest one that is likely free.
+  const [agent, setAgent] = useState(`${org}-claude`);
   const server = target.kind === "server" ? target.url.replace(/\/+$/, "") : "https://pando.example.com";
   const [mcp, setMcp] = useState(`${server}/mcp`);
   const [token, setToken] = useState<string | null>(null);
@@ -171,7 +189,7 @@ function AgentStep({ org }: { org: string }) {
           )}
           {create.error && (
             <p className="status" data-kind="error" role="alert">
-              {(create.error as Error).message}
+              {/answers to/.test(explain(create.error)) ? `Someone else already has an agent called ${agent.trim()}. Pick another name.` : explain(create.error)}
             </p>
           )}
           <div className="row-actions">

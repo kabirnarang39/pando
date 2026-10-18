@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { explain } from "../api/client";
 import type { Protection } from "../gen/pando_platform_pb";
 import { useSetProtection } from "../platform-data";
 
@@ -51,7 +52,7 @@ export function ProtectionForm({ repo, existing, onDone }: { repo: string; exist
       </label>
       {save.error && (
         <p className="status" data-kind="error" role="alert">
-          {(save.error as Error).message}
+          {explain(save.error)}
         </p>
       )}
       <div className="token-form-actions">

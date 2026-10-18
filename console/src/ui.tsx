@@ -4,7 +4,7 @@ import {
   Keyboard, Lock, MessageSquare, Moon, PanelLeft, Plug, Plus, Search, Settings, ShieldCheck, Sun, TriangleAlert, Users, X,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { explain, isNotFound } from "./api/client";
+import { explain, isNotFound, isSignedOut } from "./api/client";
 import { Link } from "@tanstack/react-router";
 import { useConnection } from "./connection";
 
@@ -75,6 +75,8 @@ function hash(s: string) {
 
 /** Agents are named `agent/<role>-<n>` by convention; they get square marks, people round. */
 export function parseAuthor(author: string) {
+  // Imported git history names authors "Name <email>": show the name; the address stays in the tooltip.
+  author = author.replace(/\s*<[^>]*>$/, "") || author;
   const agent = /^(agent|bot)s?\//i.test(author) || /\[bot\]$/.test(author);
   const slash = author.lastIndexOf("/");
   const ns = slash >= 0 ? author.slice(0, slash + 1) : "";
@@ -135,7 +137,7 @@ export function CopyId({ id, label = "Copy id" }: { id: string; label?: string }
 
 export function Skeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading">
+    <div className="skeleton" role="status" aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }, (_, i) => (
         <i key={i} style={{ width: `${55 + ((i * 37) % 40)}%` }} />
       ))}
@@ -149,10 +151,16 @@ export function ErrorState({ error, retry, title = "This didn't load" }: { error
     <div className="state" role="alert">
       <h2>{title}</h2>
       <p>{explain(error, target.kind === "server" ? target.url : undefined)}</p>
-      {retry && (
-        <button type="button" className="button" onClick={retry}>
-          Try again
-        </button>
+      {isSignedOut(error) ? (
+        <Link to="/connect" className="button" data-primary="">
+          Sign in again
+        </Link>
+      ) : (
+        retry && (
+          <button type="button" className="button" onClick={retry}>
+            Try again
+          </button>
+        )
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { explain } from "../api/client";
 import { Role } from "../gen/pando_platform_pb";
 import { useCreateInvitation, useInvitations, useRevokeInvitation } from "../platform-data";
 import { Time, useNow } from "../ui";
@@ -53,7 +54,7 @@ export function InviteForm({ org }: { org: string }) {
         </button>
         {create.error && (
           <p className="status" data-kind="error" role="alert">
-            {(create.error as Error).message}
+            {explain(create.error)}
           </p>
         )}
       </form>

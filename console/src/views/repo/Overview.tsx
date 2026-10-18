@@ -9,6 +9,8 @@ import { Markdown } from "../../markdown";
 import { useCapabilities, useChangeRequests } from "../../platform-data";
 import { useRepo, useRepoParams } from "../../repo";
 import { useRefName } from "../../shell/hooks";
+import { useRepoUrl } from "./RepoLayout";
+import { CopyCommand } from "../../components/CopyCommand";
 
 /** A repository at a glance: the fleet at work, what waits for review, the README. */
 export function OverviewView() {
@@ -23,6 +25,9 @@ export function OverviewView() {
     <div className="page">
       <div className="grid-2">
         <div className="stack">
+          {live.tip.data === null ? (
+            <EmptyRepo />
+          ) : (
           <section className="panel" aria-labelledby="fleet-title">
             <div className="panel-head">
               <Icon name="activity" />
@@ -33,6 +38,7 @@ export function OverviewView() {
             </div>
             <FleetLanes changes={live.changes} minutes={60} max={8} />
           </section>
+          )}
           <Readme />
         </div>
         <div className="stack">
@@ -83,6 +89,8 @@ export function OverviewView() {
             </div>
             {!live.changes ? (
               <Skeleton rows={5} />
+            ) : !live.changes.length ? (
+              <Empty title={`Nothing has landed on ${ref} yet`} />
             ) : (
               <ul className="list">
                 {live.changes.slice(0, 7).map((c) => (
@@ -124,6 +132,24 @@ export function OverviewView() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A repository with no history yet: how to put code in it. */
+function EmptyRepo() {
+  const { name } = useRepo();
+  const url = useRepoUrl();
+  return (
+    <section className="panel" aria-labelledby="empty-title">
+      <div className="panel-head">
+        <Icon name="repo" />
+        <h2 id="empty-title">This repository is empty</h2>
+      </div>
+      <div className="panel-body commands">
+        <CopyCommand label="Start on your computer" cmd={`pando clone ${url} ${name}`} note={`Then add files in ${name}/ and run: pando commit -m "First commit" && pando land. (On a server with sign-in, run pando login first.)`} />
+        <CopyCommand label="Bring a git repository" cmd={`pando migrate https://github.com/OWNER/NAME --to ${url}`} note="Full history; from GitHub also open pull requests and issues. Any URL git can clone works." />
+      </div>
+    </section>
   );
 }
 
