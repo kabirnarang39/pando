@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-10-18
+
 ### Added
 - `pandod server --multi-tenant` (`PANDO_MULTI_TENANT`) for servers that strangers share:
   internal repositories are for the owning organisation's members, members and grants must name
