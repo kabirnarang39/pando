@@ -211,12 +211,13 @@ async fn discovery_and_rotation_on_unknown_key_id() {
     let mut c = claims();
     c["iss"] = json!(issuer);
     let token = sign(&c, Some("new"));
-    assert!(a.verify(&token).is_err(), "unknown key id before rotation");
+    // The IdP rotates. Pando still holds only "old", so the first verification fails and
+    // signals a refresh; the new key appears without a restart. (Verifying before the
+    // rotation would spend the one fetch a minute on the old key set.)
     *jwks.lock().unwrap() = rotated;
-    // The rejection above signalled a refresh; the new key appears without a restart.
+    assert!(a.verify(&token).is_err(), "unknown key id until the refresh");
     let mut ok = false;
-    for _ in 0..50 {
-        let _ = a.verify(&token); // re-signal in case the first fetch raced the swap
+    for _ in 0..100 {
         if a.verify(&token).is_ok() {
             ok = true;
             break;
