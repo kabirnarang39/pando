@@ -583,7 +583,8 @@ new agent's first land beyond the active-agent limit) and in the `SetMember` and
 `CreateRepository`/`UpdateRepository` calls (seats, private repositories). An agent becomes
 active after `HostingLayer` sees its `Land` succeed (status OK and a landed id) or its
 `CompareAndSwap` swap (status OK and `swapped`): a refused land is a gRPC error and a lost swap is
-status OK with `swapped: false`, so neither counts. An in-process set remembers the agents
+status OK with `swapped: false`, so neither counts. Landing a change request (`Reviews/Land`)
+makes active both the agent who lands it and the agent who wrote it, under the same limit. An in-process set remembers the agents
 already recorded this month, so only an agent's first land in a month writes. `GetUsage`,
 `SetLimits` (absolute values; site administrators), `SetSuspended` and `GetCapabilities`
 (`--billing-url`) are the only interface a billing service needs; prices, plan values and the
@@ -600,6 +601,5 @@ off would punish customers for a missed renewal.
 
 **Trade-offs.** The active-agent limit is checked before a land and recorded after it, so new
 agents landing at the same moment can pass it by a few; storage is measured hourly, so it can be
-passed by an hour of pushes. Agents landing a change request through `Reviews/Land` are not
-counted. Postgres repository metadata is not measured. The seen-set is per process: another
+passed by an hour of pushes. Postgres repository metadata is not measured. The seen-set is per process: another
 replica at most records an agent once more, which the primary key absorbs.

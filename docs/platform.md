@@ -96,8 +96,9 @@ limits nothing.
 
 - **Active agents.** An agent (`agent/NAME` or `bot/NAME`) is active in an organisation for a
   calendar month (UTC) once it lands a change in one of its repositories: a `Land` that
-  succeeded, or a `CompareAndSwap` that moved the branch. A refused land is an error and a lost
-  compare-and-swap moves nothing; neither counts. People are never active agents.
+  succeeded, a `CompareAndSwap` that moved the branch, or a change request it wrote or landed. A
+  refused land is an error and a lost compare-and-swap moves nothing; neither counts. People are
+  never active agents.
 - **Seats** are the people (not agents) who are members of the organisation.
 - **Storage** is measured hourly per repository (its SQLite database and write-ahead log, plus
   its objects when they live in an object store), with each month's peak per organisation.

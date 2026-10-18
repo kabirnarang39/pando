@@ -414,6 +414,13 @@ pub struct Policy {
 /// Refuses a write to `key` that its organisation's plan doesn't allow (`--multi-tenant` only).
 /// `path` is the call; reads are never refused here.
 pub fn check_write(hosting: &Hosting, key: &RepoKey, who: &Principal, path: &str) -> Result<(), Status> {
+    let landers: &[&str] = if is_land(path) { &[who.0.as_str()] } else { &[] };
+    check_landing(hosting, key, landers)
+}
+
+/// Refuses a write to `key` that its organisation's plan doesn't allow, where `landers` are the
+/// accounts the write would make active (agents among them count; `--multi-tenant` only).
+pub fn check_landing(hosting: &Hosting, key: &RepoKey, landers: &[&str]) -> Result<(), Status> {
     let access = &hosting.access;
     if !access.multi_tenant {
         return Ok(());
@@ -437,27 +444,45 @@ pub fn check_write(hosting: &Hosting, key: &RepoKey, who: &Principal, path: &str
             )));
         }
     }
-    if let Some(max) = l.active_agents
-        && is_land(path)
-        && kind_of(&who.0) == AccountKind::Agent
-    {
-        let month = month_of(now_ms());
+    let Some(max) = l.active_agents else { return Ok(()) };
+    let month = month_of(now_ms());
+    let mut new = 0;
+    let agents: std::collections::BTreeSet<&str> =
+        landers.iter().copied().filter(|l| kind_of(l) == AccountKind::Agent).collect();
+    for agent in agents {
         // ponytail: checked before the land and recorded after it, so new agents landing at the
         // same moment can pass the limit by a few; a reservation would count refused lands.
-        if !hosting.meter.active(reg, org, &month, &who.0).map_err(internal)? {
-            let n = reg.count_active_agents(org, &month).map_err(internal)?;
-            if n >= max {
-                return Err(Status::resource_exhausted(format!(
-                    "{org} has {n} of {max} active agents this month, so `{}` can't start landing; {}, or wait until {} \
-                     (agents that already landed this month keep landing)",
-                    who.0,
-                    upgrade(hosting),
-                    next_month_start(&month)
-                )));
-            }
+        if hosting.meter.active(reg, org, &month, agent).map_err(internal)? {
+            continue;
+        }
+        new += 1;
+        let n = reg.count_active_agents(org, &month).map_err(internal)?;
+        if n + new > max {
+            return Err(Status::resource_exhausted(format!(
+                "{org} has {n} of {max} active agents this month, so `{agent}` can't start landing; {}, or wait until {} \
+                 (agents that already landed this month keep landing)",
+                upgrade(hosting),
+                next_month_start(&month)
+            )));
         }
     }
     Ok(())
+}
+
+/// Records `login`, if it is an agent, as active in `org` this month: after a change it made or
+/// authored has landed.
+pub fn record_landed(hosting: &Hosting, org: &str, login: &str) {
+    if kind_of(login) != AccountKind::Agent {
+        return;
+    }
+    let month = month_of(now_ms());
+    if hosting.meter.seen(&month, org, login) {
+        return;
+    }
+    match hosting.registry.record_active_agent(org, &month, login, now_ms()) {
+        Ok(_) => hosting.meter.remember(&month, org, login),
+        Err(e) => tracing::warn!(error = %e, agent = login, "recording an active agent"),
+    }
 }
 
 /// Whether a Land or CompareAndSwap response is a landed change: status OK, and the change
@@ -498,13 +523,7 @@ pub async fn observe_land(
     let trailers = collected.trailers().cloned();
     let data: Bytes = collected.to_bytes();
     if landed(path, &parts.headers, trailers.as_ref(), &data) {
-        let month = month_of(now_ms());
-        if !hosting.meter.seen(&month, &key.owner, &who.0) {
-            match hosting.registry.record_active_agent(&key.owner, &month, &who.0, now_ms()) {
-                Ok(_) => hosting.meter.remember(&month, &key.owner, &who.0),
-                Err(e) => tracing::warn!(error = %e, agent = %who.0, "recording an active agent"),
-            }
-        }
+        record_landed(hosting, &key.owner, &who.0);
     }
     let mut frames = vec![Ok::<_, Status>(http_body::Frame::data(data))];
     frames.extend(trailers.map(|t| Ok(http_body::Frame::trailers(t))));

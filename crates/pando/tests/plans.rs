@@ -213,3 +213,59 @@ async fn without_multi_tenant_nothing_is_limited() {
     assert!(!u.enforced);
     assert_eq!(u.active_agents.len(), 1, "usage is still recorded");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn change_requests_count_the_agents_who_wrote_them() {
+    use pando_proto::{ChangeRequestRef, CreateChangeRequestRequest, RepositoryRef};
+    let s = common::start_with(Access {
+        admins: vec!["admin".into()],
+        multi_tenant: true,
+        max_orgs_per_account: 3,
+        default_org_limits: Some(Limits::parse("agents=1").unwrap()),
+        ..Default::default()
+    })
+    .await;
+    let admin = connect(&s.url, "admin-token");
+    let dev = connect(&s.url, "dev-token");
+    dev.platform().viewer(Empty {}).await.unwrap();
+    admin.platform().create_repository(repo("fleet", Visibility::Private)).await.unwrap();
+    admin.platform().set_member(member("dev", Role::Write)).await.unwrap();
+    let fleet = format!("{}/lumen/fleet", s.url);
+    let dev_fleet = connect(&fleet, "dev-token");
+    land(&dev_fleet, "README.md").await.unwrap();
+
+    // A person pushes the branch; the agent opens the change request; a person lands it.
+    let mut n = 0;
+    let mut propose = async |agent: &str| {
+        n += 1;
+        let branch = format!("work-{n}");
+        let (_, cs) = change(&dev_fleet, &format!("{branch}.txt")).await.unwrap();
+        assert!(dev_fleet.compare_and_swap(&branch, None, cs).await.unwrap());
+        let a = connect(&s.url, &agent_token(&dev, agent).await);
+        let cr = a
+            .reviews()
+            .create_change_request(CreateChangeRequestRequest {
+                repository: Some(RepositoryRef { owner: "lumen".into(), name: "fleet".into() }),
+                source: branch,
+                target: "main".into(),
+                title: format!("Work {n}"),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        ChangeRequestRef { repository: cr.repository, number: cr.number }
+    };
+    assert!(usage(&admin).await.active_agents.is_empty(), "pushing and proposing land nothing");
+    let first = propose("agent/writer-1").await;
+    dev.reviews().land(first).await.unwrap();
+    let names: Vec<_> = usage(&admin).await.active_agents.into_iter().map(|a| a.login).collect();
+    assert_eq!(names, ["agent/writer-1"], "the change request's agent author is active");
+
+    // A second agent's change request would pass the limit: refused, and not counted.
+    let second = propose("agent/writer-2").await;
+    let e = dev.reviews().land(second).await.unwrap_err();
+    assert_eq!(e.code(), tonic::Code::ResourceExhausted, "{e:?}");
+    assert!(e.message().contains("agent/writer-2"), "{e:?}");
+    assert_eq!(usage(&admin).await.active_agents.len(), 1);
+}
