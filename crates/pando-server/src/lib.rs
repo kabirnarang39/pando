@@ -155,6 +155,8 @@ pub struct ServeOptions {
     pub ready_dirs: Vec<std::path::PathBuf>,
     /// Take client addresses from `X-Forwarded-For` sent by a proxy on this host.
     pub trust_proxy: bool,
+    /// The web console's built files, served at `/` (`--console-dir`).
+    pub console: Option<std::path::PathBuf>,
 }
 
 /// Whether the registry answers and every data directory takes a synced write.
@@ -248,6 +250,86 @@ where
     }
 }
 
+/// Headers on every console file. The build's own CSP `<meta>` (console/vite.config.ts) allows
+/// scripts by hash; this adds what a meta tag can't (`frame-ancestors`) and narrows `connect-src`
+/// to this server, so a token in the page can't be sent anywhere else.
+const CONSOLE_HEADERS: &[(&str, &str)] = &[
+    (
+        "content-security-policy",
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'",
+    ),
+    ("x-content-type-options", "nosniff"),
+    ("x-frame-options", "DENY"),
+    ("referrer-policy", "no-referrer"),
+    ("cross-origin-opener-policy", "same-origin"),
+    ("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()"),
+];
+
+/// Serves the web console's files (`--console-dir`) on the server's own address: every GET or
+/// HEAD is a file (gRPC and gRPC-Web calls are POSTs), and an unknown path is `index.html`, so
+/// links into the app work. Outside authentication: the files hold no data.
+#[derive(Clone)]
+struct Console(std::path::PathBuf);
+
+impl<S> tower::Layer<S> for Console {
+    type Service = ConsoleService<S>;
+    fn layer(&self, inner: S) -> Self::Service {
+        let index = tower_http::services::ServeFile::new(self.0.join("index.html"));
+        ConsoleService { inner, files: tower_http::services::ServeDir::new(&self.0).fallback(index) }
+    }
+}
+
+#[derive(Clone)]
+struct ConsoleService<S> {
+    inner: S,
+    files: tower_http::services::ServeDir<tower_http::services::ServeFile>,
+}
+
+impl<S, B> tower::Service<tonic::codegen::http::Request<B>> for ConsoleService<S>
+where
+    S: tower::Service<tonic::codegen::http::Request<B>, Response = tonic::codegen::http::Response<tonic::body::Body>>,
+    S::Future: Send + 'static,
+    B: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = tonic::codegen::BoxFuture<S::Response, S::Error>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), S::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: tonic::codegen::http::Request<B>) -> Self::Future {
+        use tonic::codegen::http::{Method, header};
+        if req.method() != Method::GET && req.method() != Method::HEAD {
+            return Box::pin(self.inner.call(req));
+        }
+        // Vite names everything under assets/ by its content hash: cache it for good. Anything
+        // else (index.html above all) is checked on every visit, so a new release shows at once.
+        let hashed = req.uri().path().starts_with("/assets/");
+        let files = self.files.clone();
+        Box::pin(async move {
+            let resp = match tower::ServiceExt::oneshot(files, req).await {
+                Ok(r) => r,
+                Err(never) => match never {},
+            };
+            let mut resp = resp.map(tonic::body::Body::new);
+            let html = resp.headers().get(header::CONTENT_TYPE).is_some_and(|v| v.as_bytes().starts_with(b"text/html"));
+            let cache = if hashed && resp.status().is_success() && !html {
+                "public, max-age=31536000, immutable"
+            } else {
+                "no-cache"
+            };
+            let h = resp.headers_mut();
+            h.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+            for (name, value) in CONSOLE_HEADERS {
+                h.insert(HeaderName::from_static(name), HeaderValue::from_static(value));
+            }
+            Ok(resp)
+        })
+    }
+}
+
 /// Serve `routes` with auth, health checks, reflection, metrics and graceful shutdown.
 pub async fn serve(
     listener: TcpListener,
@@ -256,7 +338,7 @@ pub async fn serve(
     options: ServeOptions,
     shutdown: impl Future<Output = ()> + Send,
 ) -> anyhow::Result<()> {
-    let ServeOptions { tls, web, limits, hosting, health: ready, ready_dirs, trust_proxy } = options;
+    let ServeOptions { tls, web, limits, hosting, health: ready, ready_dirs, trust_proxy, console } = options;
     let (health_reporter, health) = tonic_health::server::health_reporter();
     // Readiness: checked now and every few seconds; gRPC health follows it (M1).
     let registry = hosting.as_ref().map(|h| h.registry.clone());
@@ -342,6 +424,7 @@ pub async fn serve(
     let per_principal = PerPrincipal { max: limits.per_principal, slots: Default::default() };
     // CORS sits outside authentication: browsers send preflight requests without a token.
     let served = builder
+        .layer(tower::util::option_layer(console.map(Console)))
         .layer(tower::util::option_layer(web.enabled.then(|| web.cors()).transpose()?))
         .layer(tower::limit::GlobalConcurrencyLimitLayer::new(limits.max_in_flight))
         // Translates only gRPC-Web requests; plain gRPC passes through untouched. Browsers
@@ -378,6 +461,64 @@ mod tests {
         assert!(limit.acquire("mira").is_some(), "others are unaffected");
         drop((a, b));
         assert!(limit.acquire("agent/a").is_some(), "slots come back when calls finish");
+    }
+
+    #[tokio::test]
+    async fn serves_the_console_with_caching_and_security_headers() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("assets")).unwrap();
+        std::fs::write(dir.path().join("index.html"), "<!doctype html>console").unwrap();
+        std::fs::write(dir.path().join("assets/app-1a2b.js"), "js").unwrap();
+        let repo = config::open_repo("memory", "metadata").await.unwrap();
+        let flags = Arc::new(pando_adapters::flags::SpecFlags::all_on());
+        let routes = authority_routes(
+            repo,
+            flags,
+            Arc::new(pando_core::acl::AllowAllPolicy),
+            Arc::new(pando_core::ports::NoChecks),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let options = ServeOptions {
+            web: WebAccess { enabled: true, origins: vec![] },
+            console: Some(dir.path().to_owned()),
+            ..Default::default()
+        };
+        let (_stop, stop) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(serve(listener, routes, Arc::new(auth::AllowAll), options, async {
+            let _ = stop.await;
+        }));
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let http = reqwest::Client::new();
+        let get = |path: &str| http.get(format!("{url}{path}")).send();
+
+        for path in ["/", "/index.html", "/lumen/fleet/changes"] {
+            let r = get(path).await.unwrap();
+            assert_eq!(r.status(), 200, "{path}");
+            assert_eq!(r.headers()["cache-control"], "no-cache", "{path}");
+            assert!(r.headers()["content-security-policy"].to_str().unwrap().contains("frame-ancestors 'none'"));
+            assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+            assert_eq!(r.text().await.unwrap(), "<!doctype html>console", "{path}: the app, for links into it");
+        }
+        let r = get("/assets/app-1a2b.js").await.unwrap();
+        assert_eq!(r.headers()["cache-control"], "public, max-age=31536000, immutable");
+        assert_eq!(r.text().await.unwrap(), "js");
+        // A missing asset is the app, not cached for a year; nothing outside the directory leaks.
+        assert_eq!(get("/assets/gone.js").await.unwrap().headers()["cache-control"], "no-cache");
+        assert_eq!(get("/../Cargo.toml").await.unwrap().text().await.unwrap(), "<!doctype html>console");
+        // Calls (POSTs) still reach gRPC.
+        let r = http
+            .post(format!("{url}/pando.v1.Refs/List"))
+            .header("content-type", "application/grpc-web")
+            .body(vec![0u8; 5])
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            r.headers().contains_key("grpc-status")
+                || r.headers()["content-type"].to_str().unwrap().starts_with("application/grpc"),
+            "{r:?}"
+        );
     }
 
     #[test]

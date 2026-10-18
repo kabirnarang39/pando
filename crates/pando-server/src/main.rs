@@ -216,6 +216,10 @@ enum Role {
         /// A support licence file to check at startup. Nothing is turned off without one.
         #[arg(long, env = "PANDO_LICENSE")]
         license: Option<std::path::PathBuf>,
+        /// Serve the web console from this directory (the release's `pando-console-VERSION`
+        /// archive, unpacked) at `/` on the server's own address. Needs the `web` flag.
+        #[arg(long, env = "PANDO_CONSOLE_DIR")]
+        console_dir: Option<std::path::PathBuf>,
     },
     /// Support licences: `pandod license verify FILE`.
     License {
@@ -529,6 +533,7 @@ async fn main() -> anyhow::Result<()> {
     let upstream_token = std::env::var("PANDO_UPSTREAM_TOKEN").ok();
 
     let mut hosting: Option<Arc<pando_server::hosting::Hosting>> = None;
+    let mut console = None;
     // Local directories whose storage must stay writable for the server to be ready.
     let mut ready_dirs: Vec<std::path::PathBuf> = Vec::new();
     let mut dir_of = |url: &str| {
@@ -579,7 +584,14 @@ async fn main() -> anyhow::Result<()> {
             billing_url,
             support_url,
             license,
+            console_dir,
         } => {
+            if let Some(dir) = &console_dir {
+                anyhow::ensure!(web.enabled, "--console-dir needs browser access: the `web` flag is off (PANDO_FLAGS)");
+                anyhow::ensure!(dir.join("index.html").is_file(), "--console-dir {}: no index.html", dir.display());
+                tracing::info!(dir = %dir.display(), "web console");
+            }
+            console = console_dir;
             // Checked (and logged) on every server; only platform servers report it over RPC.
             let license = license.as_deref().map(pando_server::license::load);
             let repo = config::open_repo(&metadata, &objects).await?;
@@ -779,7 +791,15 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    let options =
-        pando_server::ServeOptions { tls, web, limits, hosting, health, ready_dirs, trust_proxy: cli.trust_proxy };
+    let options = pando_server::ServeOptions {
+        tls,
+        web,
+        limits,
+        hosting,
+        health,
+        ready_dirs,
+        trust_proxy: cli.trust_proxy,
+        console,
+    };
     serve(listener, routes, auth, options, shutdown_signal()).await
 }

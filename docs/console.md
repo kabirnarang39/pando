@@ -63,12 +63,57 @@ console already pointed at a server.
 
 ## Host it yourself
 
-The console is static files. Build it once and serve `console/dist` from anywhere (an object
-store, a CDN, nginx, GitHub Pages):
+The console is static files. Every release attaches them as `pando-console-vVERSION.tar.gz`
+(with a `.sha256` and the same signed provenance as the binaries), or build them yourself:
 
 ```sh
-cd console && pnpm install && pnpm build
+cd console && pnpm install && pnpm build   # into console/dist
 ```
+
+**From `pandod` itself.** `--console-dir DIR` (`PANDO_CONSOLE_DIR`) serves the files at `/` on
+the server's own address, next to gRPC and gRPC-Web, so no other web server and no
+`--web-origins` are needed:
+
+```sh
+curl -LO https://github.com/kabirnarang39/pando/releases/download/v3.5.0/pando-console-v3.5.0.tar.gz
+tar xzf pando-console-v3.5.0.tar.gz
+pandod server --platform sqlite:///var/lib/pando/platform.db … --console-dir pando-console-v3.5.0
+```
+
+Every GET is a file, and a path that isn't one is `index.html`. Files under `assets/` (named by
+their content hash) are cached for a year; everything else, `index.html` included, is checked on
+each visit, so a new release shows at once. Each file carries a Content Security Policy header
+that adds `frame-ancestors 'none'` to the build's own policy and keeps `connect-src` to the
+server, plus `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and
+`Cross-Origin-Opener-Policy: same-origin`. It needs the `web` flag (on by default). Put TLS (and
+HSTS, compression) in front with any proxy, or use `--tls-cert`.
+
+**From a web server.** Serve the unpacked directory from anywhere (Caddy, nginx, an object store,
+a CDN, GitHub Pages) and send the same headers. With Caddy, proxying gRPC to `pandod` on the
+same host name:
+
+```
+pando.example.com {
+  @grpc header Content-Type application/grpc*
+  handle @grpc {
+    reverse_proxy h2c://127.0.0.1:7420
+  }
+  handle {
+    root * /srv/pando-console
+    header Content-Security-Policy "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
+    header X-Content-Type-Options nosniff
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+    @app not path /assets/*
+    header @app Cache-Control no-cache
+    encode zstd gzip
+    try_files {path} /index.html
+    file_server
+  }
+}
+```
+
+`form-action` must allow `'self'`: the email sign-in form posts to `/login/`.
 
 URLs use the fragment (`/#/server/repo/changes`), so no server-side routing is needed and deep
 links work from any path.

@@ -11,9 +11,25 @@ All notable changes to this project are documented here. The format follows
   links and list prices live in `site/site.conf`, which `scripts/build-site.sh` fills in; the
   pages self-host their fonts. URLs are unchanged: the landing page at the site root, docs under
   `/docs/`, the console demo under `/console/`, and the new `/pricing.html`.
+- Releases attach the web console, `pando-console-vVERSION.tar.gz` with its `.sha256`, covered by
+  the release's signed provenance and SBOM attestations.
+- `pandod server --console-dir DIR` (`PANDO_CONSOLE_DIR`) serves the console at `/` on the
+  server's own address: links into the app fall back to `index.html`, hashed assets are cached for
+  a year and everything else revalidated, with CSP, `nosniff`, framing and referrer headers
+  (ADR-036).
+- A cross-tenant isolation suite, a release gate: every method in the protocol is called with
+  another organisation's tokens (a person, an agent, tokens limited to a repository) at an
+  organisation's repositories, change requests, issues, webhooks, protections, locks, teams and
+  tokens, and must be refused or show nothing of theirs; a method missing from its table fails it.
 
 ### Fixed
 - `docs/platform.md` said git manages 2 lands/s at 200 agents; the benchmark measured 0.5.
+
+### Security
+- Creating a token limited to repositories told whether a private repository you can't see
+  exists; such a name is now "no repository", like everywhere else.
+- Granting a repository to a team told whether another organisation has a team of that name;
+  only the owning organisation's teams are recognised.
 
 ## [3.5.0] - 2026-10-18
 
