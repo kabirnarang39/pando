@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Website: a new landing page and a pricing page with a Team cost calculator. The product name,
+  links and list prices live in `site/site.conf`, which `scripts/build-site.sh` fills in; the
+  pages self-host their fonts. URLs are unchanged: the landing page at the site root, docs under
+  `/docs/`, the console demo under `/console/`, and the new `/pricing.html`.
+
+### Fixed
+- `docs/platform.md` said git manages 2 lands/s at 200 agents; the benchmark measured 0.5.
+
 ## [3.5.0] - 2026-10-18
 
 ### Added
