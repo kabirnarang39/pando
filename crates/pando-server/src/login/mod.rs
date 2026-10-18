@@ -19,7 +19,10 @@
 
 mod device;
 mod invite;
+mod page;
 mod store;
+
+use page::page;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -375,11 +378,11 @@ impl Login {
             None => text.to_owned(),
         };
         let body = format!(
-            "<p>This creates a Pando account for {}.</p>{}\
+            "<p>This creates a Pando account for <strong>{}</strong>.</p>{}\
              <label class=check><input type=checkbox name=accept value=yes required> \
-             I am 18 or older and accept the {} and {}</label><button>Create my account</button>",
+             <span>I am 18 or older and accept the {} and {}</span></label><button>Create my account</button>",
             esc(email),
-            problem.map(|p| format!("<p role=alert><strong>{}</strong></p>", esc(p))).unwrap_or_default(),
+            problem.map(|p| format!("<p role=alert>{}</p>", esc(p))).unwrap_or_default(),
             link(&self.terms_url, "Terms"),
             link(&self.privacy_url, "Privacy Policy"),
         );
@@ -391,12 +394,19 @@ impl Login {
     fn sign_in_page(&self, title: &str, intro: &str, next: &str) -> Response {
         let back: String = url::form_urlencoded::byte_serialize(next.as_bytes()).collect();
         let mut body = intro.to_owned();
-        for p in &self.providers {
-            body.push_str(&format!(
-                "<p><a class=button href=\"/login/oidc/{}?next={back}\">Continue with {}</a></p>",
-                esc(&p.id),
-                esc(&p.name)
-            ));
+        if !self.providers.is_empty() {
+            body.push_str("<div class=providers>");
+            for p in &self.providers {
+                body.push_str(&format!(
+                    "<a class=button href=\"/login/oidc/{}?next={back}\">Continue with {}</a>",
+                    esc(&p.id),
+                    esc(&p.name)
+                ));
+            }
+            body.push_str("</div>");
+            if self.mailer.is_some() {
+                body.push_str("<p class=or>or</p>");
+            }
         }
         if self.mailer.is_some() {
             let widget = match &self.turnstile {
@@ -407,11 +417,19 @@ impl Login {
                 None => String::new(),
             };
             body.push_str(&format!(
-                "<form method=post action=\"/login/email\"><label>Email address<input type=email name=email required autocomplete=email></label>\
-                 <input type=hidden name=next value=\"{}\">{widget}<button>Send me a sign-in link</button></form>",
-                esc(next)
+                "<form method=post action=\"/login/email\"><label>Email address\
+                 <input type=email name=email required autocomplete=email placeholder=you@company.com></label>\
+                 <input type=hidden name=next value=\"{}\">{widget}<button{}>Email me a sign-in link</button></form>",
+                esc(next),
+                // With a provider above, email is the second way in.
+                if self.providers.is_empty() { "" } else { " class=quiet" }
             ));
         }
+        body.push_str(match self.signup {
+            Signup::Open => "<p class=muted>New here? Signing in creates your account.</p>",
+            Signup::Waitlist => "<p class=muted>New here? Accounts are open to invited people and the waitlist.</p>",
+            Signup::Closed => "",
+        });
         let mut r = page(StatusCode::OK, title, &body);
         if self.turnstile.is_some() && self.mailer.is_some() {
             let csp = format!("{CSP}; script-src {TURNSTILE}; frame-src {TURNSTILE}; connect-src {TURNSTILE}");
@@ -471,22 +489,12 @@ fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
-/// A small page; `body` is HTML whose dynamic parts are already escaped.
-fn page(status: StatusCode, title: &str, body: &str) -> Response {
-    let html = format!(
-        "<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">\
-         <title>{t}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem}}\
-         input,button,.button{{font:inherit;padding:.5rem;margin:.25rem 0;width:100%;box-sizing:border-box}}\
-         .button{{display:block;text-align:center;border:1px solid;border-radius:4px;text-decoration:none}}\
-         .check{{display:flex;gap:.5rem;align-items:flex-start;margin:1rem 0}}.check input{{width:auto}}</style>\
-         <main><h1>{t}</h1>{body}</main>",
-        t = esc(title)
-    );
-    (status, [(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
-}
-
 fn fail(status: StatusCode, message: &str) -> Response {
-    page(status, "Sign-in failed", &format!("<p>{}</p><p><a href=\"/\">Back</a></p>", esc(message)))
+    page(
+        status,
+        "We couldn't sign you in",
+        &format!("<p role=alert>{}</p><p><a href=\"/\">Back to Pando</a></p>", esc(message)),
+    )
 }
 
 /// An internal error: logged, and shown to the person only as "something went wrong".
@@ -705,7 +713,7 @@ async fn email_form(State(l): State<Arc<Login>>, Query(q): Query<NextQuery>) -> 
     if l.mailer.is_none() {
         return fail(StatusCode::NOT_FOUND, "Email sign-in is not set up on this server.");
     }
-    l.sign_in_page("Sign in", "", &safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()))
+    l.sign_in_page("Sign in to Pando", "", &safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()))
 }
 
 #[derive(Deserialize)]
@@ -766,6 +774,7 @@ async fn email_request(
     };
     // Whether a link is sent is decided off the request path, so the answer (and its timing)
     // is the same for every address.
+    let again: String = url::form_urlencoded::byte_serialize(next.as_bytes()).collect();
     tokio::spawn(async move {
         if let Err(e) = send_link(&l, &email, &next).await {
             tracing::warn!(error = %e, "sending a sign-in link");
@@ -774,7 +783,10 @@ async fn email_request(
     page(
         StatusCode::OK,
         "Check your email",
-        "<p>If that address can sign in here, a link is on its way. It works once, within 15 minutes.</p>",
+        &format!(
+            "<p>If that address can sign in here, a sign-in link is on its way. It works once, for 15 minutes.</p>\
+             <p class=muted>Nothing after a few minutes? Check your spam folder, or <a href=\"/login/email?next={again}\">use another address</a>.</p>"
+        ),
     )
 }
 
@@ -815,9 +827,10 @@ async fn email_confirm(Query(q): Query<TokenForm>) -> Response {
     }
     page(
         StatusCode::OK,
-        "Sign in",
+        "Finish signing in",
         &format!(
-            "<form method=post action=\"/login/email/verify\"><input type=hidden name=token value=\"{}\"><button>Sign in</button></form>",
+            "<p>You opened your sign-in link. Continue to sign in to Pando in this browser.</p>\
+             <form method=post action=\"/login/email/verify\"><input type=hidden name=token value=\"{}\"><button>Sign in</button></form>",
             esc(&token)
         ),
     )

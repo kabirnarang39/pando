@@ -178,8 +178,9 @@ pub(super) async fn enter(
             if problem.is_empty() { StatusCode::OK } else { StatusCode::BAD_REQUEST },
             "Sign in the Pando CLI",
             &format!(
-                "{problem}<form method=get action=\"/login/device\"><label>The code your terminal shows\
-                 <input name=user_code required autocomplete=off autocapitalize=characters placeholder=ABCD-EFGH></label>\
+                "<p>Enter the code that <code>pando login</code> shows in your terminal.</p>{problem}\
+                 <form method=get action=\"/login/device\"><label>Code\
+                 <input class=code name=user_code required autocomplete=off autocapitalize=characters spellcheck=false placeholder=ABCD-EFGH></label>\
                  <button>Continue</button></form>"
             ),
         )
@@ -188,12 +189,13 @@ pub(super) async fn enter(
     if !l.buckets.take(format!("code:{}", client_ip(peer, &headers)), 30.0, Duration::from_secs(600)) {
         return fail(StatusCode::TOO_MANY_REQUESTS, "Too many tries. Please wait a few minutes and try again.");
     }
-    let unknown = "<p role=alert><strong>That code is not valid or has expired. Run <code>pando login</code> again for a new one.</strong></p>";
+    let unknown =
+        "<p role=alert>That code is not valid or has expired. Run <code>pando login</code> again for a new one.</p>";
     let Some(uc) = normal_code(&typed) else { return ask(unknown) };
     match l.registry.device_login(&uc) {
         Ok(Some(_)) => l.sign_in_page(
             "Sign in the Pando CLI",
-            &format!("<p>Code <strong>{uc}</strong>. Sign in to approve it.</p>"),
+            &format!("<p>Sign in to approve the code <strong class=code>{uc}</strong> for the Pando CLI.</p>"),
             &format!("{NEXT}{uc}"),
         ),
         Ok(None) => ask(unknown),
@@ -205,7 +207,7 @@ pub(super) async fn enter(
 pub(super) fn approve_page(l: &Login, login: &str, uc: &str, next: &str) -> Response {
     let (client, host) = match l.registry.device_login(uc) {
         Ok(Some(d)) => d,
-        Ok(None) => return fail(StatusCode::BAD_REQUEST, "That code has expired. Run `pando login` again."),
+        Ok(None) => return fail(StatusCode::BAD_REQUEST, "That code has expired. Run pando login again."),
         Err(e) => return broken(e),
     };
     let client = if client.is_empty() { "a command-line client".to_owned() } else { client };
@@ -213,7 +215,7 @@ pub(super) fn approve_page(l: &Login, login: &str, uc: &str, next: &str) -> Resp
         "<p>Approve CLI sign-in from <strong>{}</strong> on <strong>{}</strong> as <strong>{}</strong>?</p>\
          <p>Only approve if you ran <code>pando login</code> yourself and your terminal shows the code <strong>{uc}</strong>. \
          The CLI gets a token that can do anything you can, for 90 days.</p>\
-         <button name=decision value=approve>Approve</button><button name=decision value=deny>Deny</button>",
+         <div class=actions><button name=decision value=approve>Approve</button><button class=quiet name=decision value=deny>Deny</button></div>",
         esc(&client),
         esc(&host),
         esc(login),
@@ -227,10 +229,12 @@ pub(super) fn decide(l: &Login, login: &str, uc: &str, approve: bool) -> Respons
             tracing::info!(target: crate::telemetry::AUDIT, kind = "device_approve", principal = %login, target = uc);
             page(StatusCode::OK, "CLI signed in", "<p>You can close this tab and go back to your terminal.</p>")
         }
-        Ok(true) => {
-            page(StatusCode::OK, "CLI sign-in denied", "<p>The CLI was not signed in. You can close this tab.</p>")
-        }
-        Ok(false) => fail(StatusCode::BAD_REQUEST, "That code has expired. Run `pando login` again."),
+        Ok(true) => page(
+            StatusCode::OK,
+            "CLI sign-in denied",
+            "<p>The CLI was not signed in. If you didn't run <code>pando login</code> yourself, nothing else is needed. You can close this tab.</p>",
+        ),
+        Ok(false) => fail(StatusCode::BAD_REQUEST, "That code has expired. Run pando login again."),
         Err(e) => broken(e),
     }
 }
