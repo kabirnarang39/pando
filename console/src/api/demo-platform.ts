@@ -548,11 +548,12 @@ export class DemoPlatform {
 
   createInvitation(org: string, email: string, role: Role) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) throw new ConnectError(`\`${email}\` is not an email address`, Code.InvalidArgument);
-    const id = Math.random().toString(16).slice(2, 18).padEnd(16, "0");
+    const hex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const id = hex(8);
     const now = Date.now();
     const invitation = { id, org, email: email.trim().toLowerCase(), role: role || Role.READ, invitedBy: VIEWER, createdAtMs: BigInt(now), expiresAtMs: BigInt(now + 7 * 86_400_000) };
     this.invites.push(invitation);
-    const secret = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+    const secret = hex(32);
     return { invitation, link: `https://pando.example.com/login/invite/${secret}`, emailed: false };
   }
 
