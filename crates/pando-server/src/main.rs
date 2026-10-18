@@ -114,9 +114,10 @@ enum Role {
     Server {
         #[arg(long, default_value = "127.0.0.1:7420")]
         listen: SocketAddr,
-        /// memory | sqlite://PATH | postgres://...
-        #[arg(long, env = "PANDO_METADATA", hide_env_values = true, default_value = "sqlite://./pando-data/meta.db")]
-        metadata: String,
+        /// memory | sqlite://PATH | postgres://... Default: sqlite://./pando-data/meta.db, or
+        /// memory with --platform (whose clients can't reach this repository).
+        #[arg(long, env = "PANDO_METADATA", hide_env_values = true)]
+        metadata: Option<String>,
         /// metadata | file:///PATH | s3://BUCKET/PREFIX | gs://BUCKET | az://CONTAINER | memory:///
         #[arg(long, env = "PANDO_OBJECTS", hide_env_values = true, default_value = "metadata")]
         objects: String,
@@ -251,7 +252,7 @@ enum Role {
     },
     /// Back up a platform server while it runs: a consistent snapshot of the registry and of
     /// every hosted repository's metadata database, with a manifest of where each belongs and
-    /// where objects live. Restore by copying back while stopped (docs/deploy.md).
+    /// where objects live. Restore by copying back while stopped (docs/backup.md).
     Backup {
         #[arg(long, env = "PANDO_PLATFORM", hide_env_values = true)]
         platform: String,
@@ -537,17 +538,7 @@ async fn main() -> anyhow::Result<()> {
     // Local directories whose storage must stay writable for the server to be ready.
     let mut ready_dirs: Vec<std::path::PathBuf> = Vec::new();
     let mut dir_of = |url: &str| {
-        let dir = if let Some(path) = url.strip_prefix("sqlite://") {
-            // A template's fixed part: sqlite:///var/lib/pando/repos/{repo}.db -> /var/lib/pando/repos
-            let fixed = &path[..path.find('{').unwrap_or(path.len())];
-            match fixed.strip_suffix('/') {
-                Some(dir) => Some(std::path::PathBuf::from(dir)),
-                None => std::path::Path::new(fixed).parent().map(|p| p.to_path_buf()),
-            }
-        } else {
-            url::Url::parse(url).ok().filter(|u| u.scheme() == "file").and_then(|u| u.to_file_path().ok())
-        };
-        if let Some(d) = dir.map(|d| if d.as_os_str().is_empty() { ".".into() } else { d })
+        if let Some(d) = data_dir(url)
             && !ready_dirs.contains(&d)
         {
             ready_dirs.push(d);
@@ -594,6 +585,9 @@ async fn main() -> anyhow::Result<()> {
             console = console_dir;
             // Checked (and logged) on every server; only platform servers report it over RPC.
             let license = license.as_deref().map(pando_server::license::load);
+            let metadata = metadata.unwrap_or_else(|| {
+                if platform.is_some() { "memory" } else { "sqlite://./pando-data/meta.db" }.to_owned()
+            });
             let repo = config::open_repo(&metadata, &objects).await?;
             dir_of(&metadata);
             dir_of(&objects);
@@ -802,4 +796,41 @@ async fn main() -> anyhow::Result<()> {
         console,
     };
     serve(listener, routes, auth, options, shutdown_signal()).await
+}
+
+/// The local directory behind a storage URL, if any: a SQLite database's directory, a
+/// `file://` store itself, or a template's fixed part
+/// (`file:///var/lib/pando/objects/{repo_id}` -> `/var/lib/pando/objects`).
+fn data_dir(url: &str) -> Option<std::path::PathBuf> {
+    let (path, is_dir) = match url.strip_prefix("sqlite://") {
+        Some(path) => (path.to_owned(), false),
+        None => {
+            let u = url::Url::parse(url).ok().filter(|u| u.scheme() == "file")?;
+            (u.to_file_path().ok()?.to_string_lossy().into_owned(), true)
+        }
+    };
+    let template = path.find('{');
+    let fixed = &path[..template.unwrap_or(path.len())];
+    let dir = match fixed.strip_suffix('/') {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None if is_dir && template.is_none() => std::path::PathBuf::from(fixed),
+        None => std::path::Path::new(fixed).parent()?.to_path_buf(),
+    };
+    Some(if dir.as_os_str().is_empty() { ".".into() } else { dir })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::data_dir;
+
+    #[test]
+    fn readiness_checks_a_template_s_fixed_directory() {
+        let dir = |u| data_dir(u).map(|d| d.to_string_lossy().into_owned());
+        assert_eq!(dir("file:///var/lib/pando/objects/{repo_id}").as_deref(), Some("/var/lib/pando/objects"));
+        assert_eq!(dir("sqlite:///var/lib/pando/repos/{repo}.db").as_deref(), Some("/var/lib/pando/repos"));
+        assert_eq!(dir("file:///srv/objects").as_deref(), Some("/srv/objects"));
+        assert_eq!(dir("sqlite://./pando-data/meta.db").as_deref(), Some("./pando-data"));
+        assert_eq!(dir("sqlite://meta.db").as_deref(), Some("."));
+        assert_eq!(dir("s3://bucket/{repo_id}"), None);
+    }
 }

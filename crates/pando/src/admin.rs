@@ -106,7 +106,7 @@ pub enum WebhookCmd {
     Add {
         repo: String,
         url: String,
-        /// Only these events (repeatable): push, change_request, review, comment, check.
+        /// Only these events (repeatable): push, change_request, review, comment, check, issue.
         #[arg(long = "event")]
         events: Vec<String>,
     },
@@ -280,7 +280,7 @@ fn print_usage(u: &pando_proto::Usage) {
     );
     println!("  private repositories: {} of {}", u.private_repos, show_limit(l.private_repos, false));
     for a in &u.active_agents {
-        println!("  {}\tfirst landed {}", a.login, a.first_at_ms);
+        println!("  {}\tfirst landed {}", a.login, crate::fmt_time(a.first_at_ms));
     }
 }
 
@@ -371,7 +371,13 @@ async fn limits(mut p: PlatformClient<Ch>, cmd: LimitsCmd) -> Result<()> {
         }
         LimitsCmd::Suspend { org } => {
             p.set_suspended(SetSuspendedRequest { org: org.clone(), suspended: true }).await.map_err(explain)?;
-            println!("{org} is suspended: it can read but not write");
+            if p.get_usage(usage(&org)).await.map_err(explain)?.into_inner().enforced {
+                println!("{org} is suspended: it can read but not write");
+            } else {
+                println!(
+                    "{org} is marked suspended, but this server doesn't enforce limits (--multi-tenant): it can still write"
+                );
+            }
         }
         LimitsCmd::Restore { org } => {
             p.set_suspended(SetSuspendedRequest { org: org.clone(), suspended: false }).await.map_err(explain)?;

@@ -176,3 +176,23 @@ async fn migrates_history_pull_requests_and_issues() {
     let closed = all.iter().find(|i| i.title == "Old idea").unwrap();
     assert_eq!(closed.state, IssueState::NotPlanned as i32);
 }
+
+/// From any git host, not just GitHub, the move ends with how to keep the source current.
+#[tokio::test(flavor = "multi_thread")]
+async fn any_git_source_gets_the_mirror_command() {
+    let src = tempfile::tempdir().unwrap();
+    let s = src.path();
+    git(s, &["init", "-q", "-b", "main"]);
+    write(s, "README.md", "Fleet\n");
+    git(s, &["add", "."]);
+    git(s, &["commit", "-qm", "README"]);
+    let server = common::start().await;
+    let out = Command::new(env!("CARGO_BIN_EXE_pando"))
+        .args(["migrate", s.to_str().unwrap(), "--to", &format!("{}/acme/plain", server.url)])
+        .env("PANDO_TOKEN", "admin-token")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
+    assert!(stdout.contains(&format!("pando mirror --to {}", s.display())), "{stdout}");
+}

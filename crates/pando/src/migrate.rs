@@ -200,8 +200,14 @@ pub async fn run(m: Migration, token: Option<&str>, flags: &dyn FeatureFlags) ->
         println!("  {b}: {} commits ({} files uploaded)", out.commits, out.uploaded);
     }
 
-    let Some(gh) = gh else {
+    let done = || {
         println!("done. Clone it: pando clone {base}/{owner}/{name}");
+        println!(
+            "to keep {shown} current while you move over: pando mirror --to {shown} --server {base}/{owner}/{name} --every 10"
+        );
+    };
+    let Some(gh) = gh else {
+        done();
         return Ok(());
     };
     let dest = || Some(RepositoryRef { owner: owner.into(), name: name.into() });
@@ -291,11 +297,7 @@ pub async fn run(m: Migration, token: Option<&str>, flags: &dyn FeatureFlags) ->
         }
     }
 
-    println!("done. Clone it: pando clone {base}/{owner}/{name}");
-    println!(
-        "to keep {} current while you move over: pando mirror --to {} --server {base}/{owner}/{name} --every 10",
-        gh.repo, shown
-    );
+    done();
     Ok(())
 }
 

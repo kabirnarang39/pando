@@ -63,6 +63,9 @@ pando land
 moves `main` to include it. If someone landed first and your change touches different
 files, the server rebases it for you; there is nothing to pull and retry.
 
+Files matched by `.gitignore` or `.pandoignore` (same syntax) are left out. `.sapignore`, the
+old name, still works but is deprecated.
+
 To check out part of a large repository, add `--path`:
 
 ```sh
@@ -79,7 +82,8 @@ pando ls main services
 ```
 
 Inside a workspace these commands use the workspace's server when `PANDO_SERVER` is unset, so
-it is only needed elsewhere.
+it is only needed elsewhere. `--server` always wins; a `PANDO_SERVER` that names the workspace's
+own server without a repository keeps the workspace's repository.
 
 ## Sign in to a shared server
 

@@ -12,4 +12,5 @@ VOLUME /data
 # 7420 server, 7421 regional cache, 7422 node daemon, 9420 Prometheus metrics
 EXPOSE 7420 7421 7422 9420
 ENTRYPOINT ["/usr/local/bin/pandod"]
+# Listens on the network, so it needs a token: `docker run -e PANDO_TOKENS="me:$(openssl rand -hex 24)" ...`
 CMD ["server", "--listen", "0.0.0.0:7420", "--metadata", "sqlite:///data/meta.db", "--metrics", "0.0.0.0:9420"]

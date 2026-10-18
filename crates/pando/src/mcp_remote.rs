@@ -5,7 +5,8 @@
 //! It is a stateless gateway. Each request's `Authorization: Bearer` token is passed through to
 //! the server, so the agent can do exactly what the token allows: every permission check,
 //! token limit and audit record of the server applies, and the gateway holds no credentials.
-//! MCP 2026-07-28 is stateless too, so any number of gateways can run behind a load balancer.
+//! MCP 2026-07-28 is stateless too (an older client's `initialize` is answered without a
+//! session), so any number of gateways can run behind a load balancer.
 
 use std::sync::Arc;
 
@@ -372,6 +373,9 @@ impl RemoteMcp {
         use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
         let mut config = StreamableHttpServerConfig::default();
         config.json_response = true;
+        // Older clients (before 2026-07-28) start with `initialize`; answer it statelessly too
+        // instead of trying to open a session, which this gateway never keeps.
+        config.legacy_session_mode = false;
         if !allowed_hosts.is_empty() {
             config.allowed_hosts = allowed_hosts;
         }

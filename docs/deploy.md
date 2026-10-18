@@ -7,10 +7,14 @@ regional cache and a node daemon between CI machines and the servers.
 ## The whole topology with Docker Compose
 
 The repository's [`docker-compose.yml`](https://github.com/kabirnarang39/pando/blob/main/docker-compose.yml)
-starts Postgres, an S3-compatible store, a server, a regional cache and a node daemon:
+starts Postgres, an S3-compatible store, a server, a regional cache and a node daemon. They
+listen on the network, so they need a token: put one in `.env` next to the compose file first
+(`docker compose` refuses to start without it):
 
 ```sh
+echo "PANDO_TOKEN=$(openssl rand -hex 24)" > .env
 docker compose up -d
+export $(cat .env)
 pando clone http://localhost:7420 work --objects http://localhost:7422
 ```
 

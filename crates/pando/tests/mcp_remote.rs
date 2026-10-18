@@ -174,3 +174,39 @@ async fn agents_work_through_mcp_without_a_checkout() {
     c.read_to_string(&mut out).await.unwrap();
     assert!(out.starts_with("HTTP/1.1 403"), "{out}");
 }
+
+/// Clients on the protocol before 2026-07-28 start with `initialize`; the stateless gateway
+/// answers it (and their later calls) without a session.
+#[tokio::test(flavor = "multi_thread")]
+async fn older_mcp_clients_can_initialize() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    tokio::spawn(pando::mcp_remote::RemoteMcp::new("http://127.0.0.1:1").serve_http(addr, vec![], vec![]));
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let post = |body: Value, version: Option<&'static str>| async move {
+        let body = body.to_string();
+        let header = version.map(|v| format!("mcp-protocol-version: {v}\r\n")).unwrap_or_default();
+        let req = format!(
+            "POST /mcp HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-type: application/json\r\naccept: application/json, text/event-stream\r\n\
+             {header}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).await.unwrap();
+        let body = out.split("\r\n\r\n").nth(1).unwrap().to_owned();
+        let json = body.lines().find_map(|l| l.strip_prefix("data:")).unwrap_or(&body).trim().to_owned();
+        serde_json::from_str::<Value>(&json).unwrap_or_else(|_| panic!("{out}"))
+    };
+    for version in ["2025-06-18", "2025-11-25"] {
+        let init = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": version, "capabilities": {}, "clientInfo": {"name": "old", "version": "1"}}});
+        let r = post(init, None).await;
+        assert_eq!(r["result"]["protocolVersion"], version, "{r}");
+        let r = post(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}), Some(version)).await;
+        let tools = r["result"]["tools"].as_array().unwrap_or_else(|| panic!("{r}"));
+        assert!(tools.iter().any(|t| t["name"] == "pando_read_file"), "{r}");
+    }
+}

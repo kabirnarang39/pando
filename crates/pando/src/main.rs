@@ -401,12 +401,25 @@ fn review_target(server: Option<String>, token: Option<&str>) -> Result<cr::Targ
     })
 }
 
-/// Server for workspace-free commands: $PANDO_SERVER, or the current workspace.
+/// Server for workspace-free commands: `--server`, else $PANDO_SERVER, else the current workspace.
 fn server_for(explicit: Option<String>) -> Result<String> {
-    explicit
-        .or_else(|| std::env::var("PANDO_SERVER").ok())
-        .or_else(|| workspace().ok().map(|w| w.config.server))
+    let ws = || workspace().ok().map(|w| w.config.server);
+    pick_server(explicit, std::env::var("PANDO_SERVER").ok(), ws)
         .context("no server: set PANDO_SERVER=URL or run inside a workspace")
+}
+
+/// A bare $PANDO_SERVER naming the workspace's own server keeps the workspace's repository
+/// (`SERVER/OWNER/NAME`), so `pando protect` or `pando cr` in a clone need no `--server`.
+fn pick_server(explicit: Option<String>, env: Option<String>, ws: impl FnOnce() -> Option<String>) -> Option<String> {
+    use pando_proto::split_repo_url;
+    if explicit.is_some() {
+        return explicit;
+    }
+    let Some(env) = env else { return ws() };
+    match (split_repo_url(&env), ws()) {
+        ((base, None), Some(ws)) if split_repo_url(&ws).0 == base => Some(ws),
+        _ => Some(env),
+    }
 }
 
 fn short_message(m: &str) -> &str {
@@ -885,4 +898,22 @@ async fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_server;
+
+    #[test]
+    fn a_bare_pando_server_keeps_the_workspace_repository() {
+        let ws = || Some("https://p.example.com/lumen/fleet".to_owned());
+        let pick = |explicit: Option<&str>, env: Option<&str>| {
+            pick_server(explicit.map(Into::into), env.map(Into::into), ws).unwrap()
+        };
+        assert_eq!(pick(None, Some("https://p.example.com/")), "https://p.example.com/lumen/fleet");
+        assert_eq!(pick(None, None), "https://p.example.com/lumen/fleet");
+        assert_eq!(pick(None, Some("https://p.example.com/acme/web")), "https://p.example.com/acme/web");
+        assert_eq!(pick(None, Some("https://other.example.com")), "https://other.example.com");
+        assert_eq!(pick(Some("https://p.example.com"), Some("https://x")), "https://p.example.com");
+    }
 }

@@ -16,7 +16,7 @@ Commands:
   license  Support licences: `pandod license verify FILE`
   repo     Operator actions on one hosted repository, straight on the registry (site administration; works while the server runs, which notices within seconds)
   token    Create an access token directly in a platform registry, without a running server: how the first administrator gets in. Prints the token once
-  backup   Back up a platform server while it runs: a consistent snapshot of the registry and of every hosted repository's metadata database, with a manifest of where each belongs and where objects live. Restore by copying back while stopped (docs/deploy.md)
+  backup   Back up a platform server while it runs: a consistent snapshot of the registry and of every hosted repository's metadata database, with a manifest of where each belongs and where objects live. Restore by copying back while stopped (docs/backup.md)
   compact  Delta-compress stored blob versions (single writer; safe to run while serving)
   copy     Copy a repository to another store: a backup, a restore, or a move to another backend (e.g. SQLite to Postgres). Safe while the source serves; repeat it to copy only what is new
   cache    Regional cache: stateless, memory-bounded, read-through to an upstream tier
@@ -82,10 +82,9 @@ Options:
           [default: 127.0.0.1:7420]
 
       --metadata <METADATA>
-          memory | sqlite://PATH | postgres://...
+          memory | sqlite://PATH | postgres://... Default: sqlite://./pando-data/meta.db, or memory with --platform (whose clients can't reach this repository)
 
           [env: PANDO_METADATA]
-          [default: sqlite://./pando-data/meta.db]
 
       --objects <OBJECTS>
           metadata | file:///PATH | s3://BUCKET/PREFIX | gs://BUCKET | az://CONTAINER | memory:///
@@ -337,6 +336,11 @@ Options:
 
       --tls-key <TLS_KEY>
           [env: PANDO_TLS_KEY=]
+
+      --console-dir <CONSOLE_DIR>
+          Serve the web console from this directory (the release's `pando-console-VERSION` archive, unpacked) at `/` on the server's own address. Needs the `web` flag
+
+          [env: PANDO_CONSOLE_DIR=]
 
   -h, --help
           Print help (see a summary with '-h')
@@ -749,7 +753,7 @@ Options:
 ## `pandod backup`
 
 ```text
-Back up a platform server while it runs: a consistent snapshot of the registry and of every hosted repository's metadata database, with a manifest of where each belongs and where objects live. Restore by copying back while stopped (docs/deploy.md)
+Back up a platform server while it runs: a consistent snapshot of the registry and of every hosted repository's metadata database, with a manifest of where each belongs and where objects live. Restore by copying back while stopped (docs/backup.md)
 
 Usage: pandod backup [OPTIONS] --platform <PLATFORM> --repos-metadata <REPOS_METADATA> --to <TO>
 
