@@ -8,9 +8,11 @@ pub mod directory;
 pub mod features;
 pub mod hosting;
 pub mod land_hook;
+pub mod license;
 pub mod login;
 pub mod oidc;
 pub mod permissions;
+pub mod plans;
 mod status;
 pub mod telemetry;
 pub mod webhooks;
@@ -305,6 +307,9 @@ pub async fn serve(
     let mut worker = None;
     if let Some(h) = &hosting {
         worker = Some(tokio::spawn(webhooks::run(h.registry.clone(), h.access.webhook_allow_private, stop_rx)));
+        if h.access.multi_tenant {
+            tokio::spawn(plans::run(h.clone()));
+        }
         routes = routes
             .add_service(features::platform::service(features::platform::Platform::new(h.clone())))
             .add_service(features::reviews::service(features::reviews::Reviews::new(h.clone())))

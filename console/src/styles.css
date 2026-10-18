@@ -3192,3 +3192,92 @@ fieldset.events legend {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---- plans: a suspended organisation, and Usage & plan (ADR-035) ---- */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+  border-radius: var(--r-sm, 8px);
+  background: var(--bad-wash);
+  color: var(--bad);
+}
+.banner p {
+  margin: 0;
+  flex: 1 1 280px;
+}
+.usage {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+.usage h2,
+.usage h3,
+.usage p {
+  margin: 0;
+}
+.usage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.usage-head h2 {
+  font-size: var(--t-md);
+}
+.usage-note {
+  font-size: var(--t-sm);
+}
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+.usage-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 8px);
+}
+.usage-card h3,
+.usage-sub {
+  font-size: var(--t-sm);
+}
+/* Bars in the primary blue, warning colour from 80 %; never gold (gold means landed). */
+.usage-card meter {
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--sunken);
+}
+.usage-card meter::-webkit-meter-bar {
+  border: 0;
+  border-radius: 4px;
+  background: var(--sunken);
+}
+.usage-card meter::-webkit-meter-optimum-value {
+  border-radius: 4px;
+  background: var(--link);
+}
+.usage-card meter::-webkit-meter-suboptimum-value,
+.usage-card meter::-webkit-meter-even-less-good-value {
+  border-radius: 4px;
+  background: var(--warn);
+}
+.usage-card meter::-moz-meter-bar {
+  border-radius: 4px;
+  background: var(--link);
+}
+.usage-card meter:-moz-meter-sub-optimum::-moz-meter-bar,
+.usage-card meter:-moz-meter-sub-sub-optimum::-moz-meter-bar {
+  background: var(--warn);
+}

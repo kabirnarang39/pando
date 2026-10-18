@@ -6,8 +6,9 @@ use clap::{Subcommand, ValueEnum};
 use pando::remote::Ch;
 use pando_proto::platform_client::PlatformClient;
 use pando_proto::{
-    CreateOrganizationRequest, CreateTokenRequest, Empty, LinkIdentityRequest, OrgName, RepositoryRef,
-    RevokeTokenRequest, Role, SetGrantRequest, SetMemberRequest, SetSignupAllowRequest, Team, TeamRef,
+    CreateOrganizationRequest, CreateTokenRequest, Empty, GetUsageRequest, LinkIdentityRequest, OrgName, RepositoryRef,
+    RevokeTokenRequest, Role, SetGrantRequest, SetLimitsRequest, SetMemberRequest, SetSignupAllowRequest,
+    SetSuspendedRequest, Team, TeamRef,
 };
 
 fn now_ms() -> i64 {
@@ -64,6 +65,14 @@ pub enum OrgCmd {
     Members { org: String },
     /// Add a member, change their role, or remove them with `none`.
     Member { org: String, login: String, role: RoleArg },
+    /// The organisation's plan, limits and use: active agents this month, people, storage.
+    /// Organisation administrators.
+    Usage {
+        org: String,
+        /// A past month, YYYY-MM (default: this month, UTC).
+        #[arg(long, default_value = "")]
+        month: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -150,6 +159,38 @@ pub enum AdminCmd {
         #[command(subcommand)]
         action: IdentityCmd,
     },
+    /// Organisations' plans and limits (enforced with `pandod server --multi-tenant`).
+    Limits {
+        #[command(subcommand)]
+        action: LimitsCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LimitsCmd {
+    /// The limits that apply to an organisation and what it uses.
+    Show { org: String },
+    /// Change some limits; the others stay. A number, or `unlimited`.
+    Set {
+        org: String,
+        #[arg(long)]
+        seats: Option<String>,
+        /// Agents that land a change in a calendar month.
+        #[arg(long)]
+        agents: Option<String>,
+        /// e.g. 10GiB.
+        #[arg(long)]
+        storage: Option<String>,
+        #[arg(long)]
+        private_repos: Option<String>,
+        /// The plan's name as people see it.
+        #[arg(long)]
+        plan: Option<String>,
+    },
+    /// Stop an organisation writing (it can still read).
+    Suspend { org: String },
+    /// Let a suspended organisation write again.
+    Restore { org: String },
 }
 
 #[derive(Subcommand)]
@@ -178,6 +219,69 @@ pub enum SignupCmd {
         entry: String,
     },
     List,
+}
+
+/// `unlimited`, a number, or (for storage) a size such as `10GiB`.
+fn limit_arg(v: &str, size: bool) -> Result<Option<u64>> {
+    if v == "unlimited" {
+        return Ok(None);
+    }
+    let split = v.find(|c: char| !c.is_ascii_digit()).unwrap_or(v.len());
+    let (n, unit) = v.split_at(split);
+    let n: u64 = n.parse().with_context(|| format!("`{v}` is not a number or `unlimited`"))?;
+    let mul: u64 = match (unit, size) {
+        ("", _) | ("B", true) => 1,
+        ("KiB", true) => 1 << 10,
+        ("MiB", true) => 1 << 20,
+        ("GiB", true) => 1 << 30,
+        ("TiB", true) => 1 << 40,
+        ("KB", true) => 1_000,
+        ("MB", true) => 1_000_000,
+        ("GB", true) => 1_000_000_000,
+        ("TB", true) => 1_000_000_000_000,
+        _ => return Err(anyhow!("`{v}` is not a number{}", if size { " or size such as 10GiB" } else { "" })),
+    };
+    Ok(Some(n.checked_mul(mul).with_context(|| format!("`{v}` is too large"))?))
+}
+
+fn show_limit(v: Option<u64>, size: bool) -> String {
+    match v {
+        None => "unlimited".into(),
+        Some(n) if size => bytes(n),
+        Some(n) => n.to_string(),
+    }
+}
+
+fn bytes(n: u64) -> String {
+    match n {
+        n if n >= 1 << 30 => format!("{:.1} GiB", n as f64 / (1u64 << 30) as f64),
+        n if n >= 1 << 20 => format!("{:.1} MiB", n as f64 / (1u64 << 20) as f64),
+        n => format!("{n} B"),
+    }
+}
+
+/// `pando org usage` and `pando admin limits show`.
+fn print_usage(u: &pando_proto::Usage) {
+    let l = u.limits.clone().unwrap_or_default();
+    let plan = if l.plan_label.is_empty() { "no plan".to_owned() } else { l.plan_label.clone() };
+    println!(
+        "{}: {plan}{}{}",
+        u.org,
+        if l.suspended { ", suspended" } else { "" },
+        if u.enforced { "" } else { " (limits not enforced on this server)" }
+    );
+    println!("  active agents in {}: {} of {}", u.month, u.active_agents.len(), show_limit(l.active_agents, false));
+    println!("  people: {} of {}", u.seats, show_limit(l.seats, false));
+    println!(
+        "  storage: {} of {} (peak this month {})",
+        bytes(u.storage_bytes),
+        show_limit(l.storage_bytes, true),
+        bytes(u.peak_storage_bytes)
+    );
+    println!("  private repositories: {} of {}", u.private_repos, show_limit(l.private_repos, false));
+    for a in &u.active_agents {
+        println!("  {}\tfirst landed {}", a.login, a.first_at_ms);
+    }
 }
 
 fn explain(s: tonic::Status) -> anyhow::Error {
@@ -233,6 +337,45 @@ pub async fn org(mut p: PlatformClient<Ch>, cmd: OrgCmd) -> Result<()> {
                 RoleArg::None => println!("removed {login} from {org}"),
                 r => println!("{login} is now {} in {org}", role_name(Role::from(r) as i32)),
             }
+        }
+        OrgCmd::Usage { org, month } => {
+            print_usage(&p.get_usage(GetUsageRequest { org, month }).await.map_err(explain)?.into_inner());
+        }
+    }
+    Ok(())
+}
+
+async fn limits(mut p: PlatformClient<Ch>, cmd: LimitsCmd) -> Result<()> {
+    let usage = |org: &str| GetUsageRequest { org: org.to_owned(), month: String::new() };
+    match cmd {
+        LimitsCmd::Show { org } => print_usage(&p.get_usage(usage(&org)).await.map_err(explain)?.into_inner()),
+        LimitsCmd::Set { org, seats, agents, storage, private_repos, plan } => {
+            let mut l = p.get_usage(usage(&org)).await.map_err(explain)?.into_inner().limits.unwrap_or_default();
+            if let Some(v) = seats {
+                l.seats = limit_arg(&v, false)?;
+            }
+            if let Some(v) = agents {
+                l.active_agents = limit_arg(&v, false)?;
+            }
+            if let Some(v) = storage {
+                l.storage_bytes = limit_arg(&v, true)?;
+            }
+            if let Some(v) = private_repos {
+                l.private_repos = limit_arg(&v, false)?;
+            }
+            if let Some(v) = plan {
+                l.plan_label = v;
+            }
+            p.set_limits(SetLimitsRequest { org: org.clone(), limits: Some(l) }).await.map_err(explain)?;
+            print_usage(&p.get_usage(usage(&org)).await.map_err(explain)?.into_inner());
+        }
+        LimitsCmd::Suspend { org } => {
+            p.set_suspended(SetSuspendedRequest { org: org.clone(), suspended: true }).await.map_err(explain)?;
+            println!("{org} is suspended: it can read but not write");
+        }
+        LimitsCmd::Restore { org } => {
+            p.set_suspended(SetSuspendedRequest { org: org.clone(), suspended: false }).await.map_err(explain)?;
+            println!("{org} can write again");
         }
     }
     Ok(())
@@ -405,6 +548,7 @@ pub async fn webhook(mut p: PlatformClient<Ch>, cmd: WebhookCmd) -> Result<()> {
 pub async fn admin(mut p: PlatformClient<Ch>, cmd: AdminCmd) -> Result<()> {
     let action = match cmd {
         AdminCmd::Signup { action } => action,
+        AdminCmd::Limits { action } => return limits(p, action).await,
         AdminCmd::Identity { action: IdentityCmd::Link { login, provider, subject } } => {
             p.link_identity(LinkIdentityRequest {
                 login: login.clone(),
@@ -435,4 +579,16 @@ pub async fn admin(mut p: PlatformClient<Ch>, cmd: AdminCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn limits_are_numbers_sizes_or_unlimited() {
+        assert_eq!(super::limit_arg("12", false).unwrap(), Some(12));
+        assert_eq!(super::limit_arg("unlimited", false).unwrap(), None);
+        assert_eq!(super::limit_arg("10GiB", true).unwrap(), Some(10 << 30));
+        assert!(super::limit_arg("10GiB", false).is_err(), "a size is not a count");
+        assert!(super::limit_arg("lots", false).is_err());
+    }
 }

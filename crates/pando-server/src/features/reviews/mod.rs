@@ -659,6 +659,9 @@ impl reviews_server::Reviews for Reviews {
             )));
         }
         let land = ctx.land.as_ref().ok_or_else(|| Status::unimplemented("this server can't land change requests"))?;
+        // Plans (ADR-035): landing makes the lander and the author active, if they are agents.
+        let landers = [who.0.as_str(), cr.author.as_str()];
+        crate::plans::check_landing(&self.hosting, &key, &landers)?;
         // One changeset with everything the branch changed since its base, landed like any
         // other: the server rebases it onto the target's tip, file by file.
         let base = id_from(&cr.base)?;
@@ -681,6 +684,9 @@ impl reviews_server::Reviews for Reviews {
         };
         let id = ctx.repo.create_changeset(cs).await.map_err(to_status)?;
         let landed = land.land(&who, &cr.target, id).await.map_err(to_status)?;
+        for l in landers.iter().collect::<BTreeSet<_>>() {
+            crate::plans::record_landed(&self.hosting, &key.owner, l);
+        }
         cr.state = ChangeRequestState::Landed;
         cr.landed_as = landed.id.0.to_vec();
         cr.updated_at_ms = now_ms();

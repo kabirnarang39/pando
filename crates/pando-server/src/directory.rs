@@ -519,6 +519,7 @@ pub fn require_members(reg: &Registry, org: &str, logins: &[String]) -> Result<(
 /// comes through here (SetMember, accepting an invitation), so checks on joining, such as a
 /// seat limit, belong here.
 pub fn add_member(reg: &Registry, org: &str, login: &str, role: Role) -> Result<(), Status> {
+    crate::plans::check_seat(reg, org, login)?;
     reg.set_member(org, login, role).map_err(internal)
 }
 

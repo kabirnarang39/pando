@@ -27,14 +27,16 @@ futures.workspace = true
 blake3.workspace = true
 getrandom.workspace = true
 hex.workspace = true
-hmac.workspace = true
+http-body = "1"
 http-body-util = "0.1"
+hmac.workspace = true
 prost.workspace = true
 prost-types = "0.14"
 rusqlite.workspace = true
 metrics.workspace = true
 jsonwebtoken.workspace = true
 reqwest = { workspace = true, features = ["form"] }
+ring = "0.17"
 lettre.workspace = true
 rustls.workspace = true
 serde.workspace = true

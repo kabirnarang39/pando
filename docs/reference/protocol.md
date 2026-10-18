@@ -125,6 +125,11 @@ API-first file access: CI and tools read source without any checkout.
 | `CreateInvitation` | `CreateInvitationRequest` | `CreateInvitationResponse` | Invitations to an organisation: a single-use link, valid 7 days, emailed when the server sends mail. Whoever opens it and signs in joins with the role. Organisation administrators. |
 | `ListInvitations` | `OrgName` | `ListInvitationsResponse` | Invitations not yet accepted, including expired ones. |
 | `RevokeInvitation` | `InvitationRef` | `Empty` |  |
+| `GetUsage` | `GetUsageRequest` | `Usage` | Plans and usage (ADR-035). An organisation's active agents, people, storage and limits: its administrators and site administrators. |
+| `SetLimits` | `SetLimitsRequest` | `OrgLimits` | Replaces an organisation's limits (not its suspension). Site administrators only. |
+| `SetSuspended` | `SetSuspendedRequest` | `OrgLimits` | A suspended organisation can read but not write. Site administrators only. |
+| `GetCapabilities` | `Empty` | `Capabilities` | What this server offers: anyone may ask. |
+| `GetLicense` | `Empty` | `License` | The support licence this server was started with. Site administrators only. |
 
 ### Issues
 

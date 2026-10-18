@@ -63,6 +63,18 @@ All notable changes to this project are documented here. The format follows
   `Locks/List` shows only paths the caller may read; the MCP gateway refuses browser origins unless allowed; the
   free-tier cloud-init no longer trusts a demo console origin; a stored object that fails its
   hash check is repaired by pushing it again.
+- Plans and limits (ADR-035): platform servers record each organisation's active agents (agents
+  that landed a change in the calendar month), people, storage (measured hourly, with the month's
+  peak) and private repositories. With `--multi-tenant`, organisations' limits are enforced:
+  suspended organisations and those over storage can read but not write, new agents beyond the
+  active-agent limit can't land while active ones keep landing, and seats and private
+  repositories are checked when added. Defaults come from `--default-org-limits`. New RPCs
+  `GetUsage`, `SetLimits`, `SetSuspended`, `GetCapabilities` and `GetLicense`; commands
+  `pando org usage` and `pando admin limits show|set|suspend|restore`; a **Usage & plan** tab in
+  the console with a Change plan button linking to `--billing-url`, and a banner on every page of
+  a suspended organisation linking to `--support-url`.
+- Support licences: `pandod server --license FILE` and `pandod license verify FILE` check an
+  Ed25519-signed licence offline and report it; nothing is turned off without one.
 
 ### Changed
 - The sign-in pages (`/login/*`: sign in, check your email, create your account, CLI approval,

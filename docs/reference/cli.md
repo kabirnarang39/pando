@@ -518,6 +518,7 @@ Commands:
   create   Create an organisation; you become its administrator. Site administrators only
   members  List an organisation's members and their roles
   member   Add a member, change their role, or remove them with `none`
+  usage    The organisation's plan, limits and use: active agents this month, people, storage. Organisation administrators
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -613,6 +614,24 @@ Options:
 
   -V, --version
           Print version
+```
+
+### `pando org usage`
+
+```text
+The organisation's plan, limits and use: active agents this month, people, storage. Organisation administrators
+
+Usage: pando org usage [OPTIONS] <ORG>
+
+Arguments:
+  <ORG>
+
+Options:
+      --month <MONTH>    A past month, YYYY-MM (default: this month, UTC) [default: ""]
+      --server <SERVER>
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ## `pando team`
@@ -1358,6 +1377,7 @@ Usage: pando admin [OPTIONS] <COMMAND>
 Commands:
   signup    Who may create an account by signing in (`pandod server --signup waitlist`)
   identity  Ways people sign in from a browser
+  limits    Organisations' plans and limits (enforced with `pandod server --multi-tenant`)
   help      Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1468,6 +1488,100 @@ Options:
       --subject <SUBJECT>    The email address, or the provider's `sub` for the person
   -h, --help                 Print help
   -V, --version              Print version
+```
+
+### `pando admin limits`
+
+```text
+Organisations' plans and limits (enforced with `pandod server --multi-tenant`)
+
+Usage: pando admin limits [OPTIONS] <COMMAND>
+
+Commands:
+  show     The limits that apply to an organisation and what it uses
+  set      Change some limits; the others stay. A number, or `unlimited`
+  suspend  Stop an organisation writing (it can still read)
+  restore  Let a suspended organisation write again
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --server <SERVER>
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+#### `pando admin limits show`
+
+```text
+The limits that apply to an organisation and what it uses
+
+Usage: pando admin limits show [OPTIONS] <ORG>
+
+Arguments:
+  <ORG>
+
+Options:
+      --server <SERVER>
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+#### `pando admin limits set`
+
+```text
+Change some limits; the others stay. A number, or `unlimited`
+
+Usage: pando admin limits set [OPTIONS] <ORG>
+
+Arguments:
+  <ORG>
+
+Options:
+      --seats <SEATS>
+      --server <SERVER>
+      --token <TOKEN>                  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+      --agents <AGENTS>                Agents that land a change in a calendar month
+      --storage <STORAGE>              e.g. 10GiB
+      --private-repos <PRIVATE_REPOS>
+      --plan <PLAN>                    The plan's name as people see it
+  -h, --help                           Print help
+  -V, --version                        Print version
+```
+
+#### `pando admin limits suspend`
+
+```text
+Stop an organisation writing (it can still read)
+
+Usage: pando admin limits suspend [OPTIONS] <ORG>
+
+Arguments:
+  <ORG>
+
+Options:
+      --server <SERVER>
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+#### `pando admin limits restore`
+
+```text
+Let a suspended organisation write again
+
+Usage: pando admin limits restore [OPTIONS] <ORG>
+
+Arguments:
+  <ORG>
+
+Options:
+      --server <SERVER>
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ## `pando migrate`

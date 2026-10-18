@@ -15,6 +15,8 @@ use tokio::net::TcpListener;
 
 pub struct Server {
     pub url: String,
+    #[allow(dead_code)]
+    pub hosting: Arc<Hosting>,
     _dir: tempfile::TempDir,
     _stop: tokio::sync::oneshot::Sender<()>,
 }
@@ -51,7 +53,7 @@ pub async fn start_with(access: Access) -> Server {
         metadata: format!("sqlite://{}/repos/{{repo}}.db", dir.path().display()),
         objects: "metadata".into(),
     };
-    let hosting = Hosting::new(templates, registry, build, access).unwrap();
+    let hosting = Arc::new(Hosting::new(templates, registry, build, access).unwrap());
     let default = config::open_repo("memory", "metadata").await.unwrap();
     let routes = authority_routes(default, Arc::new(SpecFlags::all_on()), Arc::new(AllowAllPolicy), Arc::new(NoChecks));
     let tokens = ["admin", "dev", "mira", "eve", "agent/fix-01"].map(|w| format!("{w}:{}-token", w.replace('/', "-")));
@@ -64,10 +66,10 @@ pub async fn start_with(access: Access) -> Server {
         listener,
         routes,
         auth,
-        ServeOptions { web, hosting: Some(Arc::new(hosting)), ..Default::default() },
+        ServeOptions { web, hosting: Some(hosting.clone()), ..Default::default() },
         async {
             let _ = rx.await;
         },
     ));
-    Server { url, _dir: dir, _stop: tx }
+    Server { url, hosting, _dir: dir, _stop: tx }
 }

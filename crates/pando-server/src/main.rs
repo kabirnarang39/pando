@@ -200,6 +200,27 @@ enum Role {
         /// Minutes an unused hosted repository stays open.
         #[arg(long, env = "PANDO_REPO_IDLE_MINUTES", default_value_t = 10)]
         repo_idle_minutes: u64,
+        /// With --multi-tenant: limits of organisations that have none of their own, e.g.
+        /// `seats=5,agents=20,storage=1GiB,private_repos=unlimited,plan=Free` (ADR-035).
+        /// Without it, organisations are unlimited until given limits (`pando admin limits set`).
+        #[arg(long, env = "PANDO_DEFAULT_ORG_LIMITS", requires = "multi_tenant")]
+        default_org_limits: Option<String>,
+        /// Where organisation administrators change their plan; the console's Upgrade button
+        /// and limit messages link here.
+        #[arg(long, env = "PANDO_BILLING_URL", default_value = "")]
+        billing_url: String,
+        /// Where people reach support, e.g. a suspended organisation (mailto: or https:); the
+        /// console links to it.
+        #[arg(long, env = "PANDO_SUPPORT_URL", default_value = "")]
+        support_url: String,
+        /// A support licence file to check at startup. Nothing is turned off without one.
+        #[arg(long, env = "PANDO_LICENSE")]
+        license: Option<std::path::PathBuf>,
+    },
+    /// Support licences: `pandod license verify FILE`.
+    License {
+        #[command(subcommand)]
+        action: LicenseCmd,
     },
     /// Operator actions on one hosted repository, straight on the registry (site
     /// administration; works while the server runs, which notices within seconds).
@@ -378,6 +399,12 @@ fn repo_action(platform: &str, action: &RepoAction) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Subcommand)]
+enum LicenseCmd {
+    /// Check a licence file's signature and dates.
+    Verify { file: std::path::PathBuf },
+}
+
 fn create_token(platform: &str, account: &str, name: &str, days: i64) -> anyhow::Result<()> {
     use pando_server::directory::{TokenRec, valid_login};
     use pando_server::hosting::{Registry, now_ms};
@@ -430,6 +457,15 @@ async fn main() -> anyhow::Result<()> {
     }
     if let Role::Token { platform, account, name, expires_days } = &cli.role {
         return create_token(platform, account, name, *expires_days);
+    }
+    if let Role::License { action: LicenseCmd::Verify { file } } = &cli.role {
+        let lic = pando_server::license::load(file).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let status = pando_server::license::status(&lic, pando_server::license::now_s());
+        println!(
+            "{status}: {} for {}, {} seats, {} agents, expires at {} (Unix seconds), {} days' grace",
+            lic.product, lic.licensee, lic.seats, lic.agents, lic.expires_at, lic.grace_days
+        );
+        return Ok(());
     }
     if let Role::Backup { platform, repos_metadata, repos_objects, metadata, to } = &cli.role {
         let templates =
@@ -539,7 +575,13 @@ async fn main() -> anyhow::Result<()> {
             privacy_url,
             max_open_repos,
             repo_idle_minutes,
+            default_org_limits,
+            billing_url,
+            support_url,
+            license,
         } => {
+            // Checked (and logged) on every server; only platform servers report it over RPC.
+            let license = license.as_deref().map(pando_server::license::load);
             let repo = config::open_repo(&metadata, &objects).await?;
             dir_of(&metadata);
             dir_of(&objects);
@@ -575,12 +617,18 @@ async fn main() -> anyhow::Result<()> {
                 if anonymous && !open {
                     auth = Arc::new(NoOtherAuth);
                 }
+                let default_org_limits =
+                    default_org_limits.as_deref().map(pando_server::plans::Limits::parse).transpose()?;
                 let access = Arc::new(Access {
                     open,
                     admins: platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect(),
                     multi_tenant,
                     max_orgs_per_account,
                     webhook_allow_private,
+                    default_org_limits,
+                    billing_url: billing_url.trim().to_owned(),
+                    support_url: support_url.trim().to_owned(),
+                    license,
                 });
                 if open {
                     tracing::warn!(
@@ -651,7 +699,7 @@ async fn main() -> anyhow::Result<()> {
             }
             (listen, authority_routes(repo, flags, policy, checks))
         }
-        Role::Token { .. } | Role::Backup { .. } | Role::Repo { .. } => {
+        Role::Token { .. } | Role::Backup { .. } | Role::Repo { .. } | Role::License { .. } => {
             unreachable!("handled before authentication is set up")
         }
         Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {

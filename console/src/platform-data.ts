@@ -74,7 +74,9 @@ export function useCapabilities() {
         if (isUnimplemented(e)) reviews = false;
         else throw e;
       }
-      return { reviews };
+      // Plans (ADR-035): where to upgrade, and whether organisations have limits.
+      const plans = await or(api.platform.getCapabilities({}), { billingUrl: "", limits: false, supportUrl: "" });
+      return { reviews, billingUrl: plans.billingUrl, limits: plans.limits, supportUrl: plans.supportUrl };
     },
     staleTime: 5 * 60_000,
   });
@@ -120,6 +122,12 @@ export function useMembers(org: string) {
 export function useTeams(org: string) {
   const api = usePlatformApi();
   return useQuery({ queryKey: ["teams", org], queryFn: async () => (await or(api.platform.listTeams({ login: org }), { teams: [] })).teams, staleTime: 60_000 });
+}
+
+/** An organisation's plan, limits and use this month: for its administrators. */
+export function useUsage(org: string, enabled: boolean) {
+  const api = usePlatformApi();
+  return useQuery({ queryKey: ["usage", org], enabled, queryFn: () => api.platform.getUsage({ org, month: "" }), retry: false });
 }
 
 export function useTokens() {

@@ -114,6 +114,8 @@ message Organization {
   uint32 repositories = 6;
   uint32 members = 7;
   uint32 agents = 8;
+  // Can read but not write (ADR-035); every page of the organisation says so.
+  bool suspended = 9;
 }
 
 message Member {
@@ -305,6 +307,17 @@ service Platform {
   // Invitations not yet accepted, including expired ones.
   rpc ListInvitations(OrgName) returns (ListInvitationsResponse);
   rpc RevokeInvitation(InvitationRef) returns (Empty);
+  // Plans and usage (ADR-035). An organisation's active agents, people, storage and limits:
+  // its administrators and site administrators.
+  rpc GetUsage(GetUsageRequest) returns (Usage);
+  // Replaces an organisation's limits (not its suspension). Site administrators only.
+  rpc SetLimits(SetLimitsRequest) returns (OrgLimits);
+  // A suspended organisation can read but not write. Site administrators only.
+  rpc SetSuspended(SetSuspendedRequest) returns (OrgLimits);
+  // What this server offers: anyone may ask.
+  rpc GetCapabilities(Empty) returns (Capabilities);
+  // The support licence this server was started with. Site administrators only.
+  rpc GetLicense(Empty) returns (License);
 }
 
 // ---- review ----
@@ -671,4 +684,82 @@ message ListInvitationsResponse { repeated Invitation invitations = 1; }
 message InvitationRef {
   string org = 1;
   string id = 2;
+}
+
+// ---- plans, usage and licences (ADR-035) ----
+
+// What an organisation may use. An unset limit is unlimited.
+message OrgLimits {
+  optional uint64 seats = 1;
+  // Agents that land at least one change in a calendar month (UTC).
+  optional uint64 active_agents = 2;
+  optional uint64 storage_bytes = 3;
+  optional uint64 private_repos = 4;
+  // Set only by SetSuspended; SetLimits leaves it as it is.
+  bool suspended = 5;
+  string plan_label = 6;
+}
+
+message GetUsageRequest {
+  string org = 1;
+  // `YYYY-MM`; empty: this month (UTC).
+  string month = 2;
+}
+
+message ActiveAgent {
+  string login = 1;
+  // When it first landed a change in the month.
+  int64 first_at_ms = 2;
+}
+
+message Usage {
+  string org = 1;
+  string month = 2;
+  repeated ActiveAgent active_agents = 3;
+  // People (not agents) who are members.
+  uint32 seats = 4;
+  // At the last measurement (hourly), and the month's highest.
+  uint64 storage_bytes = 5;
+  uint64 peak_storage_bytes = 6;
+  int64 storage_measured_at_ms = 7;
+  uint32 private_repos = 8;
+  // The limits that apply now: the organisation's own, or the server's defaults.
+  OrgLimits limits = 9;
+  // Limits are enforced (`--multi-tenant`).
+  bool enforced = 10;
+}
+
+message SetLimitsRequest {
+  string org = 1;
+  OrgLimits limits = 2;
+}
+
+message SetSuspendedRequest {
+  string org = 1;
+  bool suspended = 2;
+}
+
+message Capabilities {
+  // Where organisation administrators change their plan; empty: nowhere.
+  string billing_url = 1;
+  // Organisations have limits (`--multi-tenant`).
+  bool limits = 2;
+  // Where people reach support (mailto: or https:); empty: not given.
+  string support_url = 3;
+}
+
+message License {
+  // A licence was given (`--license`).
+  bool present = 1;
+  // valid, grace, expired or invalid.
+  string status = 2;
+  // Why it is invalid.
+  string error = 3;
+  string licensee = 4;
+  string product = 5;
+  uint32 seats = 6;
+  uint32 agents = 7;
+  int64 issued_at = 8;
+  int64 expires_at = 9;
+  uint32 grace_days = 10;
 }
