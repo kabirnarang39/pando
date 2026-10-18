@@ -1,4 +1,4 @@
-# Getting started
+# Try it in 5 minutes
 
 This page takes you from nothing to a landed change in about five minutes.
 
@@ -33,8 +33,11 @@ pandod server --listen 127.0.0.1:7420
 ```
 
 With no options the server keeps everything in `./pando-data/` on SQLite and accepts
-requests without authentication. That is fine on a laptop; see
-[Deploying Pando](deploy.md) before you expose it.
+requests without authentication, so it listens only on 127.0.0.1.
+
+> [!NOTE]
+> That is fine on a laptop. Before anyone else connects, give it tokens or single sign-on: see
+> [Deploy](deploy.md) and [Security and audit](security.md).
 
 ## Import a git repository
 
@@ -78,6 +81,19 @@ pando ls main services
 Inside a workspace these commands use the workspace's server, so `PANDO_SERVER` is only
 needed elsewhere.
 
+## Sign in to a shared server
+
+A team server with browser sign-in gives the CLI a token without anyone handing one out:
+
+```sh
+pando login https://pando.example.com     # opens the browser; the token is saved for this server
+pando whoami
+pando logout                              # revokes it
+```
+
+Commands use `--token`, then `PANDO_TOKEN`, then the token `pando login` saved. How sign-in is
+set up on the server is in [Sign-in, organisations, invitations](platform.md#sign-in).
+
 ## Mount instead of checking out
 
 A mount shows a whole revision at once and downloads a file only when something reads it,
@@ -110,5 +126,7 @@ every lock and unlock is recorded in the audit log.
 
 ## Next
 
+- Point agents at it: [Agents and MCP](agents.md).
 - Keep using git against the same server: [Coming from git](git-users.md).
-- Run it for a team: [Deploying Pando](deploy.md).
+- Keep GitHub current while you try it: [Mirror to a git host](mirror.md).
+- Run it for a team: [Deploy](deploy.md).

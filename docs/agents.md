@@ -1,4 +1,4 @@
-# AI agents and SDKs
+# Agents and MCP
 
 ## Remote MCP: any agent, no checkout
 

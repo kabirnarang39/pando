@@ -50,7 +50,7 @@ cargo test --workspace
 Every new feature and every behaviour change lands with automated tests in the same pull
 request: unit tests next to the code, and an end-to-end test in `crates/*/tests/` for anything
 a user can run. A bug fix includes a test that fails without the fix. Changes are not merged
-without them. See [How Pando is tested](docs/testing.md).
+without them. See [How Pando is tested](https://kabirnarang39.github.io/pando/docs/testing.html).
 
 ## Questions and discussion
 
@@ -63,4 +63,4 @@ are in English.
 ## Reporting bugs
 
 Open an issue with the `pando --version` and `pandod --version` output, the command, what
-you expected and what happened. Security issues: see [SECURITY.md](SECURITY.md).
+you expected and what happened. Security issues: see [SECURITY.md](https://github.com/kabirnarang39/pando/blob/main/SECURITY.md).

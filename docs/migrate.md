@@ -1,9 +1,10 @@
-# Moving to Pando
+# Migrate from GitHub
 
 One command moves a repository from GitHub, GitLab, Bitbucket or any git host:
 
 ```sh
-pando migrate https://github.com/acme/fleet --to https://pando.example.com/acme/fleet --github-token $GITHUB_TOKEN
+export PANDO_GITHUB_TOKEN=$(gh auth token)   # private repositories, and GitHub's rate limit
+pando migrate https://github.com/acme/fleet --to https://pando.example.com/acme/fleet
 pando migrate git@gitlab.com:acme/fleet.git --to https://pando.example.com/acme/fleet
 pando migrate https://github.example.com/acme/fleet --to https://pando.example.com/acme/fleet \
   --github-api https://github.example.com/api/v3          # GitHub Enterprise Server
@@ -36,9 +37,12 @@ people and agents move to Pando at their own pace. Stopping the mirror is the wh
 
 ## Tokens
 
-- `--github-token` (or `GITHUB_TOKEN`) is needed for private repositories and to stay under
-  GitHub's rate limit (60 requests an hour without one). It is sent only to the repository's
-  own host and passed to git through its environment, never on a command line.
+- A GitHub token is needed for private repositories and to stay under GitHub's rate limit (60
+  requests an hour without one). Give it in `PANDO_GITHUB_TOKEN` (or `GITHUB_TOKEN`), or in a file
+  with `--github-token-file`. `--github-token` works but warns, since other users of the machine
+  can see command lines. The token is sent only to the repository's own host and passed to git
+  through its environment; source URLs are printed without credentials.
+- `--no-issues` and `--no-pull-requests` skip those.
 - The destination uses your Pando token (`PANDO_TOKEN`), which needs to be allowed to create
   repositories in the organisation (an organisation administrator, or a site administrator for a
   new organisation).
