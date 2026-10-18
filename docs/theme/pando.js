@@ -10,12 +10,12 @@
       }
     });
   }
-  // Code blocks that scroll sideways must be reachable from the keyboard.
-  document.querySelectorAll("pre > code").forEach(function (code) {
-    if (code.scrollWidth > code.clientWidth) {
-      code.setAttribute("tabindex", "0");
-      code.setAttribute("role", "region");
-      code.setAttribute("aria-label", "Code");
+  // Code blocks and tables that scroll sideways must be reachable from the keyboard.
+  document.querySelectorAll("pre > code, .table-wrapper").forEach(function (el) {
+    if (el.scrollWidth > el.clientWidth) {
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("role", "region");
+      el.setAttribute("aria-label", el.tagName === "CODE" ? "Code" : "Table");
     }
   });
 })();
