@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-18
+
 ### Added
 - `pando login [SERVER_URL]` signs the CLI in from the browser (OAuth device flow) and saves a
   90-day token in `~/.config/pando/credentials.json` (mode 0600), used when neither `--token` nor

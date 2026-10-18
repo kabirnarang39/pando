@@ -2079,7 +2079,7 @@ dependencies = [
 
 [[package]]
 name = "pando-adapters"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2102,7 +2102,7 @@ dependencies = [
 
 [[package]]
 name = "pando-core"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "pando-proto"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
  "pando-core",
  "prost",
@@ -2132,7 +2132,7 @@ dependencies = [
 
 [[package]]
 name = "pando-server"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2184,7 +2184,7 @@ dependencies = [
 
 [[package]]
 name = "pando-vcs"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
