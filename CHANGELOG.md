@@ -23,6 +23,9 @@ All notable changes to this project are documented here. The format follows
   and `pandod repo delete OWNER/NAME` removes it and its storage; documented with a secret purge
   procedure in docs/deploy.md.
 - `--trust-proxy`: audit-log client addresses from `X-Forwarded-For` sent by a local proxy.
+- Console: "New repository" on the organisation page; an empty repository shows how to clone it,
+  make the first change or bring in a git repository; a new token shows ready-to-copy CLI and MCP
+  setup.
 
 ### Changed
 - SQLite commits are synced to disk (`synchronous=FULL`) so an acknowledged land survives power
@@ -40,6 +43,17 @@ All notable changes to this project are documented here. The format follows
 - `--web-origins` is now `--cors-origin` (the old name still works); `pando mcp --http` takes
   `--allowed-origin` and stops on SIGTERM.
 - The registry records its schema version and applies ordered migrations.
+- Console UX pass: a first visit to a server with sign-in pages opens sign-in instead of the demo;
+  set-up asks for the organisation's name and derives its short name; the full repository header
+  shows on Overview only; gold marks landings only (dark-theme buttons, selection and unread marks
+  use Fishlake blue); form errors read as sentences.
+
+### Fixed
+- Console: the clone and mount commands name the repository (`SERVER/OWNER/NAME`) on servers that
+  host many; Home shows an error instead of loading forever when the server is unreachable or
+  refuses the token; Issues breadcrumbs; Escape closes the phone navigation drawer; wide tables no
+  longer widen the page on phones; imported git authors show their name without the email; the
+  Connect page's "remember" checkbox is visible.
 
 ### Security
 - Production hardening (ADR-034): metric labels only for methods the protocol defines (no
