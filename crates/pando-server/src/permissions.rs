@@ -58,14 +58,11 @@ pub struct Access {
     /// Webhooks may call loopback and private networks (`--webhook-allow-private`; never with
     /// `multi_tenant`).
     pub webhook_allow_private: bool,
-    /// Set once the first platform token exists on a server started `open`: it is no longer.
-    pub closed: std::sync::atomic::AtomicBool,
 }
 
 impl Access {
     pub fn is_admin(&self, who: &Principal) -> bool {
-        (self.open && !self.closed.load(std::sync::atomic::Ordering::Relaxed))
-            || self.admins.iter().any(|a| a == &who.0)
+        self.open || self.admins.iter().any(|a| a == &who.0)
     }
 
     /// `who`'s role on `repo`, before any token limit.
@@ -289,28 +286,6 @@ impl AccessPolicy for ProtectedRefs {
 /// Refuses every call: the inner authenticator of a server that accepts platform tokens only.
 pub struct NoOtherAuth;
 
-/// Authentication of a platform server started with no credentials of any kind (local
-/// development): everyone is let in until the first platform token is created, then only
-/// tokens are (L2). Platform tokens are checked before this.
-pub struct OpenUntilToken {
-    pub registry: Arc<Registry>,
-    pub access: Arc<Access>,
-}
-
-impl Authenticator for OpenUntilToken {
-    fn authenticate(&self, bearer: Option<&str>) -> Result<Principal, Status> {
-        use std::sync::atomic::Ordering::Relaxed;
-        if !self.access.closed.load(Relaxed) && self.registry.has_tokens().map_err(crate::status::internal)? {
-            self.access.closed.store(true, Relaxed);
-            tracing::warn!("a platform token exists: authentication is now required");
-        }
-        if self.access.closed.load(Relaxed) {
-            return NoOtherAuth.authenticate(bearer);
-        }
-        Ok(Principal::anonymous())
-    }
-}
-
 impl Authenticator for NoOtherAuth {
     fn authenticate(&self, bearer: Option<&str>) -> Result<Principal, Status> {
         Err(Status::unauthenticated(if bearer.is_some() { "invalid token" } else { "missing bearer token" }))
@@ -473,28 +448,5 @@ mod tests {
         assert_eq!(access.effective(&reg, &p("root"), None, &fleet).unwrap(), Role::Unspecified, "hidden in listings");
         assert!(reg.set_disabled(&fleet.key, None, "ops").unwrap());
         access.check(&reg, &p("kabir"), None, &fleet, Role::Write).unwrap();
-    }
-
-    #[test]
-    fn an_open_server_closes_when_the_first_token_is_created() {
-        let reg = Arc::new(Registry::open("memory").unwrap());
-        let access = Arc::new(Access { open: true, ..Default::default() });
-        let auth = OpenUntilToken { registry: reg.clone(), access: access.clone() };
-        assert_eq!(auth.authenticate(None).unwrap(), Principal::anonymous());
-        assert!(access.is_admin(&Principal::anonymous()));
-        reg.create_token(TokenRec {
-            id: String::new(),
-            account: "root".into(),
-            name: "bootstrap".into(),
-            acts_as: "root".into(),
-            repositories: vec![],
-            max_role: Role::Admin,
-            created_at_ms: now_ms(),
-            expires_at_ms: 0,
-            last_used_at_ms: 0,
-        })
-        .unwrap();
-        assert_eq!(auth.authenticate(None).unwrap_err().code(), tonic::Code::Unauthenticated);
-        assert!(!access.is_admin(&Principal::anonymous()), "no longer everyone's an administrator");
     }
 }

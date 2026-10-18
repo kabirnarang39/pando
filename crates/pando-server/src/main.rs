@@ -12,7 +12,7 @@ use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
 use pando_server::features::land::Land;
 use pando_server::land_hook::WebhookCheck;
 use pando_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
-use pando_server::permissions::{Access, NoOtherAuth, OpenUntilToken, ProtectedRefs};
+use pando_server::permissions::{Access, NoOtherAuth, ProtectedRefs};
 use pando_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
 
@@ -581,11 +581,12 @@ async fn main() -> anyhow::Result<()> {
                     multi_tenant,
                     max_orgs_per_account,
                     webhook_allow_private,
-                    ..Default::default()
                 });
-                // Open until the first platform token is created, then closed (L2).
                 if open {
-                    auth = Arc::new(OpenUntilToken { registry: registry_db.clone(), access: access.clone() });
+                    tracing::warn!(
+                        "no credentials configured: everyone on this machine is an administrator \
+                         until the server restarts after the first platform token is created"
+                    );
                 }
                 anonymous = open;
                 anyhow::ensure!(

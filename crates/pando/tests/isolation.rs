@@ -20,7 +20,6 @@ async fn multi_tenant() -> Server {
         multi_tenant: true,
         max_orgs_per_account: 3,
         webhook_allow_private: false,
-        ..Default::default()
     })
     .await
 }

@@ -46,8 +46,7 @@ All notable changes to this project are documented here. The format follows
   unbounded series from made-up paths); internal errors return an id, not SQL or paths; the
   registry survives a panic while locked; inbox, events, issue and repository listings scan a
   bounded number of rows and never open every repository; archived repositories refuse writes;
-  `Locks/List` shows only paths the caller may read; a server started open closes when its first
-  platform token is created; the MCP gateway refuses browser origins unless allowed; the
+  `Locks/List` shows only paths the caller may read; the MCP gateway refuses browser origins unless allowed; the
   free-tier cloud-init no longer trusts a demo console origin; a stored object that fails its
   hash check is repaired by pushing it again.
 
