@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use pando_core::acl::{AccessPolicy, Principal, require_write};
+use pando_core::acl::{AccessPolicy, Principal, effective_scope, require_write};
 use pando_core::flags::{FeatureFlags, Flag, require};
 use pando_core::object::{Kind, decode_object, encode_object};
 use pando_core::path::components;
@@ -186,8 +186,10 @@ impl locks_server::Locks for Locks {
     }
 
     async fn list(&self, req: Request<ListLocksRequest>) -> RpcResult<LockList> {
+        // A path-scoped reader sees only locks on paths they may read (L7).
+        let scope = effective_scope(self.flags.as_ref(), self.policy.as_ref(), &principal(&req));
         let locks = Locks::list(self, &req.into_inner().prefix).await.map_err(to_status)?;
-        Ok(Response::new(LockList { locks: locks.into_iter().map(info).collect() }))
+        Ok(Response::new(LockList { locks: locks.into_iter().filter(|l| scope.allows(&l.path)).map(info).collect() }))
     }
 }
 
@@ -255,5 +257,43 @@ mod tests {
             Arc::new(pando_core::acl::AllowAllPolicy),
         );
         assert!(matches!(l.lock(&Principal("a".into()), "x").await, Err(Error::Disabled(_))));
+    }
+
+    /// A reader limited to some paths doesn't learn the names of locked files elsewhere.
+    #[tokio::test]
+    async fn listing_shows_only_readable_paths() {
+        struct DocsOnly;
+        impl AccessPolicy for DocsOnly {
+            fn can_write(&self, _: &Principal, _: &str) -> bool {
+                true
+            }
+            fn can_update_ref(&self, _: &Principal, _: &str) -> bool {
+                true
+            }
+            fn read_scope(&self, who: &Principal) -> pando_core::acl::ReadScope {
+                if who.0 == "bob" {
+                    pando_core::acl::ReadScope::Prefixes(vec!["docs".into()])
+                } else {
+                    pando_core::acl::ReadScope::All
+                }
+            }
+        }
+        let s = Arc::new(MemoryStore::new());
+        let l = Locks::new(
+            Repo { objects: s.clone(), log: s.clone(), refs: s.clone(), derived: s },
+            Arc::new(pando_adapters::flags::SpecFlags::all_on()),
+            Arc::new(DocsOnly),
+        );
+        let alice = Principal("alice".into());
+        l.lock(&alice, "secret/plan.psd").await.unwrap();
+        l.lock(&alice, "docs/guide.md").await.unwrap();
+        let list = async |who: &str| {
+            let mut req = Request::new(ListLocksRequest { prefix: String::new() });
+            req.extensions_mut().insert(Principal(who.into()));
+            let r = locks_server::Locks::list(&l, req).await.unwrap().into_inner();
+            r.locks.into_iter().map(|x| x.path).collect::<Vec<_>>()
+        };
+        assert_eq!(list("bob").await, vec!["docs/guide.md"]);
+        assert_eq!(list("alice").await.len(), 2);
     }
 }

@@ -151,7 +151,12 @@ server changes them.
 | Object store | `--objects` / `PANDO_OBJECTS` | `metadata` (in the metadata store); also `file:///…`, `s3://…`, `gs://…`, `az://…` |
 | Bearer tokens | `--tokens` / `PANDO_TOKENS` | none; e.g. `alice:$(openssl rand -hex 24)`. Tokens shorter than 16 characters or left as a placeholder (`CHANGE-ME`) are refused at startup. Without tokens or OIDC, pandod listens only on a loopback address unless `--allow-anonymous` / `PANDO_ALLOW_ANONYMOUS=1` says otherwise |
 | Request limits | `--request-timeout` / `PANDO_REQUEST_TIMEOUT`, `--max-in-flight` / `PANDO_MAX_IN_FLIGHT` | 600 s per call; 4,096 calls in progress, beyond which calls are refused with Unavailable so clients back off; 256 per connection |
-| Browser access | `--web-origins` / `PANDO_WEB_ORIGINS` | same-origin only; list the sites that host the web console |
+| Per-account limits | `--max-calls-per-principal` / `PANDO_MAX_CALLS_PER_PRINCIPAL`, `--max-request-mb` / `PANDO_MAX_REQUEST_MB` | with `--platform`: 128 calls in progress per account (more are refused with ResourceExhausted) and 64 MiB per request message; otherwise no per-account limit and 260 MiB. Files of 8 MiB and more are uploaded in chunks, so 64 MiB never limits file size |
+| Browser access | `--cors-origin` / `PANDO_WEB_ORIGINS` (repeatable or comma-separated; `--web-origins` still works) | none: same-origin only. List only origins you control, such as your own copy of the web console |
+| Client addresses | `--trust-proxy` / `PANDO_TRUST_PROXY` | off; on, a connection from loopback (a reverse proxy on the same host) gives the client address in `X-Forwarded-For`, used in the audit log |
+| Durability | `--sqlite-synchronous` / `PANDO_SQLITE_SYNCHRONOUS` | `full`: every SQLite commit is on disk before it is acknowledged, so a land survives power loss. `normal` survives process crashes only. `file://` object stores always sync each object and its directory |
+| Open repositories (platform) | `--max-open-repos` / `PANDO_MAX_OPEN_REPOS`, `--repo-idle-minutes` / `PANDO_REPO_IDLE_MINUTES` | 256 open at once; one unused for 10 minutes closes. A repository in use is never closed |
+| Audit retention | `--audit-retention-days` / `PANDO_AUDIT_RETENTION_DAYS` | 365 days of daily files; 0 keeps all |
 | Single sign-on | `--oidc-issuer`, `--oidc-audience`, `--oidc-claim`, `--oidc-require CLAIM=VALUE`, `--oidc-admin LOGIN` | off; works with Okta, Entra ID, Google, Auth0, Keycloak, GitHub Actions |
 | Browser sign-in (platform) | `--login-listen`, `--public-url`, `--oidc ID=ISSUER`, `--smtp-url`, `--mail-from`, `--turnstile-site-key`, `--signup` | off; see [Signing in from a browser](#signing-in-from-a-browser) |
 | Access rules | `--acl` / `PANDO_ACL` | allow everything |
@@ -297,7 +302,20 @@ configured.
 
 `--audit-log FILE` (or `PANDO_AUDIT_LOG`) appends one JSON line per event: who read or
 changed what, from which address, with what result. It is off by default because it grows
-with every request; rotate it like any log file.
+with every request. Events go to one file per UTC day, `FILE.YYYY-MM-DD`; files older than
+`--audit-retention-days` (default 365) are deleted. Behind a reverse proxy on the same host,
+add `--trust-proxy` so the address recorded is the client's, not the proxy's.
+
+**Retention for hosted services.** Keep at least 365 days. In India, CERT-In's 2022
+directions require 180 days of logs kept within India, and the DPDP Rules require one year from
+May 2027; other jurisdictions have their own rules, so check yours. Copy the daily files to
+durable storage in the required region (the same backup job as the databases works) rather than
+relying on one disk.
+
+**Clocks.** Timestamps are UTC (RFC 3339) from the host clock, so keep it synchronised: run
+`systemd-timesyncd` or `chrony` against reliable servers. CERT-In asks Indian service providers
+to synchronise with the NIC (`samay1.nic.in`, `samay2.nic.in`) or NPL (`time.nplindia.org`)
+NTP servers; elsewhere use your cloud's time service or `pool.ntp.org`.
 
 ```json
 {"timestamp":"2026-10-16T09:06:02.695Z","kind":"land","principal":"alice","ref":"main","changeset":"0844d2dc…","landed":"0844d2dc…","rebased":false}
@@ -320,7 +338,63 @@ audit file.
 
 ## Monitoring
 
-`--metrics` exposes Prometheus metrics: request counts and latencies per RPC
-(`pando_rpc_total`, `pando_rpc_seconds`), lands, refused lands, attempts and batch sizes
-(`pando_land_*`), and objects warmed by node daemons (`pando_prefetch_objects_total`). `--log-json` writes structured logs. The server
-implements the standard gRPC health check.
+`--metrics ADDR` serves three endpoints on its own port, without authentication (keep the port
+private to your network and monitoring):
+
+| Path | Answer |
+|---|---|
+| `/metrics` | Prometheus metrics: request counts and latencies per RPC (`pando_rpc_total`, `pando_rpc_seconds`; methods the protocol does not define are labelled `unknown`), lands, refused lands, attempts and batch sizes (`pando_land_*`), and objects warmed by node daemons (`pando_prefetch_objects_total`) |
+| `/healthz` | liveness: `200 ok` while the process answers |
+| `/readyz` | readiness: `200 ready`, or `503 not ready` when the registry can't be used or a local data directory (the metadata, objects and registry directories) can't take a synced write, and from the moment shutdown starts. Checked every 5 seconds; the reason goes to the log |
+
+The standard gRPC health check (`grpc.health.v1.Health`) needs no token either and reports
+`NOT_SERVING` whenever `/readyz` would answer 503, for load balancers that speak gRPC.
+`--log-json` writes structured logs.
+
+On SIGTERM or Ctrl-C the server stops being ready, finishes the calls in progress (lands
+included), stops the webhook worker (deliveries in flight finish or are retried after a
+restart) and exits. Give it the longest call you allow (`--request-timeout`) before a hard kill.
+
+## Running a hosted service
+
+### Taking a repository down
+
+```sh
+pandod repo --platform sqlite:///var/lib/pando/platform.db disable acme/leaky --reason "takedown request 2026-118"
+pandod repo --platform sqlite:///var/lib/pando/platform.db enable acme/leaky
+```
+
+`disable` refuses every read and write of the repository, for everyone including
+administrators, with "disabled by the operator: REASON", and hides it from listings. Nothing is
+deleted. It works while the server runs, which notices within 5 seconds. Both are recorded in
+the audit log (`disable_repository`, `enable_repository`) when `--audit-log` is set.
+
+### Deleting a repository
+
+```sh
+pandod repo --platform sqlite:///var/lib/pando/platform.db delete acme/old \
+  --repos-metadata 'sqlite:///var/lib/pando/repos/{repo}.db' \
+  --repos-objects 'file:///var/lib/pando/objects/{repo_id}' --confirm acme/old
+```
+
+This deletes the registry rows (change requests, reviews, issues, webhooks and their
+deliveries, grants, protections) and the repository's SQLite database and `file://` object
+directory. Objects in a cloud bucket and Postgres metadata are named in the output for you to
+remove. It cannot be undone: take a `pandod backup` first. Platform tokens limited to the
+repository keep its name in their list; revoke them if the name will be reused.
+
+### Purging a leaked secret
+
+History is content-addressed, so a committed secret can't be edited out in place. Rotate the
+secret first (that is what actually protects you), then:
+
+1. Disable the repository (`pandod repo disable`) so nobody fetches it meanwhile.
+2. Rewrite the history without the secret: `pando export-git` to a git repository, remove the
+   file or string with `git filter-repo`, and `pando import-git` into a new repository.
+3. Delete the old repository (`pandod repo delete`; on Windows, stop the server first, because Windows won't delete files a running server holds open); recreate it under the same name if you
+   want to, and import the rewritten history there.
+4. Ask everyone with a checkout to clone again; old checkouts still hold the secret.
+
+Deleting an object while other changesets still reference it is not supported: there is no
+object garbage collection yet, so objects a deleted branch alone referenced stay in storage
+until the repository is deleted. Plan capacity accordingly.

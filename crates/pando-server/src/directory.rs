@@ -97,9 +97,7 @@ pub fn kind_of(login: &str) -> AccountKind {
     if login.starts_with("agent/") || login.starts_with("bot/") { AccountKind::Agent } else { AccountKind::Person }
 }
 
-fn internal(e: impl std::fmt::Display) -> Status {
-    Status::internal(e.to_string())
-}
+use crate::status::internal;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountRec {

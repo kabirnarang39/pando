@@ -183,6 +183,10 @@ enum Cmd {
         /// only, against DNS rebinding.
         #[arg(long = "allowed-host")]
         allowed_hosts: Vec<String>,
+        /// Browser origins allowed to call the HTTP endpoint (repeatable), e.g.
+        /// https://app.example.com:443; default: none (requests with an Origin are refused).
+        #[arg(long = "allowed-origin")]
+        allowed_origins: Vec<String>,
     },
     /// Sign in to a server from the browser; the token is saved in ~/.config/pando/credentials.json.
     Login {
@@ -756,9 +760,9 @@ async fn run() -> Result<()> {
                 );
             }
         }
-        Cmd::Mcp { server, http: Some(listen), allowed_hosts } => {
+        Cmd::Mcp { server, http: Some(listen), allowed_hosts, allowed_origins } => {
             let base = pando_proto::split_repo_url(&server_for(server)?).0;
-            pando::mcp_remote::RemoteMcp::new(base).serve_http(listen, allowed_hosts).await?;
+            pando::mcp_remote::RemoteMcp::new(base).serve_http(listen, allowed_hosts, allowed_origins).await?;
         }
         Cmd::Mcp { server, .. } => {
             let ws = workspace().ok();

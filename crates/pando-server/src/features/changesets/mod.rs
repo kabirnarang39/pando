@@ -43,7 +43,7 @@ impl Changesets {
 }
 
 pub fn service(s: Changesets) -> ChangesetsServer<Changesets> {
-    ChangesetsServer::new(s).max_decoding_message_size(pando_proto::MAX_MESSAGE_BYTES)
+    ChangesetsServer::new(s).max_decoding_message_size(crate::max_request_bytes())
 }
 
 #[tonic::async_trait]

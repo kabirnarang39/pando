@@ -41,9 +41,10 @@ pub fn service(s: Reviews) -> ReviewsServer<Reviews> {
     ReviewsServer::new(s)
 }
 
-fn internal(e: impl std::fmt::Display) -> Status {
-    Status::internal(e.to_string())
-}
+use crate::status::internal;
+
+/// Most rows one listing call reads from the registry (M6).
+const MAX_SCAN: usize = 2000;
 
 fn caller<T>(req: &Request<T>) -> (Principal, Option<TokenScope>) {
     (principal(req), req.extensions().get::<TokenScope>().cloned())
@@ -837,8 +838,14 @@ impl reviews_server::Reviews for Reviews {
         let (who, scope) = caller(&req);
         let limit = if req.get_ref().limit == 0 { 50 } else { req.get_ref().limit.min(200) } as usize;
         let mut items = Vec::new();
-        let open = self.reg().change_requests(None, &[ChangeRequestState::Open], usize::MAX).map_err(internal)?;
+        // Bounded work per call (M6): the most recently active open change requests, and at most
+        // a few full views (each walks trees) per item asked for.
+        let open = self.reg().change_requests(None, &[ChangeRequestState::Open], MAX_SCAN).map_err(internal)?;
+        let mut views = 0;
         for cr in open {
+            if views == 4 * limit {
+                break;
+            }
             let mine = cr.author == who.0 || self.answers_for(&who, &cr.author);
             let asked = cr.reviewers.contains(&who.0);
             // Nobody asked: anyone who may approve it sees it.
@@ -850,6 +857,7 @@ impl reviews_server::Reviews for Reviews {
             if unassigned && ctx.role < Role::Write {
                 continue;
             }
+            views += 1;
             let cr = self.refresh(&ctx.repo, cr).await?;
             let view = self.view(&ctx.repo, cr.clone()).await?;
             let reviewed = view.reviews.iter().any(|r| r.reviewer == who.0 && r.reviewed_tip == view.source_tip);
@@ -871,7 +879,7 @@ impl reviews_server::Reviews for Reviews {
             }
         }
         // Issues assigned to you, in repositories you can still read.
-        let assigned = self.reg().issues(None, &[pando_proto::IssueState::Open as i32]).map_err(internal)?;
+        let assigned = self.reg().issues(None, &[pando_proto::IssueState::Open as i32], MAX_SCAN).map_err(internal)?;
         for i in assigned.into_iter().filter(|i| i.assignees.contains(&who.0)) {
             let Some(key) = i.repository.as_ref().and_then(|r| RepoKey::new(&r.owner, &r.name).ok()) else { continue };
             if items.len() < limit && self.hosting.authorize(&key, &who, scope.as_ref(), Role::Read).is_ok() {
@@ -896,11 +904,18 @@ impl reviews_server::Reviews for Reviews {
         };
         let mut events: Vec<Event> = Vec::new();
         let mut cursor = before;
-        // Across repositories, keep only what the caller may read.
-        while events.len() < limit {
+        let mut scanned = 0;
+        let mut exhausted = false;
+        // Across repositories, keep only what the caller may read; scan a bounded number of
+        // events per call and let the caller page on from where the scan stopped.
+        while events.len() < limit && scanned < MAX_SCAN {
             let page = self.reg().events(key.as_ref(), &r.actor, cursor, limit * 2).map_err(internal)?;
-            let Some((last, _)) = page.last() else { break };
+            let Some((last, _)) = page.last() else {
+                exhausted = true;
+                break;
+            };
             cursor = *last;
+            scanned += page.len();
             for (_, e) in page {
                 let k = e.repository.as_ref().and_then(|x| RepoKey::new(&x.owner, &x.name).ok());
                 if key.is_some()
@@ -911,8 +926,13 @@ impl reviews_server::Reviews for Reviews {
             }
         }
         events.truncate(limit);
-        let next =
-            if events.len() == limit { events.last().map(|e| e.id.clone()).unwrap_or_default() } else { String::new() };
+        let next = if events.len() == limit {
+            events.last().map(|e| e.id.clone()).unwrap_or_default()
+        } else if !exhausted && scanned >= MAX_SCAN {
+            cursor.to_string()
+        } else {
+            String::new()
+        };
         Ok(Response::new(ListEventsResponse { events, next_page_token: next }))
     }
 }

@@ -12,6 +12,20 @@ pub mod workspace;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Resolves on Ctrl-C or SIGTERM (how containers and service managers stop a process).
+pub async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let Ok(mut term) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) else {
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        };
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = term.recv() => {} }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }

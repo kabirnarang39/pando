@@ -61,7 +61,7 @@ async fn agents_work_through_mcp_without_a_checkout() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);
-    tokio::spawn(pando::mcp_remote::RemoteMcp::new(s.url.clone()).serve_http(addr, vec![]));
+    tokio::spawn(pando::mcp_remote::RemoteMcp::new(s.url.clone()).serve_http(addr, vec![], vec![]));
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     let addr = addr.to_string();
     let agent = "agent-fix-01-token";
@@ -164,4 +164,13 @@ async fn agents_work_through_mcp_without_a_checkout() {
     let (e, t) =
         call(&addr, "eve-token", "pando_read_file", json!({"repo": "lumen/fleet", "path": "billing/tax.rs"})).await;
     assert!(e && t.contains("no repository `lumen/fleet`"), "{t}");
+
+    // A web page can't call the gateway: requests with a browser Origin are refused.
+    let req = "POST /mcp HTTP/1.1\r\nhost: 127.0.0.1\r\norigin: https://evil.example\r\ncontent-type: application/json\r\n\
+               content-length: 2\r\nconnection: close\r\n\r\n{}";
+    let mut c = tokio::net::TcpStream::connect(&addr).await.unwrap();
+    c.write_all(req.as_bytes()).await.unwrap();
+    let mut out = String::new();
+    c.read_to_string(&mut out).await.unwrap();
+    assert!(out.starts_with("HTTP/1.1 403"), "{out}");
 }

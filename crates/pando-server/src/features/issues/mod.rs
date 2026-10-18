@@ -140,14 +140,15 @@ impl Registry {
         Ok(rows.next().transpose()?)
     }
 
-    /// Issues of one repository, or of every repository, newest activity first.
-    pub fn issues(&self, key: Option<&RepoKey>, states: &[i32]) -> anyhow::Result<Vec<Issue>> {
+    /// Issues of one repository, or of every repository, newest activity first; at most `scan`
+    /// rows are read (M6).
+    pub fn issues(&self, key: Option<&RepoKey>, states: &[i32], scan: usize) -> anyhow::Result<Vec<Issue>> {
         let db = self.db.lock().unwrap();
         let mut st = db.prepare_cached(&format!(
-            "{} WHERE (?1 IS NULL OR (i.owner = ?1 AND i.name = ?2)) ORDER BY i.updated_at_ms DESC",
+            "{} WHERE (?1 IS NULL OR (i.owner = ?1 AND i.name = ?2)) ORDER BY i.updated_at_ms DESC LIMIT ?3",
             Self::ISSUE_SELECT
         ))?;
-        let rows = st.query_map((key.map(|k| &k.owner), key.map(|k| &k.name)), Self::issue_row)?;
+        let rows = st.query_map((key.map(|k| &k.owner), key.map(|k| &k.name), scan as i64), Self::issue_row)?;
         let mut out = Vec::new();
         for r in rows {
             let r = r?;
@@ -196,9 +197,7 @@ pub fn service(s: Issues) -> IssuesServer<Issues> {
     IssuesServer::new(s)
 }
 
-fn internal(e: impl std::fmt::Display) -> Status {
-    Status::internal(e.to_string())
-}
+use crate::status::internal;
 
 fn caller<T>(req: &Request<T>) -> (Principal, Option<TokenScope>) {
     (principal(req), req.extensions().get::<TokenScope>().cloned())
@@ -301,7 +300,7 @@ impl issues_server::Issues for Issues {
         let limit = if r.limit == 0 { 100 } else { r.limit.min(500) } as usize;
         let issues = self
             .reg()
-            .issues(Some(&key), &states)
+            .issues(Some(&key), &states, 5000)
             .map_err(internal)?
             .into_iter()
             .filter(|i| r.assignee.is_empty() || i.assignees.contains(&r.assignee))

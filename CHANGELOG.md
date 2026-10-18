@@ -19,6 +19,36 @@ All notable changes to this project are documented here. The format follows
 - Console: "Sign in with …" buttons and an email form when the server has sign-in pages, sign out,
   a guided set-up for a new organisation (name it, invite teammates, connect an agent), and
   invitations on the organisation's People tab.
+- `pandod repo disable|enable OWNER/NAME` takes a repository down at once without deleting it,
+  and `pandod repo delete OWNER/NAME` removes it and its storage; documented with a secret purge
+  procedure in docs/deploy.md.
+- `--trust-proxy`: audit-log client addresses from `X-Forwarded-For` sent by a local proxy.
+
+### Changed
+- SQLite commits are synced to disk (`synchronous=FULL`) so an acknowledged land survives power
+  loss; `--sqlite-synchronous normal` restores the previous behaviour. `file://` object stores
+  fsync every object and its directory (ADR-034).
+- `--metrics` also serves `/healthz` and `/readyz`; gRPC health checks need no token and report
+  NOT_SERVING when the registry or a data directory fails, and from the start of shutdown.
+- SIGTERM drains calls in progress and stops the webhook worker before exiting.
+- Platform servers limit each account to 128 calls in progress (`--max-calls-per-principal`)
+  and request messages to 64 MiB (`--max-request-mb`), keep at most 256 repositories open
+  (`--max-open-repos`, `--repo-idle-minutes`), and page repository listings.
+- Webhooks: deliveries run concurrently, two at a time per webhook, 30 s each; delivery is at
+  least once (dedupe by `X-Pando-Delivery`); finished deliveries are deleted after 30 days.
+- The audit log is written to one file per UTC day and kept `--audit-retention-days` (365).
+- `--web-origins` is now `--cors-origin` (the old name still works); `pando mcp --http` takes
+  `--allowed-origin` and stops on SIGTERM.
+- The registry records its schema version and applies ordered migrations.
+
+### Security
+- Production hardening (ADR-034): metric labels only for methods the protocol defines (no
+  unbounded series from made-up paths); internal errors return an id, not SQL or paths; the
+  registry survives a panic while locked; inbox, events, issue and repository listings scan a
+  bounded number of rows and never open every repository; archived repositories refuse writes;
+  `Locks/List` shows only paths the caller may read; the MCP gateway refuses browser origins unless allowed; the
+  free-tier cloud-init no longer trusts a demo console origin; a stored object that fails its
+  hash check is repaired by pushing it again.
 
 ## [3.4.0] - 2026-10-18
 

@@ -91,10 +91,21 @@ pub struct AuthInterceptor(pub Arc<dyn Authenticator>);
 
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
+        // Health checks need no credentials (load balancers and probes send none); they reveal
+        // only whether the server is ready.
+        if req.extensions().get::<crate::telemetry::HealthCheck>().is_some() {
+            return Ok(req);
+        }
         let bearer =
             req.metadata().get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
         let (who, scope) = self.0.identify(bearer).inspect_err(|e| {
-            let peer = req.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+            let peer = req
+                .extensions()
+                .get::<crate::telemetry::ClientAddr>()
+                .map(|a| a.0)
+                .or_else(|| req.remote_addr().map(|a| a.ip()))
+                .map(|a| a.to_string())
+                .unwrap_or_default();
             let presented = bearer.is_some();
             tracing::info!(target: crate::telemetry::AUDIT, kind = "auth_failed", peer, presented, reason = e.message());
         })?;

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { HOSTING } from "./setup";
+import { TOKENS } from "./setup";
 
 // Who may use what: tokens, organisation members and repository access.
 
@@ -41,9 +41,10 @@ test("demo: add a member and give a team access to a repository", async ({ page 
 });
 
 test("server: a token issued in the console is a real platform token", async ({ page }) => {
-  await page.goto(`/?server=${encodeURIComponent(HOSTING)}#/`);
+  // Its own server: once a token exists, an open server requires one for every call.
+  await page.goto(`/?server=${encodeURIComponent(TOKENS)}#/`);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByRole("link", { name: "lumen/fleet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect", exact: true })).toHaveCount(0);
   await page.goto("/#/settings/tokens");
   await page.getByRole("button", { name: "New token" }).click();
   await page.getByLabel("Name").fill("e2e");

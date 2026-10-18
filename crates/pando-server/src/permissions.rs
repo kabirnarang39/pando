@@ -70,7 +70,7 @@ impl Access {
         if self.is_admin(who) {
             return Ok(Role::Admin);
         }
-        let internal = |e: anyhow::Error| Status::internal(e.to_string());
+        let internal = |e: anyhow::Error| crate::status::internal(e);
         let mut role = reg.held_role(&who.0, &repo.key).map_err(internal)?;
         // Internal and public repositories are readable by everyone with an account here; on a
         // multi-tenant server, internal ones only by members of the owning organisation.
@@ -106,6 +106,10 @@ impl Access {
         scope: Option<&TokenScope>,
         repo: &RepoRecord,
     ) -> Result<Role, Status> {
+        // A repository the operator disabled is out of everyone's reach, listings included.
+        if reg.disabled(&repo.key).map_err(crate::status::internal)?.is_some() {
+            return Ok(Role::Unspecified);
+        }
         let role = self.role(reg, who, repo)?;
         Ok(match scope {
             Some(s) if !s.repositories.is_empty() && !s.repositories.contains(&repo.key.to_string()) => {
@@ -126,9 +130,16 @@ impl Access {
         repo: &RepoRecord,
         need: Role,
     ) -> Result<(), Status> {
+        if let Some(reason) = reg.disabled(&repo.key).map_err(crate::status::internal)? {
+            return Err(Status::permission_denied(format!("`{}` is disabled by the operator: {reason}", repo.key)));
+        }
         let role = self.effective(reg, who, scope, repo)?;
         if role < Role::Read {
             return Err(Status::not_found(format!("no repository `{}` on this server", repo.key)));
+        }
+        // Archived: read-only for everyone; administrators keep their settings (to unarchive).
+        if repo.archived && need >= Role::Triage && need < Role::Admin {
+            return Err(Status::failed_precondition(format!("`{}` is archived: it is read-only", repo.key)));
         }
         if role < need {
             return Err(Status::permission_denied(format!(
@@ -194,7 +205,7 @@ impl Authenticator for PlatformAuth {
 
     fn identify(&self, bearer: Option<&str>) -> Result<(Principal, Option<TokenScope>), Status> {
         if let Some(secret) = bearer.filter(|b| b.starts_with(TOKEN_PREFIX)) {
-            let token = self.registry.use_token(secret).map_err(|e| Status::internal(e.to_string()))?;
+            let token = self.registry.use_token(secret).map_err(crate::status::internal)?;
             if let Some(t) = token {
                 let who = Principal(if t.acts_as.is_empty() { t.account } else { t.acts_as });
                 return Ok((who, Some(TokenScope { id: t.id, repositories: t.repositories, max_role: t.max_role })));
@@ -409,5 +420,33 @@ mod tests {
         assert_eq!(scope.unwrap().max_role, Role::Write);
         assert!(auth.identify(Some("pando_not-a-token")).is_err());
         assert!(PlatformAuth::new(reg, Arc::new(NoOtherAuth)).identify(None).is_err());
+    }
+
+    #[test]
+    fn disabled_repositories_are_out_of_reach_and_archived_ones_read_only() {
+        let reg = Registry::open("memory").unwrap();
+        let access = Access { admins: vec!["root".into()], ..Default::default() };
+        let mut fleet = repo("lumen/fleet", Visibility::Internal);
+        reg.create(&fleet).unwrap();
+        reg.set_member("lumen", "kabir", Role::Admin).unwrap();
+
+        // Archived: reads yes, writes no, administration (to unarchive) yes.
+        fleet.archived = true;
+        access.check(&reg, &p("kabir"), None, &fleet, Role::Read).unwrap();
+        let e = access.check(&reg, &p("kabir"), None, &fleet, Role::Write).unwrap_err();
+        assert!(e.message().contains("archived"), "{e:?}");
+        access.check(&reg, &p("kabir"), None, &fleet, Role::Admin).unwrap();
+        fleet.archived = false;
+
+        // Disabled by the operator: nothing at all, for anyone, until enabled again.
+        assert!(reg.set_disabled(&fleet.key, Some("legal takedown 42"), "ops").unwrap());
+        for who in ["kabir", "root", "eve"] {
+            let e = access.check(&reg, &p(who), None, &fleet, Role::Read).unwrap_err();
+            assert_eq!(e.code(), tonic::Code::PermissionDenied);
+            assert!(e.message().contains("disabled by the operator: legal takedown 42"), "{e:?}");
+        }
+        assert_eq!(access.effective(&reg, &p("root"), None, &fleet).unwrap(), Role::Unspecified, "hidden in listings");
+        assert!(reg.set_disabled(&fleet.key, None, "ops").unwrap());
+        access.check(&reg, &p("kabir"), None, &fleet, Role::Write).unwrap();
     }
 }

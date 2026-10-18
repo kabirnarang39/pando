@@ -13,11 +13,18 @@ pub fn to_status(e: Error) -> Status {
         Error::PermissionDenied(m) => Status::permission_denied(m),
         Error::Rejected(m) => Status::failed_precondition(m),
         Error::Disabled(f) => Status::unimplemented(format!("feature `{f}` is disabled on this server")),
-        Error::Storage(e) => {
-            tracing::error!(error = %e, "storage failure");
-            Status::internal("internal storage error")
-        }
+        Error::Storage(e) => internal(e),
     }
+}
+
+/// An internal failure: the details go to the log under a random id, the client gets only the
+/// id, so storage errors, SQL and paths never reach callers.
+pub fn internal(e: impl std::fmt::Display) -> Status {
+    let mut raw = [0u8; 6];
+    let _ = getrandom::fill(&mut raw);
+    let id = hex::encode(raw);
+    tracing::error!(error = %e, error_id = %id, "internal error");
+    Status::internal(format!("internal error (id {id}); the server log has the details"))
 }
 
 pub fn id_from(bytes: &[u8]) -> Result<Id, Status> {
@@ -64,4 +71,14 @@ pub async fn changeset_info(
         encoded,
         redacted,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn internal_errors_reveal_only_an_id() {
+        let s = super::internal("no such table: secret_things at /var/lib/pando/platform.db");
+        assert_eq!(s.code(), tonic::Code::Internal);
+        assert!(s.message().starts_with("internal error (id ") && !s.message().contains("secret"), "{}", s.message());
+    }
 }
