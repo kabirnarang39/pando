@@ -8,14 +8,15 @@ use std::sync::Arc;
 use pando_core::acl::Principal;
 use pando_proto::platform_server::{self, PlatformServer};
 use pando_proto::{
-    Account, AccountKind, CreateInvitationRequest, CreateInvitationResponse, CreateOrganizationRequest,
-    CreateRepositoryRequest, CreateTokenRequest, CreateTokenResponse, CreateWebhookRequest, CreateWebhookResponse,
-    Empty, Grant, InvitationRef, LinkIdentityRequest, ListGrantsResponse, ListInvitationsResponse, ListMembersResponse,
-    ListOrganizationsResponse, ListRepositoriesRequest, ListRepositoriesResponse, ListSignupAllowResponse,
-    ListTeamsResponse, ListTokensResponse, ListWebhookDeliveriesResponse, ListWebhooksResponse, Member, OrgName,
-    Organization, Repository, RepositoryRef, RevokeTokenRequest, Role, SetGrantRequest, SetMemberRequest,
-    SetSignupAllowRequest, Team, TeamRef, Token, UpdateRepositoryRequest, ViewerResponse, Visibility, WebhookDelivery,
-    WebhookRef,
+    Account, AccountKind, ActiveAgent, Capabilities, CreateInvitationRequest, CreateInvitationResponse,
+    CreateOrganizationRequest, InvitationRef, ListInvitationsResponse, CreateRepositoryRequest,
+    CreateTokenRequest, CreateTokenResponse, CreateWebhookRequest, CreateWebhookResponse, Empty, GetUsageRequest,
+    Grant, License, LinkIdentityRequest, ListGrantsResponse, ListMembersResponse, ListOrganizationsResponse,
+    ListRepositoriesRequest, ListRepositoriesResponse, ListSignupAllowResponse, ListTeamsResponse, ListTokensResponse,
+    ListWebhookDeliveriesResponse, ListWebhooksResponse, Member, OrgLimits, OrgName, Organization, Repository,
+    RepositoryRef, RevokeTokenRequest, Role, SetGrantRequest, SetLimitsRequest, SetMemberRequest,
+    SetSignupAllowRequest, SetSuspendedRequest, Team, TeamRef, Token, UpdateRepositoryRequest, Usage, ViewerResponse,
+    Visibility, WebhookDelivery, WebhookRef,
 };
 use tonic::{Request, Response, Status};
 
@@ -23,6 +24,7 @@ use crate::auth::{TokenScope, principal};
 use crate::directory::{self, AccountRec, DEFAULT_TOKEN_DAYS, OrgRec, TeamRec, TokenRec, kind_of};
 use crate::hosting::{Hosting, Registry, RepoKey, RepoRecord, now_ms, valid_part};
 use crate::permissions::role_name;
+use crate::plans;
 use crate::status::RpcResult;
 
 const DAY_MS: i64 = 86_400_000;
@@ -100,7 +102,7 @@ impl Platform {
         if self.is_admin(who) && token_administers(scope) {
             Ok(())
         } else {
-            Err(Status::permission_denied("only site administrators manage sign-up and sign-in"))
+            Err(Status::permission_denied("only site administrators may do this"))
         }
     }
 
@@ -190,6 +192,8 @@ impl Platform {
             repositories: self.readable(who, scope, Some(&o.login))?.len() as u32,
             members: members.len() as u32 - agents,
             agents,
+            suspended: self.hosting.access.multi_tenant
+                && self.reg().org_limits(&o.login).map_err(internal)?.is_some_and(|l| l.suspended),
             display_name: if o.display_name.is_empty() { o.login.clone() } else { o.display_name },
             login: o.login,
             description: o.description,
@@ -274,6 +278,14 @@ impl Platform {
             )));
         }
         Ok(())
+    }
+
+    /// The organisation's login, or NotFound.
+    fn org_exists(&self, org: &str) -> Result<String, Status> {
+        match self.reg().organization(org).map_err(internal)? {
+            Some(o) => Ok(o.login),
+            None => Err(Status::not_found(format!("no organisation `{org}` on this server"))),
+        }
     }
 
     fn require_repo(
@@ -506,6 +518,7 @@ impl platform_server::Platform for Platform {
         }
         let visibility =
             if r.visibility == Visibility::Unspecified as i32 { Visibility::Private as i32 } else { r.visibility };
+        crate::plans::check_new_repo(&self.hosting, &key.owner, visibility == Visibility::Private as i32)?;
         if org.is_none() {
             let rec = OrgRec {
                 login: key.owner.clone(),
@@ -548,6 +561,9 @@ impl platform_server::Platform for Platform {
                     if Visibility::try_from(r.visibility).unwrap_or(Visibility::Unspecified) == Visibility::Unspecified
                     {
                         return Err(Status::invalid_argument("choose private, internal or public"));
+                    }
+                    if r.visibility == Visibility::Private as i32 && rec.visibility != r.visibility {
+                        crate::plans::check_new_repo(&self.hosting, &rec.key.owner, true)?;
                     }
                     rec.visibility = r.visibility
                 }
@@ -834,5 +850,73 @@ impl platform_server::Platform for Platform {
         }
         audit("revoke_invitation", &who, &format!("{}:{}", r.org, r.id));
         Ok(Response::new(Empty {}))
+    }
+
+    async fn get_usage(&self, req: Request<GetUsageRequest>) -> RpcResult<Usage> {
+        let (who, scope) = caller(&req);
+        let r = req.into_inner();
+        let org = self.require_org_admin(&who, scope.as_ref(), &r.org)?.login;
+        let month = if r.month.is_empty() { plans::month_of(now_ms()) } else { r.month };
+        if !plans::valid_month(&month) {
+            return Err(Status::invalid_argument(format!("`{month}` is not a month such as 2026-10")));
+        }
+        let access = &self.hosting.access;
+        let (storage_bytes, storage_measured_at_ms) = self.reg().org_storage(&org).map_err(internal)?;
+        let active_agents = self
+            .reg()
+            .active_agents(&org, &month)
+            .map_err(internal)?
+            .into_iter()
+            .map(|(login, first_at_ms)| ActiveAgent { login, first_at_ms })
+            .collect();
+        Ok(Response::new(Usage {
+            active_agents,
+            seats: self.reg().seat_count(&org).map_err(internal)? as u32,
+            storage_bytes,
+            peak_storage_bytes: self.reg().peak_storage(&org, &month).map_err(internal)?,
+            storage_measured_at_ms,
+            private_repos: self.reg().private_repo_count(&org).map_err(internal)? as u32,
+            limits: Some(self.reg().limits_for(&org, access.default_org_limits.as_ref()).map_err(internal)?.to_proto()),
+            enforced: access.multi_tenant,
+            org,
+            month,
+        }))
+    }
+
+    async fn set_limits(&self, req: Request<SetLimitsRequest>) -> RpcResult<OrgLimits> {
+        let (who, scope) = caller(&req);
+        self.require_site_admin(&who, scope.as_ref())?;
+        let r = req.into_inner();
+        let org = self.org_exists(&r.org)?;
+        let limits = plans::Limits::from_proto(&r.limits.unwrap_or_default());
+        self.reg().set_org_limits(&org, &limits).map_err(internal)?;
+        audit("set_limits", &who, &format!("{org}: {limits:?}"));
+        Ok(Response::new(self.reg().limits_for(&org, None).map_err(internal)?.to_proto()))
+    }
+
+    async fn set_suspended(&self, req: Request<SetSuspendedRequest>) -> RpcResult<OrgLimits> {
+        let (who, scope) = caller(&req);
+        self.require_site_admin(&who, scope.as_ref())?;
+        let r = req.into_inner();
+        let org = self.org_exists(&r.org)?;
+        let defaults = self.hosting.access.default_org_limits.clone().unwrap_or_default();
+        self.reg().set_suspended(&org, r.suspended, &defaults).map_err(internal)?;
+        audit(if r.suspended { "suspend_organization" } else { "restore_organization" }, &who, &org);
+        Ok(Response::new(self.reg().limits_for(&org, None).map_err(internal)?.to_proto()))
+    }
+
+    async fn get_capabilities(&self, _: Request<Empty>) -> RpcResult<Capabilities> {
+        let access = &self.hosting.access;
+        Ok(Response::new(Capabilities {
+            billing_url: access.billing_url.clone(),
+            limits: access.multi_tenant,
+            support_url: access.support_url.clone(),
+        }))
+    }
+
+    async fn get_license(&self, req: Request<Empty>) -> RpcResult<License> {
+        let (who, scope) = caller(&req);
+        self.require_site_admin(&who, scope.as_ref())?;
+        Ok(Response::new(crate::license::to_proto(self.hosting.access.license.as_ref())))
     }
 }

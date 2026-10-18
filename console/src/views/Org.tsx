@@ -1,12 +1,16 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { explain } from "../api/client";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { NewRepository } from "../components/NewRepository";
 import { AccountKind, Role } from "../gen/pando_platform_pb";
 import { AddPrincipal, RoleSelect } from "../components/Access";
 import { InvitationList, InviteForm } from "../components/Invitations";
-import { useMembers, useOrganization, useRepositories, useSetMember, useTeams } from "../platform-data";
+import { SuspendedBanner } from "../components/Suspended";
+import { useCapabilities, useMembers, useOrganization, useRepositories, useSetMember, useTeams } from "../platform-data";
 import { ago, Author, Empty, Icon, LoadError, Skeleton, useNow } from "../ui";
+
+// Only administrators of servers with plans open it: its own chunk.
+const UsagePanel = lazy(() => import("./Usage").then((m) => ({ default: m.UsagePanel })));
 
 const roles: Record<number, string> = { [Role.READ]: "Read", [Role.TRIAGE]: "Triage", [Role.WRITE]: "Write", [Role.MAINTAIN]: "Maintain", [Role.ADMIN]: "Admin" };
 
@@ -22,6 +26,9 @@ export function OrgView() {
   const now = Math.max(useNow(), Date.now());
   const admin = (org.data?.viewerRole ?? Role.UNSPECIFIED) >= Role.ADMIN;
   const [creating, setCreating] = useState(false);
+  const caps = useCapabilities().data;
+  // Plans exist on servers that limit organisations or sell upgrades (ADR-035).
+  const plans = admin && !!(caps?.limits || caps?.billingUrl);
   if (org.error) return <LoadError error={org.error} what={`organisation called “${owner}”`} title={`${owner} didn't load`} retry={() => org.refetch()} />;
   const people = members.data?.filter((m) => m.account?.kind === AccountKind.PERSON) ?? [];
   const agents = members.data?.filter((m) => m.account?.kind === AccountKind.AGENT) ?? [];
@@ -30,6 +37,7 @@ export function OrgView() {
     ["people", "People", people.length],
     ["agents", "Agents", agents.length],
     ["teams", "Teams", teams.data?.length],
+    ...(plans ? ([["usage", "Usage & plan", undefined]] as const) : []),
   ] as const;
 
   return (
@@ -43,6 +51,7 @@ export function OrgView() {
           <p>{org.data?.description}</p>
         </div>
       </div>
+      <SuspendedBanner org={owner} />
       <div className="org-bar">
       <div className="segmented" role="group" aria-label="Organisation">
         {tabs.map(([id, label, n]) => (
@@ -58,6 +67,11 @@ export function OrgView() {
         )}
       </div>
       <div className="panel">
+        {tab === "usage" && plans && (
+          <Suspense fallback={<Skeleton rows={4} />}>
+            <UsagePanel org={owner} />
+          </Suspense>
+        )}
         {tab === "repositories" && creating && <NewRepository org={owner} onCancel={() => setCreating(false)} />}
         {tab === "repositories" &&
           (repos.isPending ? (

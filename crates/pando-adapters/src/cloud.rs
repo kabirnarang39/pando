@@ -68,6 +68,15 @@ impl CloudObjects {
         let hex = id.to_hex();
         self.prefix.clone().join("objects").join(&hex[..2]).join(&hex[2..])
     }
+
+    /// Bytes stored under this store's prefix (one listing; for usage metering).
+    pub async fn size_bytes(&self) -> Result<u64> {
+        self.backend
+            .list(Some(&self.prefix))
+            .map_err(storage_err)
+            .try_fold(0, |n, m| async move { Ok(n + m.size) })
+            .await
+    }
 }
 
 #[async_trait]

@@ -58,6 +58,14 @@ pub struct Access {
     /// Webhooks may call loopback and private networks (`--webhook-allow-private`; never with
     /// `multi_tenant`).
     pub webhook_allow_private: bool,
+    /// Limits of organisations without their own (`--default-org-limits`, multi-tenant only).
+    pub default_org_limits: Option<crate::plans::Limits>,
+    /// Where organisation administrators change their plan (`--billing-url`).
+    pub billing_url: String,
+    /// Where people reach support, e.g. about a suspended organisation (`--support-url`).
+    pub support_url: String,
+    /// The support licence given with `--license`, or why it isn't valid.
+    pub license: Option<Result<crate::license::License, String>>,
 }
 
 impl Access {

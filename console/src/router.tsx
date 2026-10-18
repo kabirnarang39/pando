@@ -33,11 +33,11 @@ const connect = createRoute({ getParentRoute: () => root, path: "/connect", comp
 const welcome = createRoute({ getParentRoute: () => root, path: "/welcome", component: WelcomeView });
 const tokens = createRoute({ getParentRoute: () => root, path: "/settings/tokens", component: TokensView });
 
-export type OrgSearch = { tab?: "repositories" | "people" | "agents" | "teams" };
+export type OrgSearch = { tab?: "repositories" | "people" | "agents" | "teams" | "usage" };
 const org = createRoute({
   getParentRoute: () => root,
   path: "/$owner",
-  validateSearch: (s): OrgSearch => ({ tab: (["repositories", "people", "agents", "teams"] as const).find((t) => t === s.tab) }),
+  validateSearch: (s): OrgSearch => ({ tab: (["repositories", "people", "agents", "teams", "usage"] as const).find((t) => t === s.tab) }),
   component: OrgView,
 });
 

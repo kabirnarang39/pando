@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { HOSTING } from "./setup";
 
@@ -96,4 +97,14 @@ test("a webhook on the server: add, see the secret once, ping, remove", async ({
   await expect(row).toContainText("No answer");
   await row.getByRole("button", { name: /Remove webhook/ }).click();
   await expect(page.getByRole("listitem").filter({ hasText: "127.0.0.1:9/nowhere" })).toHaveCount(0);
+});
+
+test("an organisation's administrators see its usage and where to upgrade", async ({ page }) => {
+  await page.goto("/#/lumen");
+  await page.getByRole("button", { name: "Usage & plan" }).click();
+  await expect(page.getByText("Active agents in")).toBeVisible();
+  await expect(page.getByText("This server doesn't enforce limits.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Change plan" })).toHaveAttribute("href", "https://billing.example/checkout?org=lumen");
+  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
 });

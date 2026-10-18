@@ -572,3 +572,34 @@ figures for closed repositories come from the registry as last computed. The reg
 its SQL on async workers; moving it to a blocking thread is left for when it shows in profiles.
 There is no object garbage collection, so a purged secret is removed by deleting the repository.
 
+## ADR-035: Plans are limits in the open-source server; billing stays outside it
+
+**Decision.** The registry keeps each organisation's limits (`org_limits`: seats, active agents,
+storage bytes, private repositories, a suspension flag and a plan label; NULL is unlimited) and
+its usage (`usage_agents` per organisation, month and agent; `repo_sizes`; each month's storage
+peak in `usage_storage`). Organisations without a row take `--default-org-limits`. Limits are
+enforced only with `--multi-tenant`, in `HostingLayer` before a write (suspension, storage, and a
+new agent's first land beyond the active-agent limit) and in the `SetMember` and
+`CreateRepository`/`UpdateRepository` calls (seats, private repositories). An agent becomes
+active after `HostingLayer` sees its `Land` succeed (status OK and a landed id) or its
+`CompareAndSwap` swap (status OK and `swapped`): a refused land is a gRPC error and a lost swap is
+status OK with `swapped: false`, so neither counts. An in-process set remembers the agents
+already recorded this month, so only an agent's first land in a month writes. `GetUsage`,
+`SetLimits` (absolute values; site administrators), `SetSuspended` and `GetCapabilities`
+(`--billing-url`) are the only interface a billing service needs; prices, plan values and the
+payment provider live outside this repository. Support licences are Ed25519-signed JSON checked
+offline against a key compiled into pandod, and only reported, never enforced.
+
+**Why.** A hosted service needs plans to mean something, and the open-source server is where
+writes happen; doing it with plain rows and absolute `SetLimits` calls keeps the billing service
+stateless toward pandod (replayed or reordered payment events set the same values) and lets any
+operator run their own billing, or none. Counting only lands that succeeded matches what is sold
+("an agent that landed a change this month"). Enforcing only with `--multi-tenant` keeps
+self-hosted servers unlimited without configuration. A support licence that switched features
+off would punish customers for a missed renewal.
+
+**Trade-offs.** The active-agent limit is checked before a land and recorded after it, so new
+agents landing at the same moment can pass it by a few; storage is measured hourly, so it can be
+passed by an hour of pushes. Agents landing a change request through `Reviews/Land` are not
+counted. Postgres repository metadata is not measured. The seen-set is per process: another
+replica at most records an agent once more, which the primary key absorbs.

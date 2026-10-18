@@ -10,6 +10,7 @@ import { RepoProvider, useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 import { ago, Icon, LoadError, useNow, type IconName } from "../../ui";
 import { CopyCommand } from "../../components/CopyCommand";
+import { SuspendedBanner } from "../../components/Suspended";
 
 export function RepoLayout() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -68,6 +69,7 @@ function Layout() {
 
   return (
     <div className="repo-layout">
+      {!single && <SuspendedBanner org={owner} />}
       <header className="repo-head" data-compact={compact || undefined} data-section={section}>
         <div className="repo-title">
           <h1>

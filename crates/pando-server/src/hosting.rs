@@ -146,6 +146,8 @@ const MIGRATIONS: &[&str] = &[
        at_ms INTEGER NOT NULL,
        PRIMARY KEY (owner, name)
      );",
+    // 3: plans, usage and limits (ADR-035).
+    crate::plans::SCHEMA,
 ];
 
 /// Tables holding rows about one repository (columns `owner`, `name`), cleared when it is
@@ -161,6 +163,7 @@ const REPOSITORY_TABLES: &[&str] = &[
     "issues",
     "repository_activity",
     "disabled_repositories",
+    "repo_sizes",
 ];
 
 /// Which repositories exist. SQLite, one small table; writes are rare (creating a repository).
@@ -171,6 +174,8 @@ pub struct Registry {
     cache: quick_cache::sync::Cache<String, (Instant, Arc<dyn std::any::Any + Send + Sync>)>,
     /// Bumped by every invalidation, so an answer read before a write is never cached after it.
     generation: std::sync::atomic::AtomicU64,
+    /// How organisations' plans are enforced (ADR-035), set by [`Hosting::new`].
+    pub(crate) plan_policy: std::sync::OnceLock<crate::plans::Policy>,
 }
 
 /// How long a cached answer may be used: writes in this process clear the cache at once; this
@@ -210,6 +215,7 @@ impl Registry {
             db: Db(Mutex::new(conn)),
             cache: quick_cache::sync::Cache::new(100_000),
             generation: Default::default(),
+            plan_policy: Default::default(),
         };
         reg.migrate()?;
         Ok(reg)
@@ -527,7 +533,7 @@ pub struct RepoStats {
 
 /// The repositories this server hosts, opened on first use.
 pub struct Hosting {
-    templates: Templates,
+    pub(crate) templates: Templates,
     pub registry: Arc<Registry>,
     build: BuildRoutes,
     open: Mutex<OpenRepos>,
@@ -537,6 +543,8 @@ pub struct Hosting {
     pub access: Arc<crate::permissions::Access>,
     /// The sign-in pages, when served (`--login-listen`): invitations link to them and use their mail.
     pub login: std::sync::OnceLock<Arc<crate::login::Login>>,
+    /// Agents already counted as active this month (ADR-035).
+    pub(crate) meter: crate::plans::Meter,
 }
 
 impl Hosting {
@@ -547,6 +555,11 @@ impl Hosting {
         access: Arc<crate::permissions::Access>,
     ) -> anyhow::Result<Self> {
         templates.validate()?;
+        let _ = registry.plan_policy.set(crate::plans::Policy {
+            enforce: access.multi_tenant,
+            defaults: access.default_org_limits.clone(),
+            billing_url: access.billing_url.clone(),
+        });
         Ok(Self {
             templates,
             registry,
@@ -556,6 +569,7 @@ impl Hosting {
             stats: Mutex::new(HashMap::new()),
             access,
             login: std::sync::OnceLock::new(),
+            meter: Default::default(),
         })
     }
 
@@ -781,17 +795,23 @@ where
                 .unwrap_or_else(pando_core::acl::Principal::anonymous);
             let scope = req.extensions().get::<crate::auth::TokenScope>().cloned();
             let need = crate::permissions::required_role(req.uri().path());
-            let routes = match RepoKey::parse(&name)
-                .and_then(|key| hosting.authorize(&key, &who, scope.as_ref(), need).map(|_| key))
-            {
-                Ok(key) => hosting.routes(&key).await,
+            let path = req.uri().path().to_owned();
+            let routes = match RepoKey::parse(&name).and_then(|key| {
+                hosting.authorize(&key, &who, scope.as_ref(), need)?;
+                // Plans and limits (ADR-035): writes only.
+                if need != pando_proto::Role::Read {
+                    crate::plans::check_write(&hosting, &key, &who, &path)?;
+                }
+                Ok(key)
+            }) {
+                Ok(key) => hosting.routes(&key).await.map(|r| (key, r)),
                 Err(e) => Err(e),
             };
             match routes {
                 // The response body (a streamed checkout, say) keeps the repository open until it
                 // is sent.
-                Ok((routes, open)) => match routes.oneshot(req).await {
-                    Ok(resp) => Ok(resp.map(|body| {
+                Ok((key, (routes, open))) => match routes.oneshot(req).await {
+                    Ok(resp) => Ok(crate::plans::observe_land(&hosting, &key, &who, &path, resp).await.map(|body| {
                         use http_body_util::BodyExt;
                         tonic::body::Body::new(body.map_frame(move |f| {
                             let _ = &open;

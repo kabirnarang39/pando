@@ -88,6 +88,53 @@ server behaves as before. With it:
   `--webhook-allow-private` can't be combined with it.
 - The server refuses to start without authentication.
 
+## Plans and limits
+
+Every platform server records what each organisation uses (ADR-035); a multi-tenant server
+also enforces limits on it. A company's own server (without `--multi-tenant`) records usage but
+limits nothing.
+
+- **Active agents.** An agent (`agent/NAME` or `bot/NAME`) is active in an organisation for a
+  calendar month (UTC) once it lands a change in one of its repositories: a `Land` that
+  succeeded, or a `CompareAndSwap` that moved the branch. A refused land is an error and a lost
+  compare-and-swap moves nothing; neither counts. People are never active agents.
+- **Seats** are the people (not agents) who are members of the organisation.
+- **Storage** is measured hourly per repository (its SQLite database and write-ahead log, plus
+  its objects when they live in an object store), with each month's peak per organisation.
+  Postgres metadata isn't measured.
+
+**Limits.** An organisation's limits are seats, active agents, storage and private repositories,
+each a number or unlimited, plus a plan name shown to its administrators and a suspension flag.
+Organisations without limits of their own take `--default-org-limits`, e.g.
+`--default-org-limits seats=5,agents=20,storage=1GiB,private_repos=unlimited,plan=Free`
+(multi-tenant only; without it they are unlimited). With `--multi-tenant`:
+
+| Limit | What happens |
+|---|---|
+| Suspended | Writes are refused with PermissionDenied ("organisation ORG is suspended; contact support"); reads work. |
+| Active agents | A new agent's land is refused with ResourceExhausted ("N of N active agents this month; upgrade at URL or wait until DATE"); agents already active this month keep landing. |
+| Storage | Over the limit, writes are refused with ResourceExhausted; reads work. |
+| Seats | Adding a person beyond the limit is refused (changing a member's role isn't). |
+| Private repositories | Creating one beyond the limit, or making one private, is refused. |
+
+Storage is measured hourly, so an organisation can pass its limit by up to an hour of pushes, and
+new agents landing at the same moment can pass the active-agent limit by a few.
+
+**Managing plans.** Organisation administrators see their plan and use with
+`pando org usage ORG` or on the console's **Usage & plan** tab, which shows an **Upgrade** button
+when the server has `--billing-url`. Site administrators change limits with
+`pando admin limits set ORG --seats N --agents N --storage 10GiB --private-repos unlimited --plan NAME`
+(flags not given stay as they are), and suspend or restore an organisation with
+`pando admin limits suspend|restore ORG`. A billing service does the same through the
+`SetLimits` and `SetSuspended` RPCs, which set absolute values, so repeating a call is harmless.
+Nothing is ever deleted when limits fall: an organisation over a new limit keeps its data and can
+read it.
+
+**Support licences.** `pandod server --license FILE` checks a support licence at startup
+(Ed25519-signed, checked offline) and logs whether it is valid, in its grace period or expired;
+`pandod license verify FILE` checks one by hand, and `GetLicense` reports it to site
+administrators. A licence never turns anything off.
+
 ## UX audit of the web app (2026-10-17)
 
 Fixed in this round: the review page can collapse files; landing asks for confirmation and names
