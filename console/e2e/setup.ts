@@ -16,6 +16,10 @@ export const HOSTING = `http://127.0.0.1:${HOSTING_PORT}`;
 /** A third server with no organisations yet, for setting one up from scratch. */
 export const FRESH_PORT = 7615;
 export const FRESH = `http://127.0.0.1:${FRESH_PORT}`;
+/** A fourth server whose only job is issuing a token: an open server closes once a platform
+ * token exists, so issuing one on a shared server would lock the other tests out. */
+export const TOKENS_PORT = 7617;
+export const TOKENS = `http://127.0.0.1:${TOKENS_PORT}`;
 
 function git(cwd: string, ...args: string[]) {
   execFileSync("git", ["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" });
@@ -109,9 +113,25 @@ export default async function setup() {
     throw e;
   }
 
+  const tokens = spawn(
+    join(bin, "pandod"),
+    ["server", "--listen", `127.0.0.1:${TOKENS_PORT}`, "--metadata", "memory", "--platform", `sqlite://${join(dir, "tokens.db")}`, "--repos-metadata", `sqlite://${join(dir, "tokens-repos")}/{repo}.db`, "--platform-admins", "anonymous", "--web-origins", "http://127.0.0.1:4173"],
+    { stdio: ["ignore", "ignore", "inherit"] },
+  );
+  try {
+    await up(TOKENS_PORT);
+  } catch (e) {
+    server.kill();
+    hosting.kill();
+    fresh.kill();
+    tokens.kill();
+    throw e;
+  }
+
   return () => {
     server.kill();
     hosting.kill();
     fresh.kill();
+    tokens.kill();
   };
 }

@@ -391,7 +391,7 @@ secret first (that is what actually protects you), then:
 1. Disable the repository (`pandod repo disable`) so nobody fetches it meanwhile.
 2. Rewrite the history without the secret: `pando export-git` to a git repository, remove the
    file or string with `git filter-repo`, and `pando import-git` into a new repository.
-3. Delete the old repository (`pandod repo delete`); recreate it under the same name if you
+3. Delete the old repository (`pandod repo delete`; on Windows, stop the server first, because Windows won't delete files a running server holds open); recreate it under the same name if you
    want to, and import the rewritten history there.
 4. Ask everyone with a checkout to clone again; old checkouts still hold the secret.
 

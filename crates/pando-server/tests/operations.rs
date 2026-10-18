@@ -110,20 +110,25 @@ async fn health_takedown_delete_and_sigterm() {
     assert!(repo_cmd(&s.platform, &["enable", "lumen/fleet"]).status.success());
     eventually("enabled again", async || p.get_repository(fleet.clone()).await.is_ok()).await;
 
-    // Deletion: the registry row and the storage files go.
-    let db = s.dir.path().join("repos/lumen/fleet.db");
-    assert!(db.exists());
-    let refused =
-        repo_cmd(&s.platform, &["delete", "lumen/fleet", "--repos-metadata", "x/{repo}.db", "--confirm", "nope"]);
-    assert!(!refused.status.success(), "the name must be confirmed");
-    let tpl = format!("sqlite://{}/repos/{{repo}}.db", s.dir.path().display());
-    let out = repo_cmd(&s.platform, &["delete", "lumen/fleet", "--repos-metadata", &tpl, "--confirm", "lumen/fleet"]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(!db.exists());
-    eventually("gone", async || {
-        p.get_repository(fleet.clone()).await.is_err_and(|e| e.code() == tonic::Code::NotFound)
-    })
-    .await;
+    // Deletion: the registry row and the storage files go. Windows refuses to delete a file the
+    // running server holds open, so there the server must be stopped first (docs/deploy.md).
+    #[cfg(not(windows))]
+    {
+        let db = s.dir.path().join("repos/lumen/fleet.db");
+        assert!(db.exists());
+        let refused =
+            repo_cmd(&s.platform, &["delete", "lumen/fleet", "--repos-metadata", "x/{repo}.db", "--confirm", "nope"]);
+        assert!(!refused.status.success(), "the name must be confirmed");
+        let tpl = format!("sqlite://{}/repos/{{repo}}.db", s.dir.path().display());
+        let out =
+            repo_cmd(&s.platform, &["delete", "lumen/fleet", "--repos-metadata", &tpl, "--confirm", "lumen/fleet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(!db.exists());
+        eventually("gone", async || {
+            p.get_repository(fleet.clone()).await.is_err_and(|e| e.code() == tonic::Code::NotFound)
+        })
+        .await;
+    }
 
     // SIGTERM: stops cleanly.
     #[cfg(unix)]
