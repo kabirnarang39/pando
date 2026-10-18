@@ -8,13 +8,14 @@ use std::sync::Arc;
 use pando_core::acl::Principal;
 use pando_proto::platform_server::{self, PlatformServer};
 use pando_proto::{
-    Account, AccountKind, CreateOrganizationRequest, CreateRepositoryRequest, CreateTokenRequest, CreateTokenResponse,
-    CreateWebhookRequest, CreateWebhookResponse, Empty, Grant, LinkIdentityRequest, ListGrantsResponse,
-    ListMembersResponse, ListOrganizationsResponse, ListRepositoriesRequest, ListRepositoriesResponse,
-    ListSignupAllowResponse, ListTeamsResponse, ListTokensResponse, ListWebhookDeliveriesResponse,
-    ListWebhooksResponse, Member, OrgName, Organization, Repository, RepositoryRef, RevokeTokenRequest, Role,
-    SetGrantRequest, SetMemberRequest, SetSignupAllowRequest, Team, TeamRef, Token, UpdateRepositoryRequest,
-    ViewerResponse, Visibility, WebhookDelivery, WebhookRef,
+    Account, AccountKind, CreateInvitationRequest, CreateInvitationResponse, CreateOrganizationRequest,
+    CreateRepositoryRequest, CreateTokenRequest, CreateTokenResponse, CreateWebhookRequest, CreateWebhookResponse,
+    Empty, Grant, InvitationRef, LinkIdentityRequest, ListGrantsResponse, ListInvitationsResponse, ListMembersResponse,
+    ListOrganizationsResponse, ListRepositoriesRequest, ListRepositoriesResponse, ListSignupAllowResponse,
+    ListTeamsResponse, ListTokensResponse, ListWebhookDeliveriesResponse, ListWebhooksResponse, Member, OrgName,
+    Organization, Repository, RepositoryRef, RevokeTokenRequest, Role, SetGrantRequest, SetMemberRequest,
+    SetSignupAllowRequest, Team, TeamRef, Token, UpdateRepositoryRequest, ViewerResponse, Visibility, WebhookDelivery,
+    WebhookRef,
 };
 use tonic::{Request, Response, Status};
 
@@ -300,6 +301,7 @@ impl platform_server::Platform for Platform {
         Ok(Response::new(ViewerResponse {
             account: Some(account_of(rec, &who.0, self.is_admin(&who))),
             organizations: self.organizations(&who, scope.as_ref())?,
+            token_id: scope.map(|s| s.id).unwrap_or_default(),
         }))
     }
 
@@ -389,7 +391,11 @@ impl platform_server::Platform for Platform {
             )));
         }
         self.existing_account(&r.login)?;
-        self.reg().set_member(&r.org, &r.login, role).map_err(internal)?;
+        if role == Role::Unspecified {
+            self.reg().set_member(&r.org, &r.login, role).map_err(internal)?;
+        } else {
+            directory::add_member(self.reg(), &r.org, &r.login, role)?;
+        }
         audit("set_member", &who, &format!("{}:{}={}", r.org, r.login, role_name(role)));
         let rec = self.reg().account(&r.login).map_err(internal)?;
         Ok(Response::new(Member { account: Some(account_of(rec, &r.login, false)), role: role as i32, teams: vec![] }))
@@ -782,6 +788,46 @@ impl platform_server::Platform for Platform {
             )));
         }
         audit("link_identity", &who, &format!("{} {subject} -> {}", r.provider, r.login));
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn create_invitation(&self, req: Request<CreateInvitationRequest>) -> RpcResult<CreateInvitationResponse> {
+        let (who, scope) = caller(&req);
+        let r = req.into_inner();
+        self.require_org_admin(&who, scope.as_ref(), &r.org)?;
+        let login = self.hosting.login.get().ok_or_else(|| {
+            Status::failed_precondition("invitations need the sign-in pages: start pandod with --login-listen")
+        })?;
+        let email = crate::login::normal_email(&r.email)
+            .ok_or_else(|| Status::invalid_argument(format!("`{}` is not an email address", r.email)))?;
+        let role = match role_in(r.role)? {
+            Role::Unspecified => Role::Read,
+            r => r,
+        };
+        if self.reg().invitations(&r.org).map_err(internal)?.len() >= 100 {
+            return Err(Status::resource_exhausted("an organisation has at most 100 open invitations; withdraw some"));
+        }
+        let (invitation, link, emailed) =
+            crate::login::create_invitation(login, &r.org, &email, role, &who.0).await.map_err(internal)?;
+        audit("create_invitation", &who, &format!("{}:{}={}", r.org, invitation.id, role_name(role)));
+        Ok(Response::new(CreateInvitationResponse { invitation: Some(invitation), link, emailed }))
+    }
+
+    async fn list_invitations(&self, req: Request<OrgName>) -> RpcResult<ListInvitationsResponse> {
+        let (who, scope) = caller(&req);
+        let org = req.into_inner().login;
+        self.require_org_admin(&who, scope.as_ref(), &org)?;
+        Ok(Response::new(ListInvitationsResponse { invitations: self.reg().invitations(&org).map_err(internal)? }))
+    }
+
+    async fn revoke_invitation(&self, req: Request<InvitationRef>) -> RpcResult<Empty> {
+        let (who, scope) = caller(&req);
+        let r = req.into_inner();
+        self.require_org_admin(&who, scope.as_ref(), &r.org)?;
+        if !self.reg().revoke_invitation(&r.org, &r.id).map_err(internal)? {
+            return Err(Status::not_found(format!("no open invitation `{}` in {}", r.id, r.org)));
+        }
+        audit("revoke_invitation", &who, &format!("{}:{}", r.org, r.id));
         Ok(Response::new(Empty {}))
     }
 }

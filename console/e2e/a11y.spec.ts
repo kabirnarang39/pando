@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 // WCAG 2.2 AA on every screen of the demo, in both themes.
-const pages = ["/#/", "/#/inbox", "/#/lumen", "/#/lumen/fleet", "/#/lumen/fleet/code/services/billing/src/lib.rs", "/#/lumen/fleet/changes", "/#/lumen/fleet/reviews", "/#/lumen/fleet/locks", "/#/lumen/fleet/agents", "/#/lumen/fleet/settings", "/#/settings/tokens", "/#/connect"];
+const pages = ["/#/", "/#/inbox", "/#/lumen", "/#/lumen/fleet", "/#/lumen/fleet/code/services/billing/src/lib.rs", "/#/lumen/fleet/changes", "/#/lumen/fleet/reviews", "/#/lumen/fleet/locks", "/#/lumen/fleet/agents", "/#/lumen/fleet/settings", "/#/settings/tokens", "/#/connect", "/#/welcome"];
 
 for (const theme of ["light", "dark"] as const) {
   test(`no WCAG 2.2 AA violations, ${theme} theme`, async ({ page }) => {

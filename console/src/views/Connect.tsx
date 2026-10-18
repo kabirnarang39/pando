@@ -1,11 +1,91 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Checkbox, FieldError, Form, Input, Label, Text, TextField } from "react-aria-components";
 import { explain, isUnimplemented, makeApi, serverTransport } from "../api/client";
 import { pendingServer, useConnection } from "../connection";
 import { Icon } from "../ui";
 
 type Check = { kind: "ok"; text: string } | { kind: "error"; text: string } | null;
+
+/** What a server's sign-in pages offer (`GET /login/providers`). */
+export type Providers = { providers: { id: string; name: string; url: string }[]; email: boolean; turnstile_site_key?: string };
+
+const TURNSTILE = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+
+/** The origin of an address, or null if it isn't an http(s) URL. */
+function originOf(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The sign-in options of the server at `origin`, if it has sign-in pages. */
+function useProviders(origin: string | null) {
+  const [found, setFound] = useState<{ origin: string; providers: Providers } | null>(null);
+  useEffect(() => {
+    if (!origin) return;
+    const stop = new AbortController();
+    fetch(`${origin}/login/providers`, { signal: stop.signal, credentials: "omit" })
+      .then((r) => (r.ok ? (r.json() as Promise<Providers>) : null))
+      .then((p) => p && Array.isArray(p.providers) && setFound({ origin, providers: p }))
+      .catch(() => undefined);
+    return () => stop.abort();
+  }, [origin]);
+  return found?.origin === origin ? found.providers : null;
+}
+
+/** Sign in through the server's own pages: one button per provider, and an email link. */
+function SignIn({ origin, providers, onToken }: { origin: string; providers: Providers; onToken(): void }) {
+  const key = providers.turnstile_site_key;
+  const widget = useRef<HTMLDivElement>(null);
+  // Cloudflare's script loads only when the server asks for the check, and only once.
+  useEffect(() => {
+    if (!key || !providers.email) return;
+    const w = window as unknown as { turnstile?: { render(el: HTMLElement, o: { sitekey: string }): void } };
+    if (w.turnstile && widget.current) return w.turnstile.render(widget.current, { sitekey: key });
+    if (document.querySelector(`script[src="${TURNSTILE}"]`)) return;
+    const s = document.createElement("script");
+    s.src = TURNSTILE;
+    s.async = true;
+    document.head.append(s);
+  }, [key, providers.email]);
+  return (
+    <>
+      <div className="signin-buttons">
+        {providers.providers.map((p) => (
+          <a key={p.id} className="button" data-primary="" href={`${origin}${p.url}?next=/`}>
+            Sign in with {p.name}
+          </a>
+        ))}
+      </div>
+      {providers.email && (
+        <>
+          {providers.providers.length > 0 && <p className="or">or</p>}
+          <form method="post" action={`${origin}/login/email`} className="stack">
+            <label className="field">
+              <span>Email address</span>
+              <input className="input" type="email" name="email" required autoComplete="email" placeholder="you@example.com" />
+            </label>
+            <input type="hidden" name="next" value="/" />
+            {key && <div ref={widget} className="cf-turnstile" data-sitekey={key} />}
+            <button type="submit" className="button">
+              Email me a sign-in link
+            </button>
+          </form>
+        </>
+      )}
+      <p className="muted">
+        New here? Signing in creates your account.{" "}
+        <button type="button" className="link-button" onClick={onToken}>
+          Use a token instead
+        </button>
+      </p>
+    </>
+  );
+}
 
 export function ConnectView() {
   const { target, connect } = useConnection();
@@ -16,6 +96,10 @@ export function ConnectView() {
   const [remember, setRemember] = useState(target.kind === "server" && target.remember);
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState<Check>(null);
+  const [useToken, setUseToken] = useState(false);
+  // The server that serves this console usually has the sign-in pages too.
+  const origin = originOf(url.trim()) ?? location.origin;
+  const providers = useProviders(origin);
 
   /** Ask the server who we are and what it holds before switching to it. */
   const test = async () => {
@@ -67,7 +151,11 @@ export function ConnectView() {
         )}
         <div className="choices">
           <section className="panel panel-body" aria-labelledby="server-title">
-            <h2 id="server-title">Your server</h2>
+            <h2 id="server-title">{providers && !useToken ? "Sign in" : "Your server"}</h2>
+            {providers && !useToken ? (
+              <SignIn origin={origin} providers={providers} onToken={() => setUseToken(true)} />
+            ) : (
+            <>
             <p>
               Start pandod with this site allowed: <code>--web-origins {location.origin}</code>
             </p>
@@ -121,6 +209,8 @@ export function ConnectView() {
                 </p>
               )}
             </Form>
+            </>
+            )}
           </section>
           <section className="panel panel-body" aria-labelledby="demo-title">
             <h2 id="demo-title">The demo</h2>

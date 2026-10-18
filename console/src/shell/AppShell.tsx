@@ -200,6 +200,12 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
           )}
         </Link>
         )}
+        {viewer.data?.platform && (
+          <Link to="/welcome" className="side-link">
+            <Icon name="plus" />
+            <span className="label">New organisation</span>
+          </Link>
+        )}
         <div className="side-section">Repositories</div>
         {repos.data?.map((r) => {
           const live = now - Number(r.tipAtMs) < 90_000;

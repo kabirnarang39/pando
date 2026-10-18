@@ -127,7 +127,10 @@ impl GrpcRemote {
     /// `server` hosts all services; `objects_url` (daemon or cache) serves object reads,
     /// defaulting to the server.
     /// `server` may end in `/OWNER/NAME` to name a repository on a server that hosts many.
+    /// Without a `token`, the one `pando login` saved for the server is used, if any.
     pub fn connect(server: &str, objects_url: Option<&str>, token: Option<&str>) -> Result<Self> {
+        let token = crate::credentials::resolve(token, server);
+        let token = token.as_deref();
         let (base, repo) = pando_proto::split_repo_url(server);
         let channel = Endpoint::from_shared(base)
             .with_context(|| format!("bad server URL `{server}`"))?

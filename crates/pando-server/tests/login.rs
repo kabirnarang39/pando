@@ -13,7 +13,7 @@ use pando_adapters::flags::SpecFlags;
 use pando_core::acl::{AccessPolicy, AllowAllPolicy};
 use pando_core::ports::NoChecks;
 use pando_proto::platform_client::PlatformClient;
-use pando_proto::{Empty, SetSignupAllowRequest};
+use pando_proto::{Empty, OrgName, Role, SetSignupAllowRequest};
 use pando_server::hosting::{BuildRoutes, Hosting, Registry, RepoServices, Templates, now_ms};
 use pando_server::login::{Login, Settings, Signup};
 use pando_server::permissions::Access;
@@ -117,6 +117,10 @@ struct World {
 }
 
 async fn world() -> World {
+    world_with(false).await
+}
+
+async fn world_with(multi_tenant: bool) -> World {
     let idp = idp().await;
     let (smtp, mail) = smtp_sink().await;
     let registry = Arc::new(Registry::open("memory").unwrap());
@@ -133,15 +137,23 @@ async fn world() -> World {
         turnstile_site_key: None,
         signup: Signup::Waitlist,
         reserved: vec!["root".into()],
+        terms_url: Some("https://pando.example/terms".into()),
+        privacy_url: Some("https://pando.example/privacy".into()),
     };
     let env: HashMap<&str, &str> =
         [("PANDO_OIDC_MOCK_CLIENT_ID", CLIENT), ("PANDO_OIDC_MOCK_CLIENT_SECRET", "test-secret")].into();
-    let login = Login::new(settings, registry.clone(), &|k| env.get(k).map(|v| v.to_string())).unwrap();
-    tokio::spawn(pando_server::login::serve(listener, Arc::new(login)));
+    let login = Arc::new(Login::new(settings, registry.clone(), &|k| env.get(k).map(|v| v.to_string())).unwrap());
+    tokio::spawn(pando_server::login::serve(listener, login.clone()));
 
     // The platform server that accepts the tokens sign-in hands out.
     let dir = tempfile::tempdir().unwrap();
-    let access = Arc::new(Access { open: false, admins: vec!["root".into()], ..Default::default() });
+    let access = Arc::new(Access {
+        open: false,
+        admins: vec!["root".into()],
+        multi_tenant,
+        max_orgs_per_account: 3,
+        ..Default::default()
+    });
     let build: BuildRoutes = Arc::new(move |_, repo| {
         let policy: Arc<dyn AccessPolicy> = Arc::new(AllowAllPolicy);
         RepoServices {
@@ -154,6 +166,7 @@ async fn world() -> World {
         objects: "metadata".into(),
     };
     let hosting = Hosting::new(templates, registry.clone(), build, access).unwrap();
+    let _ = hosting.login.set(login);
     let default = config::open_repo("memory", "metadata").await.unwrap();
     let routes = authority_routes(default, Arc::new(SpecFlags::all_on()), Arc::new(AllowAllPolicy), Arc::new(NoChecks));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -235,7 +248,7 @@ impl World {
         let mut c = self.claims(&s, sub, email);
         change(&mut c);
         let r = self.callback(&s, &sign(&c, "test-key-1")).await;
-        session(r).await
+        self.session(r).await
     }
 
     async fn viewer(&self, token: &str) -> Result<String, tonic::Status> {
@@ -261,12 +274,40 @@ impl World {
     }
 }
 
-async fn session(r: reqwest::Response) -> Result<String, u16> {
-    if r.status() != 303 {
-        return Err(r.status().as_u16());
+impl World {
+    /// Posts a confirmation page's form, from the browser it was shown in.
+    async fn confirm(&self, page: reqwest::Response, fields: &[(&str, &str)]) -> reqwest::Response {
+        let headers = page.headers().clone();
+        let html = page.text().await.unwrap();
+        let grant = html.split("name=grant value=\"").nth(1).expect("a confirmation form")[..64].to_owned();
+        let cookie = headers
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .find(|c| c.starts_with("pando_confirm="))
+            .expect("the confirmation cookie");
+        assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"), "{cookie}");
+        let mut form = vec![("grant", grant.as_str())];
+        form.extend_from_slice(fields);
+        self.http
+            .post(format!("{}/login/confirm", self.login))
+            .header("cookie", cookie.split(';').next().unwrap())
+            .form(&form)
+            .send()
+            .await
+            .unwrap()
     }
-    let to = location(&r);
-    Ok(to.split_once("#pando_session=").expect("token in the fragment").1.to_owned())
+
+    /// The session token a sign-in ends with (accepting the terms on a first sign-in), or the
+    /// refusal's status.
+    async fn session(&self, r: reqwest::Response) -> Result<String, u16> {
+        let r = if r.status() == 200 { self.confirm(r, &[("accept", "yes")]).await } else { r };
+        if r.status() != 303 {
+            return Err(r.status().as_u16());
+        }
+        let to = location(&r);
+        Ok(to.split_once("#pando_session=").expect("token in the fragment").1.to_owned())
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -274,11 +315,28 @@ async fn oidc_sign_in_creates_an_account_and_a_working_session() {
     let w = world().await;
     let s = w.start("/acme/app").await;
     let r = w.callback(&s, &sign(&w.claims(&s, "g-1", "Mira@A.example"), "test-key-1")).await;
-    assert_eq!(r.status(), 303);
+    // A first sign-in asks for the age and terms confirmation before any account exists.
+    assert_eq!(r.status(), 200);
     assert_eq!(r.headers()["referrer-policy"], "no-referrer");
+    let r = w.confirm(r, &[]).await;
+    assert_eq!(r.status(), 400, "the box must be ticked");
+    assert!(w.registry.account("mira").unwrap().is_none());
+    let html = r.text().await.unwrap();
+    assert!(html.contains("I am 18 or older and accept the <a href=\"https://pando.example/terms\""), "{html}");
+    assert!(html.contains("type=checkbox name=accept value=yes required"));
+    // Without this browser's cookie, the form does nothing.
+    let grant = html.split("name=grant value=\"").nth(1).unwrap()[..64].to_owned();
+    let forged =
+        w.http.post(format!("{}/login/confirm", w.login)).form(&[("grant", grant.as_str()), ("accept", "yes")]);
+    assert_eq!(forged.send().await.unwrap().status(), 400);
+    let s = w.start("/acme/app").await;
+    let r = w.callback(&s, &sign(&w.claims(&s, "g-1", "Mira@A.example"), "test-key-1")).await;
+    let r = w.confirm(r, &[("accept", "yes")]).await;
+    assert_eq!(r.status(), 303);
     let to = location(&r);
     assert!(to.starts_with(&format!("{}/acme/app#pando_session=pando_", w.login)), "{to}");
-    let token = session(r).await.unwrap();
+    let token = w.session(r).await.unwrap();
+    assert!((w.registry.accepted_terms_at("mira").unwrap() - now_ms()).abs() < 60_000);
 
     // PKCE: the verifier sent to the token endpoint hashes to the challenge.
     let form = w.idp.form.lock().unwrap().clone();
@@ -295,7 +353,7 @@ async fn oidc_sign_in_creates_an_account_and_a_working_session() {
 
     // The state is used up: replaying the callback fails.
     assert_eq!(
-        session(w.callback(&s, &sign(&w.claims(&s, "g-1", "mira@a.example"), "test-key-1")).await).await,
+        w.session(w.callback(&s, &sign(&w.claims(&s, "g-1", "mira@a.example"), "test-key-1")).await).await,
         Err(400)
     );
 
@@ -325,7 +383,7 @@ async fn forged_or_mismatched_id_tokens_are_refused() {
 
     // Unknown signing key, and an unsigned token.
     let s = w.start("/").await;
-    refused(session(w.callback(&s, &sign(&w.claims(&s, "g-2", "mira@a.example"), "other-key")).await).await);
+    refused(w.session(w.callback(&s, &sign(&w.claims(&s, "g-2", "mira@a.example"), "other-key")).await).await);
     let s = w.start("/").await;
     let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let none = format!(
@@ -333,16 +391,16 @@ async fn forged_or_mismatched_id_tokens_are_refused() {
         b64.encode(r#"{"alg":"none","kid":"test-key-1"}"#),
         b64.encode(w.claims(&s, "g-2", "mira@a.example").to_string())
     );
-    refused(session(w.callback(&s, &none).await).await);
+    refused(w.session(w.callback(&s, &none).await).await);
 
     // A callback without the browser's cookie, or with another sign-in's, is refused.
     let s = w.start("/").await;
     let other = w.start("/").await;
     let good = sign(&w.claims(&s, "g-2", "mira@a.example"), "test-key-1");
     let forged = Started { cookie: other.cookie.clone(), ..s };
-    refused(session(w.callback(&forged, &good).await).await);
+    refused(w.session(w.callback(&forged, &good).await).await);
     let none = Started { cookie: "x=y".into(), ..other };
-    refused(session(w.callback(&none, &good).await).await);
+    refused(w.session(w.callback(&none, &good).await).await);
     assert!(w.registry.identity_login("mock", "g-2").unwrap().is_none(), "nothing was created");
 
     // Only same-site paths are followed after signing in.
@@ -449,9 +507,9 @@ async fn email_links_are_single_use_and_do_not_reveal_who_can_sign_in() {
         assert!(r.text().await.unwrap().contains("method=post"));
     }
     let verify = || w.http.post(format!("{}/login/email/verify", w.login)).form(&[("token", token.as_str())]).send();
-    let session_token = session(verify().await.unwrap()).await.unwrap();
+    let session_token = w.session(verify().await.unwrap()).await.unwrap();
     assert_eq!(w.viewer(&session_token).await.unwrap(), "mira");
-    assert_eq!(session(verify().await.unwrap()).await, Err(400), "a link works once");
+    assert_eq!(w.session(verify().await.unwrap()).await, Err(400), "a link works once");
     assert_eq!(w.registry.identity_login("email", "mira@a.example").unwrap().as_deref(), Some("mira"));
 
     // Too many requests from one address are turned away.
@@ -469,4 +527,211 @@ async fn providers_are_listed_for_the_console() {
     assert_eq!(r.headers()["cache-control"], "no-store");
     let v: Value = r.json().await.unwrap();
     assert_eq!(v, json!({ "providers": [{ "id": "mock", "name": "mock", "url": "/login/oidc/mock" }], "email": true }));
+}
+
+fn authed<T>(token: &str, msg: T) -> tonic::Request<T> {
+    let mut req = tonic::Request::new(msg);
+    req.metadata_mut().insert("authorization", format!("Bearer {token}").parse().unwrap());
+    req
+}
+
+impl World {
+    /// Signs in through the issuer as `sub`, going on to `next`: the page that follows.
+    async fn oidc_to(&self, next: &str, sub: &str, email: &str) -> reqwest::Response {
+        let encoded: String = url::form_urlencoded::byte_serialize(next.as_bytes()).collect();
+        let s = self.start(&encoded).await;
+        self.callback(&s, &sign(&self.claims(&s, sub, email), "test-key-1")).await
+    }
+
+    async fn device_code(&self) -> Value {
+        let r = self
+            .http
+            .post(format!("{}/login/device/code", self.login))
+            .header("user-agent", "pando/test <b>")
+            .form(&[("client_id", "pando-cli"), ("host", "laptop")])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        r.json().await.unwrap()
+    }
+
+    /// The CLI polling: the token, or the OAuth error.
+    async fn poll(&self, device_code: &str) -> Result<String, String> {
+        let r = self
+            .http
+            .post(format!("{}/login/device/token", self.login))
+            .form(&[("grant_type", "urn:ietf:params:oauth:grant-type:device_code"), ("device_code", device_code)])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.headers()["cache-control"], "no-store");
+        let v: Value = r.json().await.unwrap();
+        match v["access_token"].as_str() {
+            Some(t) => Ok(t.to_owned()),
+            None => Err(v["error"].as_str().unwrap().to_owned()),
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_cli_signs_in_with_a_code_approved_in_the_browser() {
+    let w = world().await;
+    let d = w.device_code().await;
+    let code = d["device_code"].as_str().unwrap().to_owned();
+    let uc = d["user_code"].as_str().unwrap().to_owned();
+    assert_eq!(d["verification_uri"], format!("{}/login/device", w.login));
+    assert_eq!(d["verification_uri_complete"], format!("{}/login/device?user_code={uc}", w.login));
+    assert_eq!((d["interval"].as_i64(), d["expires_in"].as_i64()), (Some(5), Some(600)));
+    assert!(uc.len() == 9 && uc.as_bytes()[4] == b'-', "{uc}");
+
+    assert_eq!(w.poll(&code).await, Err("authorization_pending".into()));
+    assert_eq!(w.poll(&code).await, Err("slow_down".into()), "polled too soon");
+
+    // The code page offers the ways to sign in, coming back to approve; typing is forgiving.
+    let r = w.http.get(format!("{}/login/device?user_code={}", w.login, uc.to_lowercase())).send().await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["x-frame-options"], "DENY");
+    let html = r.text().await.unwrap();
+    assert!(html.contains("/login/oidc/mock?next=%2Flogin%2Fdevice%3Fuser_code%3D"), "{html}");
+    let r = w.http.get(format!("{}/login/device?user_code=BCDF-GHJK", w.login)).send().await.unwrap();
+    assert_eq!(r.status(), 400, "an unknown code");
+
+    // Sign in (a first sign-in: terms), then approve.
+    let next = format!("/login/device?user_code={uc}");
+    let r = w.oidc_to(&next, "g-1", "mira@a.example").await;
+    let approve = w.confirm(r, &[("accept", "yes")]).await;
+    assert_eq!(approve.status(), 200);
+    let headers = approve.headers().clone();
+    let html = approve.text().await.unwrap();
+    assert!(
+        html.contains("from <strong>pando/test &lt;b&gt;</strong> on <strong>laptop</strong> as <strong>mira</strong>"),
+        "{html}"
+    );
+    let grant = html.split("name=grant value=\"").nth(1).unwrap()[..64].to_owned();
+    let cookie =
+        headers.get_all("set-cookie").iter().map(|v| v.to_str().unwrap()).find(|c| c.starts_with("pando_confirm="));
+    let cookie = cookie.unwrap().split(';').next().unwrap().to_owned();
+    let post = || {
+        w.http
+            .post(format!("{}/login/confirm", w.login))
+            .header("cookie", &cookie)
+            .form(&[("grant", grant.as_str()), ("decision", "approve")])
+            .send()
+    };
+    assert_eq!(post().await.unwrap().status(), 200);
+    assert_eq!(post().await.unwrap().status(), 400, "the page works once");
+
+    let token = w.poll(&code).await.unwrap();
+    assert_eq!(w.viewer(&token).await.unwrap(), "mira");
+    let t = w.registry.tokens("mira").unwrap().into_iter().find(|t| t.name == "cli on laptop").unwrap();
+    assert_eq!(t.max_role, pando_proto::Role::Admin);
+    assert!((t.expires_at_ms - now_ms() - 90 * 86_400_000).abs() < 60_000);
+    assert_eq!(w.poll(&code).await, Err("invalid_grant".into()), "the token is handed out once");
+
+    // Denied in the browser (mira has an account now: straight to the approve page).
+    let d = w.device_code().await;
+    let next = format!("/login/device?user_code={}", d["user_code"].as_str().unwrap());
+    let r = w.oidc_to(&next, "g-1", "mira@a.example").await;
+    let r = w.confirm(r, &[("decision", "deny")]).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(w.poll(d["device_code"].as_str().unwrap()).await, Err("access_denied".into()));
+    assert_eq!(w.poll("not-a-code").await, Err("invalid_grant".into()));
+
+    let r = w.http.post(format!("{}/login/device/token", w.login)).form(&[("grant_type", "password")]).send();
+    let v: Value = r.await.unwrap().json().await.unwrap();
+    assert_eq!(v["error"], "unsupported_grant_type");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn invitations_bring_people_into_an_organisation_once() {
+    let w = world_with(true).await;
+    let mira = w.oidc("g-1", "mira@a.example", |_| {}).await.unwrap();
+    let dev = w.oidc("g-2", "dev@corp.example", |_| {}).await.unwrap();
+    let mut p = PlatformClient::connect(w.grpc.clone()).await.unwrap();
+    let org = |login: &str| pando_proto::CreateOrganizationRequest { login: login.into(), ..Default::default() };
+    p.create_organization(authed(&mira, org("acme"))).await.unwrap();
+    let member = pando_proto::SetMemberRequest { org: "acme".into(), login: "dev".into(), role: Role::Read as i32 };
+    p.set_member(authed(&mira, member)).await.unwrap();
+    let invite = |email: &str| pando_proto::CreateInvitationRequest {
+        org: "acme".into(),
+        email: email.into(),
+        role: Role::Write as i32,
+    };
+
+    // Only administrators invite; addresses are checked.
+    let e = p.create_invitation(authed(&dev, invite("eve@else.example"))).await.unwrap_err();
+    assert_eq!(e.code(), tonic::Code::PermissionDenied);
+    let e = p.create_invitation(authed(&mira, invite("not an address"))).await.unwrap_err();
+    assert_eq!(e.code(), tonic::Code::InvalidArgument);
+
+    // Invited by email (someone not on the waitlist, with no account yet).
+    let made = p.create_invitation(authed(&mira, invite(" Eve@Else.example "))).await.unwrap().into_inner();
+    assert!(made.emailed);
+    let inv = made.invitation.unwrap();
+    assert_eq!(
+        (inv.email.as_str(), inv.role, inv.invited_by.as_str()),
+        ("eve@else.example", Role::Write as i32, "mira")
+    );
+    let token = made.link.rsplit('/').next().unwrap().to_owned();
+    assert_eq!(made.link, format!("{}/login/invite/{token}", w.login));
+    let mail = w.wait_for_mail(1).await;
+    let body = mail.last().unwrap().replace("=\n", "").replace("=3D", "=");
+    assert!(body.contains("To: eve@else.example") && body.contains(&token), "{body}");
+    let listed = p.list_invitations(authed(&mira, OrgName { login: "acme".into() })).await.unwrap().into_inner();
+    assert_eq!(listed.invitations.len(), 1);
+
+    let r = w.http.get(&made.link).send().await.unwrap();
+    assert_eq!(r.status(), 200);
+    let html = r.text().await.unwrap();
+    assert!(html.contains("Join acme") && html.contains("eve@else.example") && html.contains("as write"), "{html}");
+
+    // Accepted by whoever has the link, signing in with another address (shown, not enforced).
+    let next = format!("/login/invite/{token}");
+    let r = w.oidc_to(&next, "g-9", "zed@other.example").await;
+    let join = w.confirm(r, &[("accept", "yes")]).await;
+    assert_eq!(join.status(), 200);
+    let headers = join.headers().clone();
+    let html = join.text().await.unwrap();
+    assert!(html.contains("You are signed in as <strong>zed</strong>"), "{html}");
+    let grant = html.split("name=grant value=\"").nth(1).unwrap()[..64].to_owned();
+    let cookie =
+        headers.get_all("set-cookie").iter().map(|v| v.to_str().unwrap()).find(|c| c.starts_with("pando_confirm="));
+    let cookie = cookie.unwrap().split(';').next().unwrap().to_owned();
+    let post = || {
+        w.http
+            .post(format!("{}/login/confirm", w.login))
+            .header("cookie", &cookie)
+            .form(&[("grant", grant.as_str())])
+            .send()
+    };
+    let session = w.session(post().await.unwrap()).await.unwrap();
+    assert_eq!(w.viewer(&session).await.unwrap(), "zed");
+    assert!(w.registry.members("acme").unwrap().contains(&("zed".into(), Role::Write)));
+    assert!(w.registry.accepted_terms_at("zed").unwrap() > 0);
+
+    // Used up: the page, the link and a second account all refuse it.
+    assert_eq!(post().await.unwrap().status(), 400);
+    assert_eq!(w.http.get(&made.link).send().await.unwrap().status(), 400);
+    let r = w.oidc_to(&next, "g-10", "late@other.example").await;
+    assert_eq!(r.status(), 403, "no invitation, not on the waitlist");
+    let listed = p.list_invitations(authed(&mira, OrgName { login: "acme".into() })).await.unwrap().into_inner();
+    assert!(listed.invitations.is_empty());
+
+    // Withdrawn invitations stop working.
+    let made = p.create_invitation(authed(&mira, invite("sam@else.example"))).await.unwrap().into_inner();
+    let id = made.invitation.unwrap().id;
+    let gone = || pando_proto::InvitationRef { org: "acme".into(), id: id.clone() };
+    assert_eq!(p.revoke_invitation(authed(&dev, gone())).await.unwrap_err().code(), tonic::Code::PermissionDenied);
+    p.revoke_invitation(authed(&mira, gone())).await.unwrap();
+    assert_eq!(p.revoke_invitation(authed(&mira, gone())).await.unwrap_err().code(), tonic::Code::NotFound);
+    assert_eq!(w.http.get(&made.link).send().await.unwrap().status(), 400);
+
+    // A member can't be invited into a role over their own.
+    let made = p.create_invitation(authed(&mira, invite("dev@corp.example"))).await.unwrap().into_inner();
+    let r =
+        w.oidc_to(&format!("/login/invite/{}", made.link.rsplit('/').next().unwrap()), "g-2", "dev@corp.example").await;
+    let r = w.confirm(r, &[]).await;
+    assert_eq!(r.status(), 409, "already a member");
+    assert!(w.registry.members("acme").unwrap().contains(&("dev".into(), Role::Read)));
 }

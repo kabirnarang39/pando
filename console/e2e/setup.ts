@@ -13,6 +13,9 @@ export const SERVER = `http://127.0.0.1:${PORT}`;
 /** A second server that hosts many repositories (platform phase 1). */
 export const HOSTING_PORT = 7613;
 export const HOSTING = `http://127.0.0.1:${HOSTING_PORT}`;
+/** A third server with no organisations yet, for setting one up from scratch. */
+export const FRESH_PORT = 7615;
+export const FRESH = `http://127.0.0.1:${FRESH_PORT}`;
 
 function git(cwd: string, ...args: string[]) {
   execFileSync("git", ["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" });
@@ -92,8 +95,23 @@ export default async function setup() {
     throw e;
   }
 
+  const fresh = spawn(
+    join(bin, "pandod"),
+    ["server", "--listen", `127.0.0.1:${FRESH_PORT}`, "--metadata", "memory", "--platform", `sqlite://${join(dir, "fresh.db")}`, "--repos-metadata", `sqlite://${join(dir, "fresh-repos")}/{repo}.db`, "--platform-admins", "anonymous", "--web-origins", "http://127.0.0.1:4173"],
+    { stdio: ["ignore", "ignore", "inherit"] },
+  );
+  try {
+    await up(FRESH_PORT);
+  } catch (e) {
+    server.kill();
+    hosting.kill();
+    fresh.kill();
+    throw e;
+  }
+
   return () => {
     server.kill();
     hosting.kill();
+    fresh.kill();
   };
 }

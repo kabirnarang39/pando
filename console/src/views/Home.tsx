@@ -22,6 +22,8 @@ export function HomeView() {
   const lands = repos.data?.reduce((s, r) => s + r.lands24h, 0) ?? 0;
   // A server that hosts one repository has nothing else to show: go straight to it.
   if (viewer.data && !viewer.data.platform) return <Navigate to="/$owner/$repo" params={{ owner: SINGLE.owner, repo: SINGLE.name }} replace />;
+  // Signed in, but in no organisation yet: start setting one up.
+  if (viewer.data?.platform && viewer.data.organizations.length === 0 && repos.data?.length === 0) return <Navigate to="/welcome" replace />;
 
   // Appear once, complete: panels filling in one by one push each other around on phones.
   if (!inbox.data || !repos.data || caps.isPending)

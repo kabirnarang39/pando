@@ -1,6 +1,7 @@
 mod admin;
 mod cr;
 mod issue;
+mod login;
 mod migrate;
 
 use std::io::Write;
@@ -25,7 +26,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
     propagate_version = true
 )]
 struct Cli {
-    /// Bearer token for the server ($PANDO_TOKEN).
+    /// Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved.
     #[arg(long, global = true, env = "PANDO_TOKEN", hide_env_values = true)]
     token: Option<String>,
     #[command(subcommand)]
@@ -183,6 +184,15 @@ enum Cmd {
         #[arg(long = "allowed-host")]
         allowed_hosts: Vec<String>,
     },
+    /// Sign in to a server from the browser; the token is saved in ~/.config/pando/credentials.json.
+    Login {
+        /// The server, e.g. https://pando.example.com; default $PANDO_SERVER or the workspace's.
+        server: Option<String>,
+    },
+    /// Revoke the token `pando login` saved for a server, and forget it.
+    Logout { server: Option<String> },
+    /// Show who you are signed in as.
+    Whoami { server: Option<String> },
     /// Create and list repositories on a server that hosts many (`pandod server --platform`).
     Repo {
         #[command(subcommand)]
@@ -759,6 +769,9 @@ async fn run() -> Result<()> {
             drop(stdout);
             pando::mcp::SapMcp::new(remote, ws.map(|w| w.root)).serve_stdio().await?;
         }
+        Cmd::Login { server } => login::login(&server_for(server)?).await?,
+        Cmd::Logout { server } => login::logout(&server_for(server)?).await?,
+        Cmd::Whoami { server } => login::whoami(&server_for(server)?, token).await?,
         Cmd::Org { server, action } => admin::org(platform_client(server, token)?, action).await?,
         Cmd::Team { server, action } => admin::team(platform_client(server, token)?, action).await?,
         Cmd::Cr { server, action } => cr::cr(review_target(server, token)?, action).await?,

@@ -10,9 +10,15 @@
 //! * Email: a single-use link, valid 15 minutes, stored as a BLAKE3 hash. Opening it shows a
 //!   button, so mail scanners that fetch links don't use it up. Requests answer the same
 //!   whether or not the address may sign in.
-//! * A first sign-in creates a person's account if the signup policy allows; an identity is
-//!   never linked to an existing account by matching email.
+//! * A first sign-in creates a person's account if the signup policy allows, once they confirm
+//!   they are 18 or older and accept the terms; an identity is never linked to an existing
+//!   account by matching email.
+//! * The CLI signs in with the device flow (RFC 8628, [`device`]); invitations to an
+//!   organisation are accepted here too ([`invite`]). Both, and the terms, end on a page with a
+//!   button; its form carries a secret that must match an HttpOnly, SameSite=Strict cookie.
 
+mod device;
+mod invite;
 mod store;
 
 use std::net::SocketAddr;
@@ -24,7 +30,7 @@ use axum::Router;
 use axum::extract::{ConnectInfo, Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use base64::Engine as _;
 use lettre::message::Mailbox;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
@@ -36,12 +42,15 @@ use crate::directory::TokenRec;
 use crate::hosting::{Registry, now_ms};
 use crate::oidc::{OidcAuthenticator, OidcConfig};
 
+pub(crate) use invite::create_invitation;
 pub(crate) use store::SCHEMA;
 
 const SESSION_DAYS: i64 = 30;
 const STATE_TTL_MS: i64 = 10 * 60_000;
 const EMAIL_TTL_MS: i64 = 15 * 60_000;
 const COOKIE: &str = "pando_login";
+/// The cookie that ties a confirmation page to the browser it was shown in.
+const CONFIRM_COOKIE: &str = "pando_confirm";
 const CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'";
 const TURNSTILE: &str = "https://challenges.cloudflare.com";
 
@@ -68,6 +77,9 @@ pub struct Settings {
     pub signup: Signup,
     /// Logins sign-in never hands out (the site administrators).
     pub reserved: Vec<String>,
+    /// Linked from the box people tick before an account is made.
+    pub terms_url: Option<String>,
+    pub privacy_url: Option<String>,
 }
 
 /// A secret from the environment: `NAME`, or the contents of the file `NAME_FILE`.
@@ -99,6 +111,22 @@ struct Mailer {
     from: Mailbox,
 }
 
+/// What a confirmation page's button goes on to do.
+#[derive(Clone)]
+enum Pending {
+    /// Create an account for a first sign-in, once the terms are accepted.
+    Signup { provider: String, subject: String, email: String },
+    /// `login` has signed in and is approving a CLI sign-in or accepting an invitation.
+    SignedIn { login: String },
+}
+
+#[derive(Clone)]
+struct Grant {
+    pending: Pending,
+    next: String,
+    expires: Instant,
+}
+
 /// Simple token buckets: `burst` requests, refilled evenly over `per`.
 // ponytail: per-process and not atomic between get and insert; a shared store if pandod scales out.
 struct Buckets(quick_cache::sync::Cache<String, (Instant, f64)>);
@@ -123,8 +151,12 @@ pub struct Login {
     turnstile: Option<(String, String)>,
     signup: Signup,
     reserved: Vec<String>,
+    terms_url: Option<String>,
+    privacy_url: Option<String>,
     http: reqwest::Client,
     buckets: Buckets,
+    // ponytail: in memory, so a restart drops pages already shown (people sign in again).
+    grants: quick_cache::sync::Cache<[u8; 32], Grant>,
 }
 
 impl Login {
@@ -181,6 +213,10 @@ impl Login {
             (None, None) => None,
             _ => bail!("Turnstile needs both --turnstile-site-key and PANDO_TURNSTILE_SECRET"),
         };
+        for u in [&s.terms_url, &s.privacy_url].into_iter().flatten() {
+            let ok = reqwest::Url::parse(u).is_ok_and(|u| matches!(u.scheme(), "https" | "http"));
+            anyhow::ensure!(ok, "--terms-url and --privacy-url must be http(s) URLs, not `{u}`");
+        }
         if providers.is_empty() && mailer.is_none() {
             bail!("--login-listen needs a way to sign in: --oidc, or --smtp-url and --mail-from");
         }
@@ -193,11 +229,14 @@ impl Login {
             turnstile,
             signup: s.signup,
             reserved: s.reserved,
+            terms_url: s.terms_url,
+            privacy_url: s.privacy_url,
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             buckets: Buckets(quick_cache::sync::Cache::new(100_000)),
+            grants: quick_cache::sync::Cache::new(100_000),
         })
     }
 
@@ -227,8 +266,14 @@ impl Login {
             .await
     }
 
-    /// Whether a new account may be created for `email`.
-    fn may_sign_up(&self, email: &str) -> anyhow::Result<bool> {
+    /// Whether a new account may be created for `email`, signing in to go on to `next`: an
+    /// invitation that can still be accepted lets anyone in.
+    fn may_sign_up(&self, email: &str, next: &str) -> anyhow::Result<bool> {
+        if let Some(token) = invite::token_in(next)
+            && self.registry.invitation(hash(token).as_bytes())?.is_some()
+        {
+            return Ok(true);
+        }
         Ok(match self.signup {
             Signup::Open => true,
             Signup::Closed => false,
@@ -236,42 +281,56 @@ impl Login {
         })
     }
 
-    /// Signs `subject` in (creating the account if allowed) and sends the browser on with a
-    /// fresh session token.
+    /// Someone proved they are `subject` at `provider`: sign them in, or, the first time, ask
+    /// them to accept the terms before their account is made.
     fn finish(&self, provider: &str, subject: &str, email: Option<&str>, next: &str) -> Response {
-        let login = match self.registry.identity_login(provider, subject) {
-            Ok(Some(login)) => login,
+        match self.registry.identity_login(provider, subject) {
+            Ok(Some(login)) => self.signed_in(&login, provider, next),
             Ok(None) => {
                 let Some(email) = email else {
                     return fail(StatusCode::FORBIDDEN, "Your account needs a verified email address to sign up here.");
                 };
-                match self.may_sign_up(email) {
-                    Ok(true) => match self.registry.create_person(provider, subject, email, &self.reserved) {
-                        Ok(login) => {
-                            tracing::info!(target: crate::telemetry::AUDIT, kind = "sign_up", principal = %login, target = provider);
-                            login
-                        }
-                        Err(e) => return broken(e),
-                    },
-                    Ok(false) => {
-                        return fail(
-                            StatusCode::FORBIDDEN,
-                            &format!(
-                                "{email} can't create an account on this server yet. Ask its administrators for an invitation."
-                            ),
-                        );
+                match self.may_sign_up(email, next) {
+                    Ok(true) => {
+                        let pending = Pending::Signup {
+                            provider: provider.to_owned(),
+                            subject: subject.to_owned(),
+                            email: email.to_owned(),
+                        };
+                        self.terms_page(pending, next, None)
                     }
-                    Err(e) => return broken(e),
+                    Ok(false) => fail(
+                        StatusCode::FORBIDDEN,
+                        &format!(
+                            "{email} can't create an account on this server yet. Ask its administrators for an invitation."
+                        ),
+                    ),
+                    Err(e) => broken(e),
                 }
             }
-            Err(e) => return broken(e),
-        };
+            Err(e) => broken(e),
+        }
+    }
+
+    /// `login` is signed in: go on to what they came for.
+    fn signed_in(&self, login: &str, how: &str, next: &str) -> Response {
+        if let Some(code) = device::code_in(next) {
+            return device::approve_page(self, login, code, next);
+        }
+        if let Some(token) = invite::token_in(next) {
+            return invite::join_page(self, login, token, next);
+        }
+        self.session(login, how, next)
+    }
+
+    /// Sends the browser on to the console with a fresh session token.
+    fn session(&self, login: &str, how: &str, next: &str) -> Response {
         let now = now_ms();
         let made = self.registry.create_token(TokenRec {
             id: String::new(),
-            account: login.clone(),
+            account: login.to_owned(),
             name: "browser session".into(),
-            acts_as: login.clone(),
+            acts_as: login.to_owned(),
             repositories: vec![],
             max_role: pando_proto::Role::Admin,
             created_at_ms: now,
@@ -280,11 +339,87 @@ impl Login {
         });
         match made {
             Ok((t, secret)) => {
-                tracing::info!(target: crate::telemetry::AUDIT, kind = "sign_in", principal = %login, target = %format!("{provider} token {}", t.id));
+                tracing::info!(target: crate::telemetry::AUDIT, kind = "sign_in", principal = %login, target = %format!("{how} token {}", t.id));
                 redirect(&format!("{}{next}#pando_session={secret}", self.public_url))
             }
             Err(e) => broken(e),
         }
+    }
+
+    /// A page whose one form goes on with `pending` when posted from this browser.
+    fn confirm_page(&self, status: StatusCode, pending: Pending, next: &str, title: &str, body: &str) -> Response {
+        let Ok(secret) = random_hex() else { return broken("no randomness") };
+        let grant = Grant {
+            pending,
+            next: next.to_owned(),
+            expires: Instant::now() + Duration::from_millis(STATE_TTL_MS as u64),
+        };
+        self.grants.insert(*hash(&secret).as_bytes(), grant);
+        let form = format!(
+            "<form method=post action=\"/login/confirm\"><input type=hidden name=grant value=\"{secret}\">{body}</form>"
+        );
+        let mut r = page(status, title, &form);
+        let secure = if self.secure_cookie { "; Secure" } else { "" };
+        let cookie = format!("{CONFIRM_COOKIE}={secret}; Path=/login; Max-Age=600; HttpOnly; SameSite=Strict{secure}");
+        if let Ok(v) = HeaderValue::from_str(&cookie) {
+            r.headers_mut().append(header::SET_COOKIE, v);
+        }
+        r
+    }
+
+    /// Asks a person signing in for the first time to confirm their age and accept the terms.
+    fn terms_page(&self, pending: Pending, next: &str, problem: Option<&str>) -> Response {
+        let Pending::Signup { email, .. } = &pending else { return broken("terms page without a sign-up") };
+        let link = |url: &Option<String>, text: &str| match url {
+            Some(u) => format!("<a href=\"{}\" target=_blank rel=noopener>{text}</a>", esc(u)),
+            None => text.to_owned(),
+        };
+        let body = format!(
+            "<p>This creates a Pando account for {}.</p>{}\
+             <label class=check><input type=checkbox name=accept value=yes required> \
+             I am 18 or older and accept the {} and {}</label><button>Create my account</button>",
+            esc(email),
+            problem.map(|p| format!("<p role=alert><strong>{}</strong></p>", esc(p))).unwrap_or_default(),
+            link(&self.terms_url, "Terms"),
+            link(&self.privacy_url, "Privacy Policy"),
+        );
+        let status = if problem.is_some() { StatusCode::BAD_REQUEST } else { StatusCode::OK };
+        self.confirm_page(status, pending, next, "Create your account", &body)
+    }
+
+    /// The sign-in choices (each provider, and email), returning to `next`.
+    fn sign_in_page(&self, title: &str, intro: &str, next: &str) -> Response {
+        let back: String = url::form_urlencoded::byte_serialize(next.as_bytes()).collect();
+        let mut body = intro.to_owned();
+        for p in &self.providers {
+            body.push_str(&format!(
+                "<p><a class=button href=\"/login/oidc/{}?next={back}\">Continue with {}</a></p>",
+                esc(&p.id),
+                esc(&p.name)
+            ));
+        }
+        if self.mailer.is_some() {
+            let widget = match &self.turnstile {
+                Some((key, _)) => format!(
+                    "<script src=\"{TURNSTILE}/turnstile/v0/api.js\" async defer></script><div class=\"cf-turnstile\" data-sitekey=\"{}\"></div>",
+                    esc(key)
+                ),
+                None => String::new(),
+            };
+            body.push_str(&format!(
+                "<form method=post action=\"/login/email\"><label>Email address<input type=email name=email required autocomplete=email></label>\
+                 <input type=hidden name=next value=\"{}\">{widget}<button>Send me a sign-in link</button></form>",
+                esc(next)
+            ));
+        }
+        let mut r = page(StatusCode::OK, title, &body);
+        if self.turnstile.is_some() && self.mailer.is_some() {
+            let csp = format!("{CSP}; script-src {TURNSTILE}; frame-src {TURNSTILE}; connect-src {TURNSTILE}");
+            if let Ok(v) = HeaderValue::from_str(&csp) {
+                r.headers_mut().insert(header::CONTENT_SECURITY_POLICY, v);
+            }
+        }
+        r
     }
 }
 
@@ -301,7 +436,7 @@ fn safe_next(next: Option<&str>) -> Option<String> {
 }
 
 /// A lowercased email address, if `s` looks like one.
-fn normal_email(s: &str) -> Option<String> {
+pub(crate) fn normal_email(s: &str) -> Option<String> {
     let e = s.trim().to_ascii_lowercase();
     let (local, domain) = e.split_once('@')?;
     let ok = !local.is_empty()
@@ -341,7 +476,9 @@ fn page(status: StatusCode, title: &str, body: &str) -> Response {
     let html = format!(
         "<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">\
          <title>{t}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem}}\
-         input,button{{font:inherit;padding:.5rem;margin:.25rem 0;width:100%;box-sizing:border-box}}</style>\
+         input,button,.button{{font:inherit;padding:.5rem;margin:.25rem 0;width:100%;box-sizing:border-box}}\
+         .button{{display:block;text-align:center;border:1px solid;border-radius:4px;text-decoration:none}}\
+         .check{{display:flex;gap:.5rem;align-items:flex-start;margin:1rem 0}}.check input{{width:auto}}</style>\
          <main><h1>{t}</h1>{body}</main>",
         t = esc(title)
     );
@@ -383,6 +520,11 @@ pub fn router(login: Arc<Login>) -> Router {
         .route("/login/oidc/{id}/callback", get(oidc_callback))
         .route("/login/email", get(email_form).post(email_request))
         .route("/login/email/verify", get(email_confirm).post(email_verify))
+        .route("/login/confirm", post(confirm))
+        .route("/login/device", get(device::enter))
+        .route("/login/device/code", post(device::code))
+        .route("/login/device/token", post(device::token))
+        .route("/login/invite/{token}", get(invite::page))
         .layer(axum::middleware::map_response(harden))
         .with_state(login)
 }
@@ -482,7 +624,7 @@ async fn oidc_callback(
     let secure = if l.secure_cookie { "; Secure" } else { "" };
     if let Ok(v) = HeaderValue::from_str(&format!("{COOKIE}=; Path=/login; Max-Age=0; HttpOnly; SameSite=Lax{secure}"))
     {
-        r.headers_mut().insert(header::SET_COOKIE, v);
+        r.headers_mut().append(header::SET_COOKIE, v);
     }
     r
 }
@@ -563,29 +705,7 @@ async fn email_form(State(l): State<Arc<Login>>, Query(q): Query<NextQuery>) -> 
     if l.mailer.is_none() {
         return fail(StatusCode::NOT_FOUND, "Email sign-in is not set up on this server.");
     }
-    let next = esc(&safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()));
-    let widget = match &l.turnstile {
-        Some((key, _)) => format!(
-            "<script src=\"{TURNSTILE}/turnstile/v0/api.js\" async defer></script><div class=\"cf-turnstile\" data-sitekey=\"{}\"></div>",
-            esc(key)
-        ),
-        None => String::new(),
-    };
-    let mut r = page(
-        StatusCode::OK,
-        "Sign in with email",
-        &format!(
-            "<form method=post action=\"/login/email\"><label>Email address<input type=email name=email required autocomplete=email></label>\
-             <input type=hidden name=next value=\"{next}\">{widget}<button>Send me a sign-in link</button></form>"
-        ),
-    );
-    if l.turnstile.is_some() {
-        let csp = format!("{CSP}; script-src {TURNSTILE}; frame-src {TURNSTILE}; connect-src {TURNSTILE}");
-        if let Ok(v) = HeaderValue::from_str(&csp) {
-            r.headers_mut().insert(header::CONTENT_SECURITY_POLICY, v);
-        }
-    }
-    r
+    l.sign_in_page("Sign in", "", &safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()))
 }
 
 #[derive(Deserialize)]
@@ -663,7 +783,7 @@ async fn send_link(l: &Login, email: &str, next: &str) -> anyhow::Result<()> {
         return Ok(());
     }
     let known = l.registry.identity_login("email", email)?.is_some();
-    if !known && !l.may_sign_up(email)? {
+    if !known && !l.may_sign_up(email, next)? {
         return Ok(());
     }
     let Some(m) = &l.mailer else { return Ok(()) };
@@ -709,6 +829,52 @@ async fn email_verify(State(l): State<Arc<Login>>, Form(f): Form<TokenForm>) -> 
         Ok(Some((email, next))) => l.finish("email", &email, Some(&email), &next),
         Ok(None) => fail(StatusCode::BAD_REQUEST, "This link has expired or was already used. Ask for a new one."),
         Err(e) => broken(e),
+    }
+}
+
+#[derive(Deserialize)]
+struct ConfirmForm {
+    grant: Option<String>,
+    accept: Option<String>,
+    decision: Option<String>,
+}
+
+/// The button on a confirmation page: create the account, approve the CLI, or join.
+async fn confirm(State(l): State<Arc<Login>>, headers: HeaderMap, Form(f): Form<ConfirmForm>) -> Response {
+    let secret = f.grant.unwrap_or_default();
+    // Posted from the page this browser was shown (hashes compare in constant time).
+    if cookie(&headers, CONFIRM_COOKIE).map(hash) != Some(hash(&secret)) {
+        return fail(StatusCode::BAD_REQUEST, "This page has expired. Please start again.");
+    }
+    let Some((_, g)) = l.grants.remove(hash(&secret).as_bytes()) else {
+        return fail(StatusCode::BAD_REQUEST, "This page has expired or was already used. Please start again.");
+    };
+    if g.expires < Instant::now() {
+        return fail(StatusCode::BAD_REQUEST, "This page has expired. Please start again.");
+    }
+    match g.pending {
+        Pending::Signup { provider, subject, email } => {
+            if f.accept.as_deref() != Some("yes") {
+                let again = Pending::Signup { provider, subject, email };
+                return l.terms_page(again, &g.next, Some("Please confirm you are 18 or older and accept the terms."));
+            }
+            match l.registry.create_person(&provider, &subject, &email, &l.reserved, now_ms()) {
+                Ok(login) => {
+                    tracing::info!(target: crate::telemetry::AUDIT, kind = "sign_up", principal = %login, target = %provider);
+                    l.signed_in(&login, &provider, &g.next)
+                }
+                Err(e) => broken(e),
+            }
+        }
+        Pending::SignedIn { login } => {
+            if let Some(code) = device::code_in(&g.next) {
+                device::decide(&l, &login, code, f.decision.as_deref() == Some("approve"))
+            } else if let Some(token) = invite::token_in(&g.next) {
+                invite::accept(&l, &login, token)
+            } else {
+                broken("confirmation for nothing")
+            }
+        }
     }
 }
 
