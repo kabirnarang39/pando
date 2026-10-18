@@ -3,7 +3,7 @@ import { Link, Navigate } from "@tanstack/react-router";
 import { ChecksIcon, StateIcon } from "../components/StateIcons";
 import { EventKind } from "../gen/pando_platform_pb";
 import { SINGLE, useCapabilities, useEvents, useInbox, useRepositories, useViewer } from "../platform-data";
-import { ago, Author, Empty, Icon, Skeleton, Time, useNow } from "../ui";
+import { ago, Author, Empty, ErrorState, Icon, Skeleton, Time, useNow } from "../ui";
 
 function greeting(h: number) {
   return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
@@ -25,6 +25,14 @@ export function HomeView() {
   // Signed in, but in no organisation yet: start setting one up.
   if (viewer.data?.platform && viewer.data.organizations.length === 0 && repos.data?.length === 0) return <Navigate to="/welcome" replace />;
 
+  // Expired token, server down: say so, instead of loading forever.
+  const failed = viewer.error ?? repos.error ?? inbox.error;
+  if (failed && (!inbox.data || !repos.data))
+    return (
+      <div className="page">
+        <ErrorState error={failed} title="Your repositories didn't load" retry={() => void Promise.all([viewer.refetch(), repos.refetch(), inbox.refetch()])} />
+      </div>
+    );
   // Appear once, complete: panels filling in one by one push each other around on phones.
   if (!inbox.data || !repos.data || caps.isPending)
     return (
@@ -112,6 +120,16 @@ export function HomeView() {
             </div>
             {repos.isPending ? (
               <Skeleton rows={4} />
+            ) : !repos.data?.length ? (
+              <Empty title="No repositories yet">
+                {viewer.data?.organizations[0] ? (
+                  <>
+                    Create one on <Link to="/$owner" params={{ owner: viewer.data.organizations[0].login }}>{viewer.data.organizations[0].displayName || viewer.data.organizations[0].login}</Link>.
+                  </>
+                ) : (
+                  "Repositories you can read show up here."
+                )}
+              </Empty>
             ) : (
               <div className="table-wrap">
                 <table className="table">
@@ -157,6 +175,8 @@ export function HomeView() {
           </div>
           {events.isPending ? (
             <Skeleton rows={8} />
+          ) : !events.data?.length ? (
+            <Empty title="Nothing has happened yet">Landings, reviews and comments in your repositories show up here.</Empty>
           ) : (
             <div>
               {events.data?.slice(0, 18).map((e) => (

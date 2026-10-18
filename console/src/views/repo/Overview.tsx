@@ -146,7 +146,7 @@ function EmptyRepo() {
         <h2 id="empty-title">This repository is empty</h2>
       </div>
       <div className="panel-body commands">
-        <CopyCommand label="Start on your computer" cmd={`pando clone ${url} ${name}`} note={`Then add files in ${name}/ and run: pando commit -m "First commit" && pando land`} />
+        <CopyCommand label="Start on your computer" cmd={`pando clone ${url} ${name}`} note={`Then add files in ${name}/ and run: pando commit -m "First commit" && pando land. (On a server with sign-in, run pando login first.)`} />
         <CopyCommand label="Bring a git repository" cmd={`pando migrate https://github.com/OWNER/NAME --to ${url}`} note="Full history; from GitHub also open pull requests and issues. Any URL git can clone works." />
       </div>
     </section>

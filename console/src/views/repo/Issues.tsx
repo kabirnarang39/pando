@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { explain } from "../../api/client";
 import { useState } from "react";
 import { IssueStateIcon } from "../../components/IssueParts";
 import { IssueState } from "../../gen/pando_platform_pb";
@@ -129,7 +130,7 @@ function NewIssue({ onDone }: { onDone(): void }) {
       </div>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
-          {(create.error as Error).message}
+          {explain(create.error)}
         </p>
       )}
       <div className="token-form-actions">

@@ -1,9 +1,12 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { explain } from "../api/client";
+import { useState } from "react";
+import { NewRepository } from "../components/NewRepository";
 import { AccountKind, Role } from "../gen/pando_platform_pb";
 import { AddPrincipal, RoleSelect } from "../components/Access";
 import { InvitationList, InviteForm } from "../components/Invitations";
 import { useMembers, useOrganization, useRepositories, useSetMember, useTeams } from "../platform-data";
-import { ago, Author, LoadError, Skeleton, useNow } from "../ui";
+import { ago, Author, Empty, Icon, LoadError, Skeleton, useNow } from "../ui";
 
 const roles: Record<number, string> = { [Role.READ]: "Read", [Role.TRIAGE]: "Triage", [Role.WRITE]: "Write", [Role.MAINTAIN]: "Maintain", [Role.ADMIN]: "Admin" };
 
@@ -18,6 +21,7 @@ export function OrgView() {
   const setMember = useSetMember(owner);
   const now = Math.max(useNow(), Date.now());
   const admin = (org.data?.viewerRole ?? Role.UNSPECIFIED) >= Role.ADMIN;
+  const [creating, setCreating] = useState(false);
   if (org.error) return <LoadError error={org.error} what={`organisation called “${owner}”`} title={`${owner} didn't load`} retry={() => org.refetch()} />;
   const people = members.data?.filter((m) => m.account?.kind === AccountKind.PERSON) ?? [];
   const agents = members.data?.filter((m) => m.account?.kind === AccountKind.AGENT) ?? [];
@@ -39,17 +43,31 @@ export function OrgView() {
           <p>{org.data?.description}</p>
         </div>
       </div>
-      <div className="segmented" role="group" aria-label="Organisation" style={{ marginBottom: 16 }}>
+      <div className="org-bar">
+      <div className="segmented" role="group" aria-label="Organisation">
         {tabs.map(([id, label, n]) => (
           <button key={id} type="button" aria-pressed={tab === id} onClick={() => navigate({ search: { tab: id === "repositories" ? undefined : id }, replace: true })}>
             {label} {n !== undefined && <span className="count">{n}</span>}
           </button>
         ))}
       </div>
+        {tab === "repositories" && admin && !creating && (
+          <button type="button" className="button" data-primary="" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={15} /> New repository
+          </button>
+        )}
+      </div>
       <div className="panel">
+        {tab === "repositories" && creating && <NewRepository org={owner} onCancel={() => setCreating(false)} />}
         {tab === "repositories" &&
           (repos.isPending ? (
             <Skeleton />
+          ) : !repos.data?.length ? (
+            !creating && (
+              <Empty title="No repositories yet">
+                {admin ? "Create one with New repository; it then shows how to clone it or bring in a git repository." : "An administrator of this organisation can create one."}
+              </Empty>
+            )
           ) : (
             <ul className="list">
               {repos.data?.map((r) => (
@@ -63,9 +81,9 @@ export function OrgView() {
                       </div>
                     </div>
                     <div className="row-side">
-                      <span className="num">{r.lands24h} landed today</span>
-                      <span className="num">{r.openChangeRequests} open</span>
-                      <span className="hide-small">{ago(Number(r.tipAtMs), now)}</span>
+                      {r.lands24h > 0 && <span className="num">{r.lands24h} landed today</span>}
+                      {r.openChangeRequests > 0 && <span className="num">{r.openChangeRequests} open</span>}
+                      <span className="hide-small">{Number(r.tipAtMs) ? ago(Number(r.tipAtMs), now) : "Empty"}</span>
                     </div>
                   </Link>
                 </li>
@@ -73,6 +91,7 @@ export function OrgView() {
             </ul>
           ))}
         {(tab === "people" || tab === "agents") && (
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -127,25 +146,23 @@ export function OrgView() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {tab === "people" && admin && (
-          <AddPrincipal
-            label="Login of the person to add"
-            placeholder="Login or email, e.g. mira@lumen.dev"
-            initial={Role.READ}
-            pending={setMember.isPending}
-            error={setMember.error ? (setMember.error as Error).message : null}
-            onAdd={(login, role, done) => setMember.mutate({ login, role }, { onSuccess: done })}
-          />
-        )}
-        {tab === "people" && admin && (
-          <section aria-labelledby="invite-title">
-            <h2 id="invite-title" className="panel-note" style={{ fontSize: "var(--t-md)", margin: 0 }}>
-              Invite by email
-            </h2>
-            <p className="panel-note muted">People without an account yet get a link: they sign in and join {org.data?.displayName ?? owner} with the role you choose.</p>
+          <section aria-labelledby="invite-title" className="org-invite">
+            <h2 id="invite-title">Invite people</h2>
+            <p className="muted">They get an email link: they sign in and join {org.data?.displayName ?? owner} with the role you choose.</p>
             <InviteForm org={owner} />
             <InvitationList org={owner} />
+            <h3>Add someone who already has an account</h3>
+          <AddPrincipal
+            label="Login of the person to add"
+            placeholder="Their login or email, e.g. mira@lumen.dev"
+            initial={Role.READ}
+            pending={setMember.isPending}
+            error={setMember.error ? explain(setMember.error) : null}
+            onAdd={(login, role, done) => setMember.mutate({ login, role }, { onSuccess: done })}
+          />
           </section>
         )}
         {tab === "agents" && <p className="panel-note muted">An agent works with the role of the person it answers to. Issue it a token on the Tokens page; list it here only to give it a role of its own.</p>}

@@ -71,7 +71,7 @@ function SignIn({ origin, providers, onToken }: { origin: string; providers: Pro
             </label>
             <input type="hidden" name="next" value="/" />
             {key && <div ref={widget} className="cf-turnstile" data-sitekey={key} />}
-            <button type="submit" className="button">
+            <button type="submit" className="button" data-primary={providers.providers.length ? undefined : ""}>
               Email me a sign-in link
             </button>
           </form>
@@ -138,10 +138,11 @@ export function ConnectView() {
   return (
     <div className="page page-narrow">
       <div>
-        <h1>Connection</h1>
+        <h1>{providers && !useToken ? "Sign in to Pando" : "Connect to a server"}</h1>
         <p className="lede">
-          The console reads one Pando server. It runs in your browser and talks to the server directly; nothing passes through anyone
-          else.
+          {providers && !useToken
+            ? "Sign in to see your organisations, repositories and agents."
+            : "The console reads one Pando server. It runs in your browser and talks to the server directly; nothing passes through anyone else."}
         </p>
         {suggested && (
           <p className="status" data-kind="ok" role="status">
@@ -151,7 +152,7 @@ export function ConnectView() {
         )}
         <div className="choices">
           <section className="panel panel-body" aria-labelledby="server-title">
-            <h2 id="server-title">{providers && !useToken ? "Sign in" : "Your server"}</h2>
+            <h2 id="server-title">{providers && !useToken ? "Your account" : "Your server"}</h2>
             {providers && !useToken ? (
               <SignIn origin={origin} providers={providers} onToken={() => setUseToken(true)} />
             ) : (
@@ -185,7 +186,7 @@ export function ConnectView() {
                         placeItems: "center",
                         width: 18,
                         height: 18,
-                        border: "1px solid var(--line-strong)",
+                        border: "1px solid var(--ink-3)",
                         borderRadius: 4,
                         background: isSelected ? "var(--accent)" : "var(--raised)",
                         color: "var(--accent-fg)",

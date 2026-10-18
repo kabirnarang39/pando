@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { explain } from "../api/client";
 import { RoleSelect, roleNames } from "../components/Access";
 import { Role } from "../gen/pando_platform_pb";
 import { useCreateToken, useRevokeToken, useTokens } from "../platform-data";
@@ -96,7 +97,7 @@ export function TokensView() {
         )}
         {revoke.error && (
           <p className="status" data-kind="error" role="alert">
-            {(revoke.error as Error).message}
+            {explain(revoke.error)}
           </p>
         )}
       </div>
@@ -153,7 +154,7 @@ function NewToken({ onCancel, onCreated }: { onCancel(): void; onCreated(id: str
       </div>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
-          {(create.error as Error).message}
+          {explain(create.error)}
         </p>
       )}
       <div className="token-form-actions">

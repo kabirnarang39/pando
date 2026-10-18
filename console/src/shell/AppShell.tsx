@@ -33,6 +33,28 @@ export function AppShell() {
   useEffect(() => {
     setDrawer(false);
   }, [location.pathname]);
+  // On a server that has sign-in pages, a first visit starts at sign-in rather than in the demo.
+  // Asked once per tab, so someone who picks the demo stays in it.
+  const { target } = useConnection();
+  useEffect(() => {
+    if (target.kind !== "demo" || pendingServer() || location.pathname === "/connect") return;
+    try {
+      if (sessionStorage.getItem("pando.console.offered")) return;
+      sessionStorage.setItem("pando.console.offered", "1");
+    } catch {
+      return;
+    }
+    fetch("/login/providers", { credentials: "omit" })
+      .then((r) => (r.ok && r.headers.get("content-type")?.includes("json") ? navigate({ to: "/connect", replace: true }) : undefined))
+      .catch(() => undefined);
+  }, [target.kind, location.pathname, navigate]);
+  // The phone drawer closes with Escape, like every other overlay.
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -174,7 +196,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
           <span style={{ minWidth: 0 }}>
             <span className="name">{org.displayName}</span>
             <span className="sub">
-              {org.repositories} repositories, {org.agents} agents
+              {org.repositories} {org.repositories === 1 ? "repository" : "repositories"}, {org.agents} {org.agents === 1 ? "agent" : "agents"}
             </span>
           </span>
         </Link>
@@ -217,7 +239,8 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
             </Link>
           );
         })}
-        {repos.isPending && <div className="side-link muted">Loading…</div>}
+        {repos.isPending && !repos.isError && <div className="side-link muted">Loading…</div>}
+        {repos.isError && <div className="side-link muted">Couldn't load</div>}
       </div>
       <div className="side-foot">
         {/* The menu (and the accessibility library under it) loads after the first screen, or on first use. */}
@@ -248,6 +271,7 @@ const sections: Record<string, string> = {
   code: "Code",
   changes: "Changes",
   reviews: "Reviews",
+  issues: "Issues",
   locks: "Locks",
   agents: "Agents",
   settings: "Settings",
@@ -260,7 +284,7 @@ function TopBar({ onMenu }: { onMenu(): void }) {
   const navigate = useNavigate();
   const section = params.repo ? pathname.split("/")[3] : undefined;
   const single = !!params.owner && !!params.repo && isSingle(`${params.owner}/${params.repo}`);
-  const title = pathname === "/" ? "Home" : pathname === "/inbox" ? "Inbox" : pathname === "/connect" ? "Connection" : pathname.startsWith("/settings") ? "Tokens" : null;
+  const title = pathname === "/" ? "Home" : pathname === "/inbox" ? "Inbox" : pathname === "/connect" ? "Connect" : pathname === "/welcome" ? "Welcome" : pathname.startsWith("/settings") ? "Tokens" : null;
 
   return (
     <header className="topbar">
@@ -286,7 +310,7 @@ function TopBar({ onMenu }: { onMenu(): void }) {
           <>
             <span className="sep">/</span>
             {params.number ? (
-              <Link to="/$owner/$repo/reviews" params={{ owner: params.owner!, repo: params.repo! }}>
+              <Link to={section === "issues" ? "/$owner/$repo/issues" : "/$owner/$repo/reviews"} params={{ owner: params.owner!, repo: params.repo! }}>
                 {sections[section]}
               </Link>
             ) : (

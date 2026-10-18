@@ -720,6 +720,14 @@ textarea.input {
   resize: vertical;
   line-height: 1.5;
 }
+.org-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 .segmented {
   display: inline-flex;
   max-width: 100%;
@@ -1219,6 +1227,8 @@ a.row:hover,
   background: var(--hover);
 }
 .table-wrap {
+  /* Positioned, so screen-reader-only text in a wide table is clipped with it, not the page. */
+  position: relative;
   overflow-x: auto;
 }
 .sort {
@@ -2099,7 +2109,15 @@ del {
   border-color: var(--focus);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
 }
-.field [slot="description"] {
+.stack > .field {
+  margin-bottom: 0;
+}
+.field > span:first-child {
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.field [slot="description"],
+.field .hint {
   color: var(--ink-3);
   font-size: var(--t-xs);
 }
@@ -2929,6 +2947,27 @@ del {
   flex: 1;
   min-width: 200px;
 }
+.stack > .add-principal {
+  padding: 0;
+  border-top: 0;
+}
+.org-invite {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.org-invite h2,
+.org-invite h3,
+.org-invite > p {
+  margin: 0 16px 4px;
+  font-size: var(--t-md);
+}
+.org-invite h3 {
+  margin-top: 16px;
+  font-size: var(--t-sm);
+}
+.org-invite .add-principal {
+  border-top: 0;
+}
 .add-principal .status {
   flex-basis: 100%;
   margin: 0;
@@ -3005,14 +3044,17 @@ del {
   padding: 12px 0 0;
   border-bottom: 0;
 }
-.protection-form fieldset.events {
+fieldset.events {
   display: grid;
   gap: 6px;
   margin: 0;
   padding: 0;
   border: 0;
 }
-.protection-form fieldset.events legend {
+fieldset.events .check {
+  margin-bottom: 0;
+}
+fieldset.events legend {
   margin-bottom: 6px;
   font-size: var(--t-sm);
   font-weight: 600;

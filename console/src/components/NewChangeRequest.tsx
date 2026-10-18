@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { explain } from "../api/client";
 import { useState } from "react";
 import { useConnection } from "../connection";
 import { useRefs } from "../data";
@@ -73,7 +74,7 @@ export function NewChangeRequest({ onCancel }: { onCancel(): void }) {
       </label>
       {create.error && (
         <p className="status" data-kind="error" role="alert">
-          {(create.error as Error).message}
+          {explain(create.error)}
         </p>
       )}
       <div className="token-form-actions">

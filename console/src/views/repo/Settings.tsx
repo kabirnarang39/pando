@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { explain } from "../../api/client";
 import { AddPrincipal, RoleSelect, roleNames } from "../../components/Access";
 import { ProtectionForm } from "../../components/ProtectionForm";
 import { Webhooks } from "../../components/Webhooks";
@@ -132,7 +133,7 @@ export function RepoSettingsView() {
             label="Person, agent or team"
             placeholder="mira, agent/perf-05 or lumen/platform"
             pending={setGrant.isPending}
-            error={setGrant.error ? (setGrant.error as Error).message : null}
+            error={setGrant.error ? explain(setGrant.error) : null}
             onAdd={(principal, role, done) => setGrant.mutate({ principal, role }, { onSuccess: done })}
           />
         )}
