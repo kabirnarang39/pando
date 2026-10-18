@@ -111,7 +111,7 @@ export function ChangesView() {
           ) : live.isPending ? (
             <Skeleton rows={10} />
           ) : live.tip.data === null ? (
-            <Empty title={`Nothing has landed on ${refName} yet`}>Land a change with `pando land`, and it shows up here as it happens.</Empty>
+            <Empty title={`Nothing has landed on ${refName} yet`}>Land a change with <code>pando land</code> and it shows up here as it happens.</Empty>
           ) : (
             <>
               <GridList

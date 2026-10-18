@@ -75,6 +75,8 @@ function hash(s: string) {
 
 /** Agents are named `agent/<role>-<n>` by convention; they get square marks, people round. */
 export function parseAuthor(author: string) {
+  // Imported git history names authors "Name <email>": show the name; the address stays in the tooltip.
+  author = author.replace(/\s*<[^>]*>$/, "") || author;
   const agent = /^(agent|bot)s?\//i.test(author) || /\[bot\]$/.test(author);
   const slash = author.lastIndexOf("/");
   const ns = slash >= 0 ? author.slice(0, slash + 1) : "";
@@ -135,7 +137,7 @@ export function CopyId({ id, label = "Copy id" }: { id: string; label?: string }
 
 export function Skeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading">
+    <div className="skeleton" role="status" aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }, (_, i) => (
         <i key={i} style={{ width: `${55 + ((i * 37) % 40)}%` }} />
       ))}

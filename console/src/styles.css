@@ -99,9 +99,9 @@
     --ink-2: #a0b0c1;
     --ink-3: #8697a9;
     --link: #8cb8e6;
-    --primary: #f0b429;
-    --primary-ink: #14100a;
-    --primary-hover: #f5c450;
+    --primary: #8cb8e6;
+    --primary-ink: #0b141e;
+    --primary-hover: #a9cbee;
     --gold-ink: #f0b429;
     --gold-wash: #2a2210;
     --select: #162a40;
@@ -160,9 +160,9 @@
   --ink-2: #a0b0c1;
   --ink-3: #8697a9;
   --link: #8cb8e6;
-  --primary: #f0b429;
-  --primary-ink: #14100a;
-  --primary-hover: #f5c450;
+  --primary: #8cb8e6;
+  --primary-ink: #0b141e;
+  --primary-hover: #a9cbee;
   --gold-ink: #f0b429;
   --gold-wash: #2a2210;
   --select: #162a40;
@@ -353,7 +353,7 @@ kbd {
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 60%, var(--gold)));
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #8fa89a));
   color: var(--primary-ink);
   font-size: var(--t-2xs);
   font-weight: 750;
@@ -445,8 +445,8 @@ kbd {
   text-align: center;
 }
 .count[data-hot] {
-  background: var(--gold);
-  color: #14100a;
+  background: var(--primary);
+  color: var(--primary-ink);
 }
 .pulse {
   width: 7px;
@@ -557,10 +557,10 @@ kbd {
   gap: 6px;
   height: 26px;
   padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--link) 35%, var(--line));
   border-radius: 13px;
-  background: var(--gold-wash);
-  color: var(--gold-ink);
+  background: var(--select);
+  color: var(--link);
   font-size: var(--t-xs);
   font-weight: 600;
   cursor: pointer;
@@ -722,6 +722,9 @@ textarea.input {
 }
 .segmented {
   display: inline-flex;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -730,6 +733,7 @@ textarea.input {
 .segmented button,
 .segmented a {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   height: 26px;
@@ -928,6 +932,12 @@ textarea.input {
   overflow-x: auto;
   scrollbar-width: none;
 }
+/* On phones the tabs scroll: fade the edges so it shows there is more. */
+@media (max-width: 860px) {
+  .tabs {
+    mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 24px), transparent);
+  }
+}
 .tabs a {
   position: relative;
   display: inline-flex;
@@ -955,7 +965,7 @@ textarea.input {
   left: 10px;
   height: 2px;
   border-radius: 2px;
-  background: var(--gold);
+  background: var(--primary);
 }
 
 /* ---- the fleet timeline: one lane per author, one tick per landing ---- */
@@ -1105,7 +1115,7 @@ a.row:hover,
 }
 .row[data-selected] {
   background: var(--select);
-  box-shadow: inset 2px 0 0 var(--gold);
+  box-shadow: inset 2px 0 0 var(--link);
 }
 .row[data-focus-visible] {
   box-shadow: inset 0 0 0 2px var(--focus);
@@ -1174,6 +1184,10 @@ a.row:hover,
   font-family: var(--mono);
   font-size: var(--t-sm);
   outline: none;
+}
+/* Plain text filters (not a query language) read in the interface face. */
+.query[data-plain] input {
+  font-family: inherit;
 }
 
 /* ---- tables ---- */
@@ -1498,7 +1512,7 @@ a.row:hover,
   background: var(--hover);
 }
 .feed-row[data-selected] {
-  border-left-color: var(--gold);
+  border-left-color: var(--link);
   background: var(--select);
 }
 .feed-row[data-focus-visible] {
@@ -2029,10 +2043,10 @@ del {
   border-radius: 50%;
 }
 .unread[data-on] {
-  background: var(--gold);
+  background: var(--link);
 }
 .reason {
-  color: var(--gold-ink);
+  color: var(--link);
   font-size: var(--t-xs);
   font-weight: 650;
 }
@@ -2144,6 +2158,10 @@ del {
 .state p {
   margin: 0;
   color: var(--ink-2);
+}
+.state p a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .skeleton {
   display: grid;
@@ -2325,7 +2343,7 @@ del {
   height: 6px;
   margin-left: auto;
   border-radius: 50%;
-  background: var(--gold);
+  background: var(--link);
 }
 .menu-sep {
   height: 1px;
@@ -2528,11 +2546,17 @@ del {
   box-shadow: var(--lift);
   outline: none;
 }
-.clone h2 {
+.commands {
+  display: grid;
+  gap: 12px;
+}
+.clone h2,
+.commands h2 {
   margin: 0;
   font-size: var(--t-sm);
 }
-.clone p {
+.clone p,
+.commands p {
   margin: 0;
   color: var(--ink-3);
   font-size: var(--t-xs);
@@ -2550,6 +2574,7 @@ del {
 }
 .cmd code {
   flex: 1;
+  min-width: 0;
   overflow-x: auto;
   white-space: nowrap;
 }
@@ -2935,8 +2960,8 @@ del {
   gap: 10px;
   margin-bottom: 16px;
   padding: 16px;
-  border-color: var(--gold);
-  background: var(--gold-wash);
+  border-color: color-mix(in srgb, var(--link) 40%, var(--line));
+  background: var(--select);
 }
 .token-secret p {
   margin: 0;

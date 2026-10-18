@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button, Dialog, DialogTrigger, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { Trunk } from "../../components/Fleet";
 import { useConnection } from "../../connection";
@@ -9,6 +9,7 @@ import { isSingle, useCapabilities, useRepository } from "../../platform-data";
 import { RepoProvider, useRepo } from "../../repo";
 import { useRefName } from "../../shell/hooks";
 import { ago, Icon, LoadError, useNow, type IconName } from "../../ui";
+import { CopyCommand } from "../../components/CopyCommand";
 
 export function RepoLayout() {
   const { owner, repo } = useParams({ from: "/$owner/$repo" });
@@ -46,8 +47,8 @@ function Layout() {
     show();
     return router.subscribe("onRendered", () => requestAnimationFrame(show));
   });
-  // Pages about one thing (a file, a change, a review, an issue) get the room.
-  const compact = section === "code" || section === "changes" || ((section === "reviews" || section === "issues") && !!pathname.split("/")[4]);
+  // The stats and the timeline belong to the overview; every other tab gets the room.
+  const compact = section !== "";
   const now = useNow();
   const rp = { owner, repo: name };
   const single = isSingle(key);
@@ -175,12 +176,12 @@ function RefPicker({ refName }: { refName: string }) {
 
 function CloneButton() {
   const { name } = useRepo();
-  const { target } = useConnection();
-  const server = target.kind === "server" ? target.url : "https://pando.example.com";
+  const server = useRepoUrl();
   const commands = [
     { label: "Clone", cmd: `pando clone ${server} ${name}`, note: "Fetches one tree, lazily: seconds, even for huge histories." },
     { label: "Mount", cmd: `mkdir ${name} && pando mount ${name} --server ${server}`, note: "Read-only view; files download on first read." },
   ];
+  const { target } = useConnection();
   return (
     <DialogTrigger>
       <Button className="button" data-primary="">
@@ -198,31 +199,10 @@ function CloneButton() {
   );
 }
 
-function CopyCommand({ label, cmd, note }: { label: string; cmd: string; note: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <div style={{ display: "grid", gap: 4 }}>
-      <h2>{label}</h2>
-      <div className="cmd">
-        <code>{cmd}</code>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={`Copy ${label.toLowerCase()} command`}
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(cmd);
-              setDone(true);
-              setTimeout(() => setDone(false), 1400);
-            } catch {
-              // Clipboard refused: the command is selectable text.
-            }
-          }}
-        >
-          <Icon name={done ? "check" : "copy"} size={14} />
-        </button>
-      </div>
-      <p>{note}</p>
-    </div>
-  );
+/** The address the command line uses for this repository: the server's, plus OWNER/NAME on a server that hosts many. */
+export function useRepoUrl() {
+  const { key } = useRepo();
+  const { target } = useConnection();
+  const server = target.kind === "server" ? target.url.replace(/\/+$/, "") : "https://pando.example.com";
+  return isSingle(key) ? server : `${server}/${key}`;
 }

@@ -33,7 +33,7 @@ export function IssuesView() {
             Closed <span className="count">{done.data?.length ?? 0}</span>
           </button>
         </div>
-        <div className="query grow" role="search">
+        <div className="query grow" data-plain="" role="search">
           <Icon name="search" size={15} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by title, assignee or label" aria-label="Filter issues" />
         </div>
