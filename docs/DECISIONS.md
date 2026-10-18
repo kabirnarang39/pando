@@ -499,3 +499,43 @@ added. The organisation cap is counted before the insert, so two creations at th
 exceed it by one. A webhook host that doesn't resolve is refused when saved. Servers that relied on
 the header-less default repository, or on webhooks to private networks, must move the repository
 into the registry or start with `--webhook-allow-private`.
+
+## ADR-033: CLI sign-in, invitations and the terms confirmation
+
+**Decision.** The CLI signs in with the OAuth device flow (RFC 8628) on the sign-in listener:
+`pando login` gets a device code (32 random bytes, stored as a BLAKE3 hash, 10 minutes) and a
+user code from 20 consonants (`BCDF-GHJK`); the person signs in with any provider and approves on
+a server-rendered page; the polling CLI receives a 90-day platform token ("cli on HOST", Admin
+ceiling) once, and the request is deleted. Polling sooner than the interval gets `slow_down`.
+The token is kept in `~/.config/pando/credentials.json` (mode 0600, per server origin) and used
+after `--token` and `PANDO_TOKEN`; `pando logout` revokes it with `RevokeToken`, using the token
+id that `Viewer` now returns. Invitations are rows in `invitations` holding a hashed single-use
+token, valid 7 days, created by organisation administrators and accepted at
+`/login/invite/TOKEN` after signing in; acceptance goes through `directory::add_member`, the same
+path as `SetMember`, so checks on joining (seat limits) apply to both. An invitation lets its
+holder create an account even when the waitlist would not. Finally, a first sign-in no longer
+creates an account at once: the person must confirm they are 18 or older and accept the terms
+(linked from `--terms-url` and `--privacy-url`), and the time is stored on the account.
+
+The three steps that follow a sign-in (accept the terms, approve the CLI, join) are pages with
+one form. The listener keeps no browser session, so the form carries a random secret whose hash
+keys a short-lived, single-use server-side record (who signed in, what comes next), and the
+secret must also arrive in an HttpOnly, `SameSite=Strict` cookie set with the page: another site
+can neither read the secret nor make the browser send the cookie.
+
+**Why.** The device flow needs no local web server or pasted tokens, works over SSH, and reuses
+every sign-in provider. Invitations are what a shared server needs to add someone who has never
+signed in. The link, not the address, is the authority (as in most SaaS): people are often
+invited at one address and sign in with another (a personal Google account, an alias), and a
+link that only works for the invited address breaks that while adding little, since whoever reads
+the mail could sign up with that address anyway. The page shows the invited address so the
+person accepting sees who it was meant for. Legal review asked for an explicit age and terms
+confirmation before any account exists.
+
+**Trade-offs.** A device code can be phished (an attacker sends someone a link to approve the
+attacker's code); the approve page names the client, host and code and says to approve only your
+own. The pending page records live in memory, so a restart loses pages already shown (people sign
+in again). Every sign-in for the CLI or an invitation goes through the provider again, even if
+the browser has a console session. A forwarded invitation lets the forwardee join; administrators
+can withdraw invitations and remove members.
+

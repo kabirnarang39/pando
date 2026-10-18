@@ -256,6 +256,8 @@ message LinkIdentityRequest {
 message ViewerResponse {
   Account account = 1;
   repeated Organization organizations = 2;
+  // The platform token making the call, if one is: revoke it to sign out.
+  string token_id = 3;
 }
 
 service Platform {
@@ -296,6 +298,13 @@ service Platform {
   // Lets an identity sign in as an existing account, e.g. the first administrator's email
   // address. Site administrators only.
   rpc LinkIdentity(LinkIdentityRequest) returns (Empty);
+
+  // Invitations to an organisation: a single-use link, valid 7 days, emailed when the server
+  // sends mail. Whoever opens it and signs in joins with the role. Organisation administrators.
+  rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse);
+  // Invitations not yet accepted, including expired ones.
+  rpc ListInvitations(OrgName) returns (ListInvitationsResponse);
+  rpc RevokeInvitation(InvitationRef) returns (Empty);
 }
 
 // ---- review ----
@@ -632,4 +641,34 @@ service Reviews {
   rpc ReportCheck(ReportCheckRequest) returns (ChangeRequest);
   rpc Inbox(InboxRequest) returns (InboxResponse);
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}
+
+// ---- invitations ----
+
+message Invitation {
+  string id = 1;
+  string org = 2;
+  // Where the link was sent; whoever has the link may accept it.
+  string email = 3;
+  Role role = 4;
+  string invited_by = 5;
+  int64 created_at_ms = 6;
+  int64 expires_at_ms = 7;
+}
+message CreateInvitationRequest {
+  string org = 1;
+  string email = 2;
+  // ROLE_UNSPECIFIED: read.
+  Role role = 3;
+}
+message CreateInvitationResponse {
+  Invitation invitation = 1;
+  // The link, shown once, to share by hand when the server sends no mail.
+  string link = 2;
+  bool emailed = 3;
+}
+message ListInvitationsResponse { repeated Invitation invitations = 1; }
+message InvitationRef {
+  string org = 1;
+  string id = 2;
 }

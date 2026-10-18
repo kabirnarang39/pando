@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `pando login [SERVER_URL]` signs the CLI in from the browser (OAuth device flow) and saves a
+  90-day token in `~/.config/pando/credentials.json` (mode 0600), used when neither `--token` nor
+  `PANDO_TOKEN` is given; `pando logout` revokes it and `pando whoami` shows the account (ADR-033).
+- Invitations: organisation administrators invite by email (`CreateInvitation`,
+  `ListInvitations`, `RevokeInvitation`); the single-use, 7-day link signs the person in (creating
+  an account if needed) and adds them with the invited role (ADR-033).
+- First sign-ins ask the person to confirm they are 18 or older and accept the terms
+  (`--terms-url`, `--privacy-url`) before an account is created; the time is stored on the account.
+- `Viewer` returns the calling token's id, so clients can sign out by revoking it.
+- Console: "Sign in with …" buttons and an email form when the server has sign-in pages, sign out,
+  a guided set-up for a new organisation (name it, invite teammates, connect an agent), and
+  invitations on the organisation's People tab.
+
 ## [3.4.0] - 2026-10-18
 
 ### Added

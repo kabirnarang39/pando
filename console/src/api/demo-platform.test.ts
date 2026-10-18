@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChangeRequestState, CheckState, Verdict } from "../gen/pando_platform_pb";
+import { ChangeRequestState, CheckState, Role, Verdict } from "../gen/pando_platform_pb";
 import { DemoPlatform } from "./demo-platform";
 
 describe("demo platform", () => {
@@ -67,5 +67,18 @@ describe("demo platform", () => {
   it("puts requested reviews in the viewer's inbox", () => {
     expect(p.inbox().length).toBeGreaterThan(0);
     expect(p.inbox().every((i) => (i.changeRequest ? i.changeRequest.state === ChangeRequestState.OPEN : i.issue?.assignees.includes("kabir")))).toBe(true);
+  });
+
+  it("creates organisations and invitations, and refuses bad or taken names", () => {
+    expect(() => p.createOrganization("bad name", "")).toThrow(/not a valid organisation name/);
+    expect(() => p.createOrganization("lumen", "")).toThrow(/taken/);
+    expect(p.createOrganization("acme", "Acme Labs").displayName).toBe("Acme Labs");
+    expect(() => p.createInvitation("acme", "nope", Role.READ)).toThrow(/not an email/);
+    const { invitation, link } = p.createInvitation("acme", "Ana@Example.com", Role.WRITE);
+    expect(invitation.email).toBe("ana@example.com");
+    expect(link).toMatch(/\/login\/invite\/[0-9a-f]{64}$/);
+    expect(p.invitations("acme")).toHaveLength(1);
+    p.revokeInvitation("acme", invitation.id);
+    expect(p.invitations("acme")).toHaveLength(0);
   });
 });

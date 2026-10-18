@@ -197,7 +197,7 @@ impl Authenticator for PlatformAuth {
             let token = self.registry.use_token(secret).map_err(|e| Status::internal(e.to_string()))?;
             if let Some(t) = token {
                 let who = Principal(if t.acts_as.is_empty() { t.account } else { t.acts_as });
-                return Ok((who, Some(TokenScope { repositories: t.repositories, max_role: t.max_role })));
+                return Ok((who, Some(TokenScope { id: t.id, repositories: t.repositories, max_role: t.max_role })));
             }
         }
         let (who, scope) = self.inner.identify(bearer)?;
@@ -338,10 +338,11 @@ mod tests {
         access.check(&reg, &p("agent/perf-05"), None, &private, Role::Write).unwrap();
 
         // A token caps the role and can be limited to some repositories.
-        let read_only = TokenScope { repositories: vec![], max_role: Role::Read };
+        let read_only = TokenScope { id: String::new(), repositories: vec![], max_role: Role::Read };
         let e = access.check(&reg, &p("kabir"), Some(&read_only), &private, Role::Write).unwrap_err();
         assert_eq!(e.code(), tonic::Code::PermissionDenied);
-        let elsewhere = TokenScope { repositories: vec!["lumen/docs".into()], max_role: Role::Admin };
+        let elsewhere =
+            TokenScope { id: String::new(), repositories: vec!["lumen/docs".into()], max_role: Role::Admin };
         let e = access.check(&reg, &p("kabir"), Some(&elsewhere), &private, Role::Read).unwrap_err();
         assert_eq!(e.code(), tonic::Code::NotFound);
 

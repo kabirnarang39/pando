@@ -15,6 +15,8 @@ interface Connection {
   /** A short name for where we are connected, for the header. */
   label: string;
   connect(target: Target): void;
+  /** Revokes the token this console signed in with (if it can) and forgets the server. */
+  signOut(): Promise<void>;
 }
 
 const Context = createContext<Connection | null>(null);
@@ -40,6 +42,31 @@ function write(storage: () => Storage, key: string, value: unknown) {
 
 /** Tokens are stored per server, so a token is only ever sent to the server it was entered for. */
 const tokenKey = (url: string) => `${KEY}.token:${url}`;
+
+/** Saves a target: the token for this tab, and on this device only if the person chose to. */
+function save(next: Target) {
+  if (next.kind === "server") {
+    write(() => localStorage, KEY, { ...next, token: next.remember ? next.token : null });
+    write(() => sessionStorage, tokenKey(next.url), next.token);
+  } else {
+    write(() => localStorage, KEY, null);
+  }
+}
+
+/** The session token a sign-in hands over in the fragment (`#pando_session=pando_…`), if any. */
+export function sessionFromHash(hash: string): string | null {
+  const m = /^#pando_session=(pando_[A-Za-z0-9_]{1,200})$/.exec(hash);
+  return m ? m[1]! : null;
+}
+
+// After signing in on this server's sign-in pages the browser comes back with the session in the
+// fragment. Read it once, before the router sees the URL, keep it as this origin's connection,
+// and wipe it from the address bar and history.
+const handedOver = sessionFromHash(location.hash);
+if (handedOver) {
+  save({ kind: "server", url: location.origin, token: handedOver, remember: true });
+  history.replaceState(null, "", location.pathname + location.search + "#/");
+}
 
 /**
  * The saved target. A token is kept for this tab only unless the person chose to remember it.
@@ -123,13 +150,21 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       repoApi,
       label: target.kind === "demo" ? "Demo" : hostOf(target.url),
       connect(next) {
-        if (next.kind === "server") {
-          write(() => localStorage, KEY, { ...next, token: next.remember ? next.token : null });
-          write(() => sessionStorage, tokenKey(next.url), next.token);
-        } else {
-          write(() => localStorage, KEY, null);
-        }
+        save(next);
         setTarget(next);
+      },
+      async signOut() {
+        if (target.kind === "server" && target.token) {
+          // Revoke the session's own token, so a copy left anywhere stops working.
+          const api = makeApi(serverTransport(target.url, target.token));
+          await api.platform
+            .viewer({})
+            .then((v) => (v.tokenId ? api.platform.revokeToken({ id: v.tokenId }) : undefined))
+            .catch(() => undefined);
+          write(() => sessionStorage, tokenKey(target.url), null);
+        }
+        save({ kind: "demo" });
+        setTarget({ kind: "demo" });
       },
     };
   }, [target]);

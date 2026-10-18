@@ -168,6 +168,33 @@ pando admin identity link kabir --provider email --subject kabir@example.com
 `GET /login/providers` lists the sign-in buttons for the console:
 `{"providers":[{"id":"google","name":"Google","url":"/login/oidc/google"}],"email":true}`.
 
+**Terms.** Before a first sign-in creates an account, the person must tick "I am 18 or older and
+accept the Terms and Privacy Policy"; without it no account is made. The time is kept on the
+account (`accepted_terms_at_ms`). Link your documents with `--terms-url` and `--privacy-url`
+(`PANDO_TERMS_URL`, `PANDO_PRIVACY_URL`). Accounts made before this, and existing accounts signing
+in, are not asked.
+
+**The CLI.** `pando login [SERVER_URL]` signs the CLI in through the same pages (the OAuth
+device flow, RFC 8628): it prints a link and a code like `BCDF-GHJK`, opens the browser, and waits
+while you sign in and approve "CLI sign-in from … as you". It then saves a 90-day token, "cli on
+HOST" (Admin ceiling), in `~/.config/pando/credentials.json` (`$XDG_CONFIG_HOME/pando` if set;
+under the user profile on Windows), readable only by you and kept per server. Commands use
+`--token`, then `PANDO_TOKEN`, then that file. `pando whoami` shows who you are;
+`pando logout [SERVER_URL]` revokes the token and forgets it. The endpoints are
+`POST /login/device/code`, `GET /login/device` and `POST /login/device/token`; only the device
+code's hash is stored, for 10 minutes, and the token is returned once. The approve page shows the
+code: approve only a code your own terminal shows.
+
+**Invitations.** Organisation administrators invite by email, from the console's People tab or
+the API (`CreateInvitation`, `ListInvitations`, `RevokeInvitation`). An invitation is a link,
+`{public-url}/login/invite/TOKEN`, valid 7 days and once; it is emailed when the server sends
+mail, and always returned to the administrator to share by hand. Whoever opens it signs in with
+any provider, creating an account if needed (the waitlist doesn't apply to an invitation), and
+presses "Join ORG": they become a member with the invited role. The link is the authority: the
+address it was sent to is shown on the page but need not be the one they sign in with (ADR-033).
+On a `--multi-tenant` server this is how people who have never signed in are added. Invitations
+need `--login-listen`.
+
 ## The web app's foundation
 
 React 19 with the React Compiler, React Aria for accessible components, TanStack Router and Query,

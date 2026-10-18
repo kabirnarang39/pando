@@ -190,6 +190,10 @@ impl Registry {
     pub(crate) fn migrate(&self) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute_batch(crate::directory::SCHEMA)?;
+        // Columns added since a table was first made (portable: no IF NOT EXISTS on columns).
+        if db.prepare("SELECT accepted_terms_at_ms FROM accounts LIMIT 0").is_err() {
+            db.execute_batch("ALTER TABLE accounts ADD COLUMN accepted_terms_at_ms INTEGER NOT NULL DEFAULT 0")?;
+        }
         db.execute_batch(crate::features::reviews::store::SCHEMA)?;
         db.execute_batch(crate::webhooks::SCHEMA)?;
         db.execute_batch(crate::features::issues::SCHEMA)?;
@@ -310,6 +314,8 @@ pub struct Hosting {
     stats: Mutex<HashMap<RepoKey, (Instant, RepoStats)>>,
     /// Who may do what.
     pub access: Arc<crate::permissions::Access>,
+    /// The sign-in pages, when served (`--login-listen`): invitations link to them and use their mail.
+    pub login: std::sync::OnceLock<Arc<crate::login::Login>>,
 }
 
 impl Hosting {
@@ -327,6 +333,7 @@ impl Hosting {
             open: Mutex::new(HashMap::new()),
             stats: Mutex::new(HashMap::new()),
             access,
+            login: std::sync::OnceLock::new(),
         })
     }
 

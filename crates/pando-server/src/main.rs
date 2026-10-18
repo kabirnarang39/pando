@@ -159,6 +159,13 @@ enum Role {
         /// open, or closed. Existing accounts can always sign in.
         #[arg(long, env = "PANDO_SIGNUP", value_enum, default_value = "waitlist")]
         signup: pando_server::login::Signup,
+        /// Your terms of service, linked from the box people tick (18 or older, accept the
+        /// terms) before an account is made.
+        #[arg(long, env = "PANDO_TERMS_URL")]
+        terms_url: Option<String>,
+        /// Your privacy policy, linked next to the terms.
+        #[arg(long, env = "PANDO_PRIVACY_URL")]
+        privacy_url: Option<String>,
     },
     /// Create an access token directly in a platform registry, without a running server: how
     /// the first administrator gets in. Prints the token once.
@@ -382,6 +389,8 @@ async fn main() -> anyhow::Result<()> {
             mail_from,
             turnstile_site_key,
             signup,
+            terms_url,
+            privacy_url,
         } => {
             let repo = config::open_repo(&metadata, &objects).await?;
             let policy: Arc<dyn AccessPolicy> = match &acl {
@@ -420,6 +429,7 @@ async fn main() -> anyhow::Result<()> {
                 );
                 let admins: Vec<String> =
                     platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect();
+                let mut login_pages = None;
                 if let Some(addr) = login_listen {
                     let settings = pando_server::login::Settings {
                         public_url: public_url.clone().unwrap_or_default(),
@@ -429,16 +439,19 @@ async fn main() -> anyhow::Result<()> {
                         turnstile_site_key: turnstile_site_key.clone(),
                         signup,
                         reserved: admins.clone(),
+                        terms_url: terms_url.clone(),
+                        privacy_url: privacy_url.clone(),
                     };
-                    let login = pando_server::login::Login::new(
+                    let login = Arc::new(pando_server::login::Login::new(
                         settings,
                         registry_db.clone(),
                         &pando_server::login::env_secret,
-                    )?;
+                    )?);
+                    login_pages = Some(login.clone());
                     let listener = tokio::net::TcpListener::bind(addr).await?;
                     tracing::info!(%addr, ?signup, "sign-in pages");
                     tokio::spawn(async move {
-                        if let Err(e) = pando_server::login::serve(listener, Arc::new(login)).await {
+                        if let Err(e) = pando_server::login::serve(listener, login).await {
                             tracing::error!(error = %e, "sign-in pages stopped");
                         }
                     });
@@ -461,7 +474,11 @@ async fn main() -> anyhow::Result<()> {
                         review_land: Some(Land::new(repo, f.clone(), p.clone(), c.clone())),
                     }
                 });
-                hosting = Some(Arc::new(pando_server::hosting::Hosting::new(templates, registry_db, build, access)?));
+                let h = pando_server::hosting::Hosting::new(templates, registry_db, build, access)?;
+                if let Some(login) = login_pages {
+                    let _ = h.login.set(login);
+                }
+                hosting = Some(Arc::new(h));
                 tracing::info!(registry = %config::redact(registry), open, multi_tenant, "hosting many repositories");
             }
             (listen, authority_routes(repo, flags, policy, checks))

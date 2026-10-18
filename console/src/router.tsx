@@ -20,6 +20,7 @@ const IssuesView = lazyRouteComponent(() => import("./views/repo/Issues"), "Issu
 const IssueView = lazyRouteComponent(() => import("./views/repo/Issue"), "IssueView");
 const RepoSettingsView = lazyRouteComponent(() => import("./views/repo/Settings"), "RepoSettingsView");
 const ConnectView = lazyRouteComponent(() => import("./views/Connect"), "ConnectView");
+const WelcomeView = lazyRouteComponent(() => import("./views/Welcome"), "WelcomeView");
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : undefined);
 const flag = (v: unknown) => v === true || v === "true" || v === 1 || undefined;
@@ -29,6 +30,7 @@ const root = createRootRoute({ component: AppShell });
 const home = createRoute({ getParentRoute: () => root, path: "/", component: HomeView });
 const inbox = createRoute({ getParentRoute: () => root, path: "/inbox", component: InboxView });
 const connect = createRoute({ getParentRoute: () => root, path: "/connect", component: ConnectView });
+const welcome = createRoute({ getParentRoute: () => root, path: "/welcome", component: WelcomeView });
 const tokens = createRoute({ getParentRoute: () => root, path: "/settings/tokens", component: TokensView });
 
 export type OrgSearch = { tab?: "repositories" | "people" | "agents" | "teams" };
@@ -94,6 +96,7 @@ export const router = createRouter({
     home,
     inbox,
     connect,
+    welcome,
     tokens,
     org,
     repo.addChildren([overview, changes, code, reviews, review, issues, issue, locks, agents, settings]),

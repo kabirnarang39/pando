@@ -1,12 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Button, Dialog, Menu, MenuItem, MenuTrigger, Modal, ModalOverlay, Popover, Separator } from "react-aria-components";
+import { useConnection } from "../connection";
 import { Icon } from "../ui";
 import { modKey } from "./hooks";
 
 /** The account menu in the sidebar's foot; `children` is the button's face. */
 export function AccountMenu({ children, showShortcuts, open }: { children: ReactNode; showShortcuts(): void; open?: boolean }) {
   const navigate = useNavigate();
+  const { target, signOut } = useConnection();
   // Clicked before this loaded: open now, from a focused trigger, so focus returns to it on close.
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -24,6 +26,7 @@ export function AccountMenu({ children, showShortcuts, open }: { children: React
             if (k === "tokens") navigate({ to: "/settings/tokens" });
             else if (k === "connect") navigate({ to: "/connect" });
             else if (k === "keys") showShortcuts();
+            else if (k === "signout") void signOut().then(() => navigate({ to: "/connect" }));
           }}
         >
           <MenuItem id="tokens" className="menu-item">
@@ -36,6 +39,11 @@ export function AccountMenu({ children, showShortcuts, open }: { children: React
           <MenuItem id="keys" className="menu-item">
             <Icon name="keyboard" /> Keyboard shortcuts
           </MenuItem>
+          {target.kind === "server" && (
+            <MenuItem id="signout" className="menu-item">
+              <Icon name="x" /> Sign out
+            </MenuItem>
+          )}
         </Menu>
       </Popover>
     </MenuTrigger>

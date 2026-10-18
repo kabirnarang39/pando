@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   display_name TEXT NOT NULL DEFAULT '',
   kind INTEGER NOT NULL,
   owner TEXT NOT NULL DEFAULT '',
-  created_at_ms INTEGER NOT NULL
+  created_at_ms INTEGER NOT NULL,
+  -- When the person confirmed their age and accepted the terms at sign-up (0: before that
+  -- was asked, or not a person signing up).
+  accepted_terms_at_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS organizations (
   login TEXT PRIMARY KEY,
@@ -142,6 +145,8 @@ pub struct TokenRec {
 /// a highest role.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenScope {
+    /// The platform token's id.
+    pub id: String,
     pub repositories: Vec<String>,
     pub max_role: Role,
 }
@@ -510,6 +515,13 @@ pub fn require_members(reg: &Registry, org: &str, logins: &[String]) -> Result<(
         return Err(Status::failed_precondition(format!("`{stranger}` is not a member of {org}; add them first")));
     }
     Ok(())
+}
+
+/// Puts `login` in `org` with `role` (or changes their role). Every way into an organisation
+/// comes through here (SetMember, accepting an invitation), so checks on joining, such as a
+/// seat limit, belong here.
+pub fn add_member(reg: &Registry, org: &str, login: &str, role: Role) -> Result<(), Status> {
+    reg.set_member(org, login, role).map_err(internal)
 }
 
 /// Repositories as a token names them must exist.

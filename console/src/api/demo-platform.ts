@@ -527,6 +527,42 @@ export class DemoPlatform {
     this.hooks = this.hooks.filter((h) => h.id !== id);
   }
 
+  // Organisations and invitations made in the demo: kept in memory for this tab only.
+  private madeOrgs: { login: string; displayName: string; createdAtMs: bigint }[] = [];
+  private invites: { id: string; org: string; email: string; role: Role; invitedBy: string; createdAtMs: bigint; expiresAtMs: bigint }[] = [];
+
+  organizations() {
+    return [this.organization(), ...this.madeOrgs.map((o) => ({ ...o, description: "", viewerRole: Role.ADMIN, repositories: 0, members: 1, agents: 0 }))];
+  }
+
+  createOrganization(login: string, displayName: string) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$/.test(login)) throw new ConnectError(`\`${login}\` is not a valid organisation name: use letters, digits, \`.\`, \`_\` and \`-\``, Code.InvalidArgument);
+    if (login === ORG || people[login] || this.madeOrgs.some((o) => o.login === login)) throw new ConnectError(`\`${login}\` is taken`, Code.AlreadyExists);
+    this.madeOrgs.push({ login, displayName: displayName.trim() || login, createdAtMs: BigInt(Date.now()) });
+    return this.organizations().at(-1)!;
+  }
+
+  invitations(org: string) {
+    return this.invites.filter((i) => i.org === org);
+  }
+
+  createInvitation(org: string, email: string, role: Role) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) throw new ConnectError(`\`${email}\` is not an email address`, Code.InvalidArgument);
+    const hex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const id = hex(8);
+    const now = Date.now();
+    const invitation = { id, org, email: email.trim().toLowerCase(), role: role || Role.READ, invitedBy: VIEWER, createdAtMs: BigInt(now), expiresAtMs: BigInt(now + 7 * 86_400_000) };
+    this.invites.push(invitation);
+    const secret = hex(32);
+    return { invitation, link: `https://pando.example.com/login/invite/${secret}`, emailed: false };
+  }
+
+  revokeInvitation(org: string, id: string) {
+    const before = this.invites.length;
+    this.invites = this.invites.filter((i) => !(i.org === org && i.id === id));
+    if (this.invites.length === before) throw new ConnectError(`no invitation \`${id}\``, Code.NotFound);
+  }
+
   revokeToken(id: string) {
     const before = this.tokens().length;
     this.tokenList = this.tokens().filter((t) => t.id !== id);
@@ -753,24 +789,35 @@ export function platformTransport(p: DemoPlatform, options?: { interceptors?: In
     router.service(Platform, {
       async viewer() {
         await wait();
-        return { account: p.account(VIEWER), organizations: [p.organization()] };
+        return { account: p.account(VIEWER), organizations: p.organizations(), tokenId: "" };
       },
       async getAccount(r) {
         return p.account(r.login);
       },
       async listOrganizations() {
-        return { organizations: [p.organization()] };
+        return { organizations: p.organizations() };
       },
       async getOrganization(r) {
-        if (r.login !== ORG) throw new ConnectError(`no organisation \`${r.login}\``, Code.NotFound);
-        return p.organization();
+        const o = p.organizations().find((x) => x.login === r.login);
+        if (!o) throw new ConnectError(`no organisation \`${r.login}\``, Code.NotFound);
+        return o;
       },
-      createOrganization() {
-        throw new ConnectError("the demo is read-only for organisations", Code.PermissionDenied);
+      async createOrganization(r) {
+        return p.createOrganization(r.login, r.displayName);
       },
-      async listMembers() {
+      async listMembers(r) {
         await wait();
-        return { members: p.members() };
+        return { members: r.login === ORG ? p.members() : [{ account: p.account(VIEWER), role: Role.ADMIN, teams: [] }] };
+      },
+      async createInvitation(r) {
+        return p.createInvitation(r.org, r.email, r.role);
+      },
+      async listInvitations(r) {
+        return { invitations: p.invitations(r.login) };
+      },
+      async revokeInvitation(r) {
+        p.revokeInvitation(r.org, r.id);
+        return {};
       },
       async setMember(r) {
         return p.setMember(r.login, r.role);

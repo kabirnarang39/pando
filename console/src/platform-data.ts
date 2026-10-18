@@ -154,6 +154,19 @@ export const useRevokeToken = () => usePlatformMutation((api, id: string) => api
 export const useSetMember = (org: string) =>
   usePlatformMutation((api, m: { login: string; role: Role }) => api.platform.setMember({ org, login: m.login, role: m.role }), [["members", org], ["org", org], ["viewer"]]);
 
+export function useInvitations(org: string, enabled = true) {
+  const api = usePlatformApi();
+  return useQuery({ queryKey: ["invitations", org], queryFn: async () => (await or(api.platform.listInvitations({ login: org }), { invitations: [] })).invitations, enabled });
+}
+
+export const useCreateInvitation = (org: string) =>
+  usePlatformMutation((api, i: { email: string; role: Role }) => api.platform.createInvitation({ org, email: i.email, role: i.role }), [["invitations", org]]);
+
+export const useRevokeInvitation = (org: string) => usePlatformMutation((api, id: string) => api.platform.revokeInvitation({ org, id }), [["invitations", org]]);
+
+export const useCreateOrganization = () =>
+  usePlatformMutation((api, o: { login: string; displayName: string }) => api.platform.createOrganization({ login: o.login, displayName: o.displayName }), [["viewer"], ["repos"]]);
+
 export const useSetGrant = (key: string) =>
   usePlatformMutation((api, g: { principal: string; role: Role }) => api.platform.setGrant({ repository: ref(key), principal: g.principal, role: g.role }), [["grants", key]]);
 

@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { AccountKind, Role } from "../gen/pando_platform_pb";
 import { AddPrincipal, RoleSelect } from "../components/Access";
+import { InvitationList, InviteForm } from "../components/Invitations";
 import { useMembers, useOrganization, useRepositories, useSetMember, useTeams } from "../platform-data";
 import { ago, Author, LoadError, Skeleton, useNow } from "../ui";
 
@@ -136,6 +137,16 @@ export function OrgView() {
             error={setMember.error ? (setMember.error as Error).message : null}
             onAdd={(login, role, done) => setMember.mutate({ login, role }, { onSuccess: done })}
           />
+        )}
+        {tab === "people" && admin && (
+          <section aria-labelledby="invite-title">
+            <h2 id="invite-title" className="panel-note" style={{ fontSize: "var(--t-md)", margin: 0 }}>
+              Invite by email
+            </h2>
+            <p className="panel-note muted">People without an account yet get a link: they sign in and join {org.data?.displayName ?? owner} with the role you choose.</p>
+            <InviteForm org={owner} />
+            <InvitationList org={owner} />
+          </section>
         )}
         {tab === "agents" && <p className="panel-note muted">An agent works with the role of the person it answers to. Issue it a token on the Tokens page; list it here only to give it a role of its own.</p>}
         {tab === "teams" && (

@@ -3070,3 +3070,58 @@ del {
 .issue-side .button-quiet {
   padding-left: 0;
 }
+.token-secret-row .copy-block {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  font-size: var(--t-sm);
+}
+/* The guided set-up: numbered steps, one open at a time. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+.steps li[aria-current="step"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.steps li[data-done] {
+  color: var(--ink);
+}
+.signin-buttons {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.signin-buttons .button {
+  justify-content: center;
+  text-decoration: none;
+}
+.or {
+  margin: 12px 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
