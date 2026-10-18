@@ -9,9 +9,15 @@ write_files:
     content: |
       # CHANGE: one or more name:token pairs. Generate a token with: openssl rand -hex 32
       PANDO_TOKENS=admin:CHANGE-ME
-      # CHANGE: the sites allowed to use this server from a browser (the hosted console).
-      PANDO_WEB_ORIGINS=https://kabirnarang39.github.io
+      # Browser access from another site: none by default. To use the web console, host it
+      # yourself on your own domain and list that origin, e.g. https://console.example.com.
+      # Never list a shared origin (such as a *.github.io page) you don't control.
+      # PANDO_WEB_ORIGINS=https://console.example.com
       PANDO_AUDIT_LOG=/var/log/pando/audit.log
+      # Days of daily audit files kept (audit.log.YYYY-MM-DD).
+      PANDO_AUDIT_RETENTION_DAYS=365
+      # Caddy runs on this host: take client addresses from its X-Forwarded-For.
+      PANDO_TRUST_PROXY=1
   - path: /etc/pando/backup.env
     permissions: "0600"
     content: |

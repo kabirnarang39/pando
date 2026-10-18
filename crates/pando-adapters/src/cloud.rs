@@ -30,15 +30,38 @@ impl CloudObjects {
     /// `file:///var/lib/pando`, `s3://bucket/prefix`, `gs://bucket`, `az://container`,
     /// `memory:///`. Credentials come from the provider's standard environment variables.
     /// Build `file://` URLs with [`file_url`] so Windows paths are encoded correctly.
+    /// A local directory is durable: each object file and its directory are fsynced before a
+    /// put returns.
     pub fn from_url(url: &str) -> Result<Self> {
         let url = url::Url::parse(url).map_err(storage_err)?;
         if url.scheme() == "file" {
             let dir = url.to_file_path().map_err(|_| storage_err(format!("bad file URL `{url}`")))?;
-            std::fs::create_dir_all(dir).map_err(storage_err)?;
+            return Self::local(&dir, true);
         }
         let env = std::env::vars().map(|(k, v)| (k.to_ascii_lowercase(), v));
         let (backend, prefix) = object_store::parse_url_opts(&url, env).map_err(storage_err)?;
         Ok(Self::new(Arc::from(backend), prefix))
+    }
+
+    /// Objects in a local directory; `fsync` makes every put durable before it returns (off
+    /// only for caches, which can always refetch).
+    pub fn local(dir: &std::path::Path, fsync: bool) -> Result<Self> {
+        std::fs::create_dir_all(dir).map_err(storage_err)?;
+        let fs = object_store::local::LocalFileSystem::new_with_prefix(dir).map_err(storage_err)?.with_fsync(fsync);
+        Ok(Self::new(Arc::new(fs), Path::default()))
+    }
+
+    /// Whether a stored object fails its hash check (a file torn by a crash, say), so a put of
+    /// the right bytes may replace it. Deltas and large-file manifests are checked by readers.
+    async fn corrupt(&self, id: &Id) -> bool {
+        match self.get(id).await {
+            Ok(Some(p)) => {
+                !pando_core::delta::is_delta(&p)
+                    && !pando_core::chunked::is_manifest(&p)
+                    && pando_core::object::decode_object(id, &p).is_err()
+            }
+            _ => false,
+        }
     }
 
     fn path(&self, id: &Id) -> Path {
@@ -62,7 +85,15 @@ impl ObjectStore for CloudObjects {
         // and backends that support conditional puts skip the redundant upload.
         let opts = PutOptions { mode: PutMode::Create, ..Default::default() };
         match self.backend.put_opts(&self.path(&id), PutPayload::from_bytes(payload.clone()), opts).await {
-            Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(()),
+            Ok(_) => Ok(()),
+            // Already stored: normally identical, but a copy that fails its hash check is
+            // repaired by this put when the new bytes check out (M4).
+            Err(object_store::Error::AlreadyExists { .. }) => {
+                if self.corrupt(&id).await && pando_core::object::decode_object(&id, &payload).is_ok() {
+                    self.backend.put(&self.path(&id), PutPayload::from_bytes(payload)).await.map_err(storage_err)?;
+                }
+                Ok(())
+            }
             Err(object_store::Error::NotImplemented { .. }) => {
                 self.backend.put(&self.path(&id), PutPayload::from_bytes(payload)).await.map_err(storage_err)?;
                 Ok(())
@@ -131,4 +162,29 @@ pub fn file_url(dir: &std::path::Path) -> Result<String> {
     url::Url::from_directory_path(&abs)
         .map(String::from)
         .map_err(|_| storage_err(format!("bad path {}", abs.display())))
+}
+
+#[cfg(test)]
+mod tests {
+    use pando_core::object::{Kind, encode_object};
+
+    use super::*;
+
+    /// A torn object file (power loss without fsync) is repaired by pushing the object again.
+    #[tokio::test]
+    async fn a_corrupt_object_is_replaced_by_a_good_put() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = CloudObjects::from_url(&file_url(dir.path()).unwrap()).unwrap();
+        let (id, payload) = encode_object(Kind::Blob, b"hello, durable world");
+        store.put(id, payload.clone()).await.unwrap();
+        let hex = id.to_hex();
+        let file = dir.path().join("objects").join(&hex[..2]).join(&hex[2..]);
+        std::fs::write(&file, &payload[..5]).unwrap();
+        // The wrong bytes for this id never replace anything.
+        let (_, other) = encode_object(Kind::Blob, b"something else");
+        store.put(id, other).await.unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), &payload[..5]);
+        store.put(id, payload.clone()).await.unwrap();
+        assert_eq!(store.get(&id).await.unwrap().unwrap(), payload);
+    }
 }

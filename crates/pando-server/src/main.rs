@@ -12,7 +12,7 @@ use pando_server::auth::{AllowAll, Authenticator, StaticTokens};
 use pando_server::features::land::Land;
 use pando_server::land_hook::WebhookCheck;
 use pando_server::oidc::{FirstMatch, OidcAuthenticator, OidcConfig};
-use pando_server::permissions::{Access, NoOtherAuth, ProtectedRefs};
+use pando_server::permissions::{Access, NoOtherAuth, OpenUntilToken, ProtectedRefs};
 use pando_server::{authority_routes, config, serve, telemetry, tier_routes};
 use tonic::transport::{Identity, ServerTlsConfig};
 
@@ -24,7 +24,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 struct Cli {
     #[command(subcommand)]
     role: Role,
-    /// Prometheus metrics listen address, e.g. 0.0.0.0:9420.
+    /// Address for `/metrics` (Prometheus), `/healthz` and `/readyz` (no token needed), e.g.
+    /// 0.0.0.0:9420.
     #[arg(long, global = true, env = "PANDO_METRICS")]
     metrics: Option<SocketAddr>,
     /// Emit JSON logs.
@@ -34,10 +35,37 @@ struct Cli {
     /// result) to this file. Off by default; it grows with every request.
     #[arg(long, global = true, env = "PANDO_AUDIT_LOG")]
     audit_log: Option<std::path::PathBuf>,
-    /// Comma-separated origins allowed to call this server from a browser on another site,
-    /// e.g. the web console's address; `*` allows any (development only).
-    #[arg(long, global = true, env = "PANDO_WEB_ORIGINS", value_delimiter = ',')]
+    /// Days of audit files to keep (one file per UTC day); 0 keeps all. 365 suits hosted
+    /// services (docs/deploy.md).
+    #[arg(long, global = true, env = "PANDO_AUDIT_RETENTION_DAYS", default_value_t = 365)]
+    audit_retention_days: usize,
+    /// Origins allowed to call this server from a browser on another site (repeatable or
+    /// comma-separated), e.g. your own console's address. Default: none (same origin only);
+    /// `*` allows any (development only).
+    #[arg(
+        long = "cors-origin",
+        visible_alias = "web-origins",
+        global = true,
+        env = "PANDO_WEB_ORIGINS",
+        value_delimiter = ','
+    )]
     web_origins: Vec<String>,
+    /// Take the client address (audit log, sign-in rate limits) from `X-Forwarded-For` when
+    /// the connection comes from a reverse proxy on this host (loopback).
+    #[arg(long, global = true, env = "PANDO_TRUST_PROXY", action = clap::ArgAction::SetTrue, value_parser = clap::builder::BoolishValueParser::new())]
+    trust_proxy: bool,
+    /// Largest request message in MiB (an uploaded object batch, a changeset). Default: 64
+    /// with --platform, 260 otherwise. Files of 8 MiB and more are uploaded in chunks.
+    #[arg(long, global = true, env = "PANDO_MAX_REQUEST_MB")]
+    max_request_mb: Option<usize>,
+    /// Calls one account may have in progress at once (0: no limit). Default: 128 with
+    /// --platform, no limit otherwise.
+    #[arg(long, global = true, env = "PANDO_MAX_CALLS_PER_PRINCIPAL")]
+    max_calls_per_principal: Option<usize>,
+    /// SQLite durability: `full` (default) syncs every commit, so an acknowledged land survives
+    /// power loss; `normal` survives process crashes only, for more throughput on a slow disk.
+    #[arg(long, global = true, env = "PANDO_SQLITE_SYNCHRONOUS", value_parser = ["full", "normal"], default_value = "full")]
+    sqlite_synchronous: String,
     /// Accept unauthenticated calls on a non-loopback address. Without tokens or OIDC, pandod
     /// otherwise listens only on localhost, so a server is never open to a network by accident.
     #[arg(long, global = true, env = "PANDO_ALLOW_ANONYMOUS", action = clap::ArgAction::SetTrue, value_parser = clap::builder::BoolishValueParser::new())]
@@ -166,6 +194,20 @@ enum Role {
         /// Your privacy policy, linked next to the terms.
         #[arg(long, env = "PANDO_PRIVACY_URL")]
         privacy_url: Option<String>,
+        /// Most hosted repositories open at once; the least recently used idle ones close.
+        #[arg(long, env = "PANDO_MAX_OPEN_REPOS", default_value_t = 256)]
+        max_open_repos: usize,
+        /// Minutes an unused hosted repository stays open.
+        #[arg(long, env = "PANDO_REPO_IDLE_MINUTES", default_value_t = 10)]
+        repo_idle_minutes: u64,
+    },
+    /// Operator actions on one hosted repository, straight on the registry (site
+    /// administration; works while the server runs, which notices within seconds).
+    Repo {
+        #[arg(long, env = "PANDO_PLATFORM", hide_env_values = true)]
+        platform: String,
+        #[command(subcommand)]
+        action: RepoAction,
     },
     /// Create an access token directly in a platform registry, without a running server: how
     /// the first administrator gets in. Prints the token once.
@@ -256,6 +298,86 @@ enum Role {
     },
 }
 
+#[derive(Subcommand)]
+enum RepoAction {
+    /// Take a repository down at once: every read and write is refused ("disabled by the
+    /// operator"); nothing is deleted. Undo with `enable`.
+    Disable {
+        repo: String,
+        #[arg(long)]
+        reason: String,
+    },
+    /// Serve a disabled repository again.
+    Enable { repo: String },
+    /// Delete a repository: its registry rows (reviews, issues, webhooks, grants) and its
+    /// storage files. Cannot be undone; take a backup first.
+    Delete {
+        repo: String,
+        #[arg(long, env = "PANDO_REPOS_METADATA", hide_env_values = true)]
+        repos_metadata: String,
+        #[arg(long, env = "PANDO_REPOS_OBJECTS", hide_env_values = true, default_value = "metadata")]
+        repos_objects: String,
+        /// Confirm by repeating OWNER/NAME.
+        #[arg(long)]
+        confirm: String,
+    },
+}
+
+fn repo_action(platform: &str, action: &RepoAction) -> anyhow::Result<()> {
+    use pando_server::hosting::{Registry, RepoKey, Templates};
+    let registry = Registry::open(platform)?;
+    let key = |s: &str| RepoKey::parse(s).map_err(|e| anyhow::anyhow!("{}", e.message()));
+    let audit = |kind: &str, target: &str, detail: &str| {
+        tracing::info!(target: telemetry::AUDIT, kind, principal = "pandod repo", target, detail);
+    };
+    match action {
+        RepoAction::Disable { repo, reason } => {
+            let k = key(repo)?;
+            anyhow::ensure!(registry.get(&k)?.is_some(), "no repository `{k}`");
+            anyhow::ensure!(!reason.trim().is_empty(), "give a --reason");
+            registry.set_disabled(&k, Some(reason.trim()), "pandod repo disable")?;
+            audit("disable_repository", repo, reason);
+            println!("disabled {k}: every call is refused within seconds");
+        }
+        RepoAction::Enable { repo } => {
+            let k = key(repo)?;
+            let changed = registry.set_disabled(&k, None, "pandod repo enable")?;
+            audit("enable_repository", repo, "");
+            println!("{}", if changed { format!("enabled {k}") } else { format!("{k} was not disabled") });
+        }
+        RepoAction::Delete { repo, repos_metadata, repos_objects, confirm } => {
+            let k = key(repo)?;
+            anyhow::ensure!(confirm == repo, "--confirm must repeat `{repo}`");
+            let templates = Templates { metadata: repos_metadata.clone(), objects: repos_objects.clone() };
+            templates.validate()?;
+            anyhow::ensure!(registry.delete_repository(&k)?, "no repository `{k}`");
+            audit("delete_repository", repo, "");
+            let (metadata, objects) = templates.render(&k);
+            if let Some(path) = metadata.strip_prefix("sqlite://") {
+                for suffix in ["", "-wal", "-shm"] {
+                    match std::fs::remove_file(format!("{path}{suffix}")) {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                        _ => {}
+                    }
+                }
+            } else {
+                eprintln!("remove the metadata yourself: {}", config::redact(&metadata));
+            }
+            if let Some(dir) =
+                url::Url::parse(&objects).ok().filter(|u| u.scheme() == "file").and_then(|u| u.to_file_path().ok())
+            {
+                if dir.exists() {
+                    std::fs::remove_dir_all(&dir)?;
+                }
+            } else if objects != "metadata" {
+                eprintln!("remove the objects yourself: {}", config::redact(&objects));
+            }
+            println!("deleted {k}");
+        }
+    }
+    Ok(())
+}
+
 fn create_token(platform: &str, account: &str, name: &str, days: i64) -> anyhow::Result<()> {
     use pando_server::directory::{TokenRec, valid_login};
     use pando_server::hosting::{Registry, now_ms};
@@ -297,9 +419,14 @@ async fn shutdown_signal() {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    telemetry::init_logging(cli.log_json, cli.audit_log.as_deref())?;
+    telemetry::init_logging(cli.log_json, cli.audit_log.as_deref(), cli.audit_retention_days)?;
+    pando_adapters::sqlite::set_synchronous_full(cli.sqlite_synchronous == "full");
+    let health = Arc::new(telemetry::Health::default());
     if let Some(addr) = cli.metrics {
-        telemetry::init_metrics(addr)?;
+        telemetry::init_metrics(addr, health.clone()).await?;
+    }
+    if let Role::Repo { platform, action } = &cli.role {
+        return repo_action(platform, action);
     }
     if let Role::Token { platform, account, name, expires_days } = &cli.role {
         return create_token(platform, account, name, *expires_days);
@@ -366,6 +493,25 @@ async fn main() -> anyhow::Result<()> {
     let upstream_token = std::env::var("PANDO_UPSTREAM_TOKEN").ok();
 
     let mut hosting: Option<Arc<pando_server::hosting::Hosting>> = None;
+    // Local directories whose storage must stay writable for the server to be ready.
+    let mut ready_dirs: Vec<std::path::PathBuf> = Vec::new();
+    let mut dir_of = |url: &str| {
+        let dir = if let Some(path) = url.strip_prefix("sqlite://") {
+            // A template's fixed part: sqlite:///var/lib/pando/repos/{repo}.db -> /var/lib/pando/repos
+            let fixed = &path[..path.find('{').unwrap_or(path.len())];
+            match fixed.strip_suffix('/') {
+                Some(dir) => Some(std::path::PathBuf::from(dir)),
+                None => std::path::Path::new(fixed).parent().map(|p| p.to_path_buf()),
+            }
+        } else {
+            url::Url::parse(url).ok().filter(|u| u.scheme() == "file").and_then(|u| u.to_file_path().ok())
+        };
+        if let Some(d) = dir.map(|d| if d.as_os_str().is_empty() { ".".into() } else { d })
+            && !ready_dirs.contains(&d)
+        {
+            ready_dirs.push(d);
+        }
+    };
     let (listen, routes) = match cli.role {
         Role::Server {
             listen,
@@ -391,8 +537,12 @@ async fn main() -> anyhow::Result<()> {
             signup,
             terms_url,
             privacy_url,
+            max_open_repos,
+            repo_idle_minutes,
         } => {
             let repo = config::open_repo(&metadata, &objects).await?;
+            dir_of(&metadata);
+            dir_of(&objects);
             let policy: Arc<dyn AccessPolicy> = match &acl {
                 Some(path) => Arc::new(RulesPolicy::load(path)?),
                 None => Arc::new(AllowAllPolicy),
@@ -414,6 +564,9 @@ async fn main() -> anyhow::Result<()> {
                     objects: repos_objects.clone(),
                 };
                 let registry_db = Arc::new(pando_server::hosting::Registry::open(registry)?);
+                dir_of(registry);
+                dir_of(&templates.metadata);
+                dir_of(&templates.objects);
                 // Platform tokens count as authentication: once one exists, every call needs one
                 // (or a static token or single sign-on). With none of them, the server is open,
                 // for local development.
@@ -422,13 +575,24 @@ async fn main() -> anyhow::Result<()> {
                 if anonymous && !open {
                     auth = Arc::new(NoOtherAuth);
                 }
+                let access = Arc::new(Access {
+                    open,
+                    admins: platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect(),
+                    multi_tenant,
+                    max_orgs_per_account,
+                    webhook_allow_private,
+                    ..Default::default()
+                });
+                // Open until the first platform token is created, then closed (L2).
+                if open {
+                    auth = Arc::new(OpenUntilToken { registry: registry_db.clone(), access: access.clone() });
+                }
                 anonymous = open;
                 anyhow::ensure!(
                     !(multi_tenant && open),
                     "--multi-tenant needs authentication: create a platform token with `pandod token` first"
                 );
-                let admins: Vec<String> =
-                    platform_admins.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()).collect();
+                let admins = access.admins.clone();
                 let mut login_pages = None;
                 if let Some(addr) = login_listen {
                     let settings = pando_server::login::Settings {
@@ -456,8 +620,6 @@ async fn main() -> anyhow::Result<()> {
                         }
                     });
                 }
-                let access =
-                    Arc::new(Access { open, admins, multi_tenant, max_orgs_per_account, webhook_allow_private });
                 let (f, p, c, reg, acc) =
                     (flags.clone(), policy.clone(), checks.clone(), registry_db.clone(), access.clone());
                 // Each repository's branches are protected by its own rules; change requests land
@@ -474,7 +636,12 @@ async fn main() -> anyhow::Result<()> {
                         review_land: Some(Land::new(repo, f.clone(), p.clone(), c.clone())),
                     }
                 });
-                let h = pando_server::hosting::Hosting::new(templates, registry_db, build, access)?;
+                let limits = pando_server::hosting::OpenLimits {
+                    max_open: max_open_repos.max(1),
+                    idle: Duration::from_secs(repo_idle_minutes.max(1) * 60),
+                };
+                let h = pando_server::hosting::Hosting::new(templates, registry_db, build, access)?
+                    .with_open_limits(limits);
                 if let Some(login) = login_pages {
                     let _ = h.login.set(login);
                 }
@@ -483,7 +650,9 @@ async fn main() -> anyhow::Result<()> {
             }
             (listen, authority_routes(repo, flags, policy, checks))
         }
-        Role::Token { .. } | Role::Backup { .. } => unreachable!("handled before authentication is set up"),
+        Role::Token { .. } | Role::Backup { .. } | Role::Repo { .. } => {
+            unreachable!("handled before authentication is set up")
+        }
         Role::Copy { from_metadata, from_objects, to_metadata, to_objects } => {
             let from = config::open_storage(&from_metadata, &from_objects).await?;
             let to = config::open_storage(&to_metadata, &to_objects).await?;
@@ -552,11 +721,16 @@ async fn main() -> anyhow::Result<()> {
              or set PANDO_ALLOW_ANONYMOUS=1 to accept anonymous access on purpose"
         );
     }
+    let platform = hosting.is_some();
+    pando_server::set_max_request_bytes(cli.max_request_mb.unwrap_or(if platform { 64 } else { 260 }) << 20);
     let limits = pando_server::Limits {
         request_timeout: std::time::Duration::from_secs(cli.request_timeout),
         max_in_flight: cli.max_in_flight.max(1),
+        per_principal: cli.max_calls_per_principal.unwrap_or(if platform { 128 } else { 0 }),
         ..Default::default()
     };
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    serve(listener, routes, auth, pando_server::ServeOptions { tls, web, limits, hosting }, shutdown_signal()).await
+    let options =
+        pando_server::ServeOptions { tls, web, limits, hosting, health, ready_dirs, trust_proxy: cli.trust_proxy };
+    serve(listener, routes, auth, options, shutdown_signal()).await
 }

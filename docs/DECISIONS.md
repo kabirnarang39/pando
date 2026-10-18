@@ -539,3 +539,36 @@ in again). Every sign-in for the CLI or an invitation goes through the provider 
 the browser has a console session. A forwarded invitation lets the forwardee join; administrators
 can withdraw invitations and remove members.
 
+## ADR-034: Operating a hosted service: health, durability, limits, takedown
+
+**Decision.** A platform server is run as a service for outside customers, so it is operable
+without reading its code. `--metrics ADDR` also serves `/healthz` and `/readyz` (no token); gRPC
+health needs no token and follows readiness, which checks the registry and a synced write to
+each local data directory every 5 seconds and turns off when shutdown starts. SIGTERM drains
+calls, then the webhook worker. SQLite runs with `synchronous=FULL` (registry and repository
+databases; `--sqlite-synchronous normal` opts out) and `file://` object stores fsync each object
+and its directory; an object whose stored bytes fail their hash is replaced by a put of the
+right bytes. The registry has a `schema_version` table and an append-only migration list, and
+its lock recovers from a panic. Platform defaults bound one account: 128 calls in progress and
+64 MiB per request message; listings scan at most a fixed number of rows and page; at most 256
+repositories stay open, idle ones close, and one in use (a call, a review, a streamed response
+holds a reference) never closes. The operator takes a repository down with `pandod repo
+disable` (all calls refused, nothing deleted) and removes one with `pandod repo delete`; both
+write the registry directly, which the server reads through its 5-second cache. Webhooks are
+at least once, two in flight per hook, 30 s each, pruned after 30 days. Metric labels are only
+methods the protocol defines. Browser origins come only from `--cors-origin`; internal errors
+reach clients as an id. Audit files rotate daily and are kept `--audit-retention-days` (365).
+
+**Why.** Each default above is what a load balancer, an uptime checker, a regulator or a power
+cut assumes. Doing them in the open-source server keeps the hosted service on the same code as
+self-hosted ones, and every change is a default with a flag, so small self-hosted servers can
+loosen it.
+
+**Trade-offs.** FULL costs one more sync per group commit; measured with the `land_load`
+example (64 agents, debug build, macOS APFS SSD) it was within run-to-run noise (FULL 269 and
+235 lands/s, NORMAL 219 and 231). Readiness checks only local directories and the registry, not
+Postgres or object stores. `repo disable` from another process takes up to 5 seconds. Listing
+figures for closed repositories come from the registry as last computed. The registry still runs
+its SQL on async workers; moving it to a blocking thread is left for when it shows in profiles.
+There is no object garbage collection, so a purged secret is removed by deleting the repository.
+

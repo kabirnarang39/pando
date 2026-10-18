@@ -75,8 +75,13 @@ func ok(secret, body []byte, header string) bool {
 
 - Answer with any 2xx within 10 seconds. Anything else is retried with growing gaps (10 s up
   to about 20 minutes), eight attempts in all; redirects are not followed.
-- Deliveries are queued in the registry and claimed with a lease, so several server replicas
-  never send the same delivery twice, and a restart loses none.
+- Delivery is **at least once**. Deliveries are queued in the registry and claimed with a
+  lease, so a restart loses none; but a server that stops after posting and before recording
+  the answer posts that delivery again. Receivers dedupe by the `X-Pando-Delivery` id (also
+  the payload's `delivery` field).
+- Each webhook gets at most 2 deliveries in flight, and each delivery at most 30 seconds, so a
+  slow or dead endpoint delays only its own deliveries.
+- Finished deliveries (delivered, or given up after eight attempts) are deleted after 30 days.
 - Webhooks never call link-local, unspecified, multicast or reserved addresses, or cloud
   metadata services (169.254.169.254, 100.100.100.200, fd00:ec2::254), including IPv4 addresses
   written as IPv6 (mapped, NAT64, 6to4). By default they don't call loopback or private networks

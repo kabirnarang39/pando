@@ -105,9 +105,67 @@ pub struct RepoRecord {
     pub topics: Vec<String>,
 }
 
+/// The registry's connection. A panic while it is held must not take every later request down
+/// with it (M5): a poisoned lock is recovered and any transaction the panic left open is rolled
+/// back. `lock()` keeps `Mutex`'s signature so callers read `db.lock().unwrap()` as before.
+pub struct Db(Mutex<rusqlite::Connection>);
+
+impl Db {
+    pub fn lock(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, std::convert::Infallible> {
+        Ok(self.0.lock().unwrap_or_else(|poisoned| {
+            self.0.clear_poison();
+            let conn = poisoned.into_inner();
+            if !conn.is_autocommit() {
+                let _ = conn.execute_batch("ROLLBACK");
+            }
+            tracing::warn!("recovered the registry connection after a panic");
+            conn
+        }))
+    }
+}
+
+/// Ordered registry schema changes, applied once each and recorded in `schema_version`
+/// (L13). Append only: never edit, reorder or remove an entry.
+const MIGRATIONS: &[&str] = &[
+    // 1: listing figures, so listing repositories never opens their storage (M6).
+    "CREATE TABLE IF NOT EXISTS repository_activity (
+       owner TEXT NOT NULL,
+       name TEXT NOT NULL,
+       tip TEXT NOT NULL,
+       tip_at_ms INTEGER NOT NULL,
+       lands_24h INTEGER NOT NULL,
+       computed_at_ms INTEGER NOT NULL,
+       PRIMARY KEY (owner, name)
+     );",
+    // 2: repositories taken down by the operator (`pandod repo disable`).
+    "CREATE TABLE IF NOT EXISTS disabled_repositories (
+       owner TEXT NOT NULL,
+       name TEXT NOT NULL,
+       reason TEXT NOT NULL,
+       disabled_by TEXT NOT NULL,
+       at_ms INTEGER NOT NULL,
+       PRIMARY KEY (owner, name)
+     );",
+];
+
+/// Tables holding rows about one repository (columns `owner`, `name`), cleared when it is
+/// deleted.
+const REPOSITORY_TABLES: &[&str] = &[
+    "grants",
+    "change_requests",
+    "reviews",
+    "comments",
+    "checks",
+    "protections",
+    "events",
+    "issues",
+    "repository_activity",
+    "disabled_repositories",
+];
+
 /// Which repositories exist. SQLite, one small table; writes are rare (creating a repository).
 pub struct Registry {
-    pub(crate) db: Mutex<rusqlite::Connection>,
+    pub(crate) db: Db,
     /// Answers to the reads every request makes (a repository, a role, branch protection),
     /// dropped by any write that could change them (ADR-029).
     cache: quick_cache::sync::Cache<String, (Instant, Arc<dyn std::any::Any + Send + Sync>)>,
@@ -133,8 +191,9 @@ impl Registry {
             }
             rusqlite::Connection::open(path)?
         };
+        // FULL: an acknowledged write (a token, a review, an approval) survives power loss (M4).
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
              CREATE TABLE IF NOT EXISTS repositories (
                owner TEXT NOT NULL,
                name TEXT NOT NULL,
@@ -148,7 +207,7 @@ impl Registry {
              );",
         )?;
         let reg = Self {
-            db: Mutex::new(conn),
+            db: Db(Mutex::new(conn)),
             cache: quick_cache::sync::Cache::new(100_000),
             generation: Default::default(),
         };
@@ -198,6 +257,110 @@ impl Registry {
         db.execute_batch(crate::webhooks::SCHEMA)?;
         db.execute_batch(crate::features::issues::SCHEMA)?;
         db.execute_batch(crate::login::SCHEMA)?;
+        drop(db);
+        self.apply_migrations()
+    }
+
+    fn apply_migrations(&self) -> anyhow::Result<()> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);")?;
+        let current: i64 = tx.query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |r| r.get(0))?;
+        for (i, m) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+            tx.execute_batch(m).with_context(|| format!("registry migration {}", i + 1))?;
+            tx.execute("INSERT INTO schema_version (version) VALUES (?1)", [i as i64 + 1])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Why the operator disabled the repository, if they did (cached like every access answer,
+    /// so a `pandod repo disable` from another process takes effect within seconds).
+    pub fn disabled(&self, key: &RepoKey) -> anyhow::Result<Option<String>> {
+        self.cached(format!("disabled:{key}"), || {
+            let db = self.db.lock().unwrap();
+            let mut st =
+                db.prepare_cached("SELECT reason FROM disabled_repositories WHERE owner = ?1 AND name = ?2")?;
+            let mut rows = st.query_map((&key.owner, &key.name), |r| r.get::<_, String>(0))?;
+            Ok(rows.next().transpose()?)
+        })
+    }
+
+    /// Disables the repository (`Some(reason)`) or enables it again (`None`); false if nothing
+    /// changed.
+    pub fn set_disabled(&self, key: &RepoKey, reason: Option<&str>, by: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let n = match reason {
+            Some(reason) => db.execute(
+                "INSERT INTO disabled_repositories (owner, name, reason, disabled_by, at_ms) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (owner, name) DO UPDATE SET reason = excluded.reason, disabled_by = excluded.disabled_by, at_ms = excluded.at_ms",
+                rusqlite::params![key.owner, key.name, reason, by, now_ms()],
+            )?,
+            None => db.execute("DELETE FROM disabled_repositories WHERE owner = ?1 AND name = ?2", (&key.owner, &key.name))?,
+        };
+        self.invalidate();
+        Ok(n > 0)
+    }
+
+    /// Removes the repository and every row about it (reviews, issues, webhooks, grants...);
+    /// false if it did not exist. Its storage is the caller's to remove.
+    pub fn delete_repository(&self, key: &RepoKey) -> anyhow::Result<bool> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        tx.execute(
+            "DELETE FROM deliveries WHERE hook IN (SELECT id FROM webhooks WHERE owner = ?1 AND name = ?2)",
+            (&key.owner, &key.name),
+        )?;
+        for t in REPOSITORY_TABLES.iter().chain(&["webhooks"]) {
+            // Table names come from the constant list above, never from input.
+            tx.execute(&format!("DELETE FROM {t} WHERE owner = ?1 AND name = ?2"), (&key.owner, &key.name))?;
+        }
+        let n = tx.execute("DELETE FROM repositories WHERE owner = ?1 AND name = ?2", (&key.owner, &key.name))?;
+        tx.commit()?;
+        self.invalidate();
+        Ok(n == 1)
+    }
+
+    /// Listing figures last computed for the repository.
+    fn activity(&self, key: &RepoKey) -> anyhow::Result<Option<RepoStats>> {
+        let db = self.db.lock().unwrap();
+        let mut st = db.prepare_cached(
+            "SELECT tip, tip_at_ms, lands_24h FROM repository_activity WHERE owner = ?1 AND name = ?2",
+        )?;
+        let mut rows = st.query_map((&key.owner, &key.name), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
+        })?;
+        Ok(rows.next().transpose()?.map(|(tip, tip_at_ms, lands)| RepoStats {
+            tip: tip.parse().ok(),
+            tip_at_ms,
+            // Not recomputed while the repository is closed: a day-old count is no count.
+            lands_24h: if now_ms() - tip_at_ms < 86_400_000 { lands as u32 } else { 0 },
+        }))
+    }
+
+    fn record_activity(&self, key: &RepoKey, s: &RepoStats) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute(
+            "INSERT INTO repository_activity (owner, name, tip, tip_at_ms, lands_24h, computed_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (owner, name) DO UPDATE SET tip = excluded.tip, tip_at_ms = excluded.tip_at_ms,
+               lands_24h = excluded.lands_24h, computed_at_ms = excluded.computed_at_ms",
+            rusqlite::params![
+                key.owner,
+                key.name,
+                s.tip.map(|t| t.to_hex()).unwrap_or_default(),
+                s.tip_at_ms,
+                s.lands_24h as i64,
+                now_ms()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Readiness: the registry answers and its write lock can be taken.
+    pub fn ready(&self) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute_batch("BEGIN IMMEDIATE; ROLLBACK;")?;
+        let _: i64 = db.query_row("SELECT COUNT(*) FROM repositories", [], |r| r.get(0))?;
         Ok(())
     }
 
@@ -295,6 +458,63 @@ pub type BuildRoutes = Arc<dyn Fn(&RepoKey, Repo) -> RepoServices + Send + Sync>
 struct Hosted {
     repo: Repo,
     services: RepoServices,
+    /// References to `repo.refs` held by the repository's own services: more means a call (a
+    /// land, a review, a streaming read) is still using it.
+    baseline: usize,
+}
+
+type Cell = Arc<OnceCell<Hosted>>;
+
+/// Opened repositories and when each was last asked for.
+struct OpenRepos {
+    map: HashMap<RepoKey, (Cell, Instant)>,
+    swept: Instant,
+}
+
+/// How many repositories stay open at once, and how long an unused one stays open (M7).
+#[derive(Debug, Clone, Copy)]
+pub struct OpenLimits {
+    pub max_open: usize,
+    pub idle: Duration,
+}
+
+impl Default for OpenLimits {
+    fn default() -> Self {
+        Self { max_open: 256, idle: Duration::from_secs(600) }
+    }
+}
+
+fn in_use(cell: &Cell) -> bool {
+    Arc::strong_count(cell) > 1 || cell.get().is_some_and(|h| Arc::strong_count(&h.repo.refs) > h.baseline)
+}
+
+impl OpenRepos {
+    /// Closes repositories nobody is using that have been idle too long, then the least
+    /// recently used unused ones beyond the limit. A repository in use is never closed, so a
+    /// repository is never open twice. ponytail: O(open) scan, at most every few seconds or
+    /// when over the limit; fine for hundreds open.
+    fn sweep(&mut self, limits: OpenLimits) {
+        if self.map.len() <= limits.max_open && self.swept.elapsed() < Duration::from_secs(5) {
+            return;
+        }
+        self.swept = Instant::now();
+        self.map.retain(|key, (cell, at)| {
+            let keep = in_use(cell) || at.elapsed() < limits.idle;
+            if !keep {
+                tracing::info!(repo = %key, "closed idle repository");
+            }
+            keep
+        });
+        if self.map.len() > limits.max_open {
+            let mut idle: Vec<(Instant, RepoKey)> =
+                self.map.iter().filter(|(_, (c, _))| !in_use(c)).map(|(k, (_, at))| (*at, k.clone())).collect();
+            idle.sort();
+            for (_, key) in idle.into_iter().take(self.map.len() - limits.max_open) {
+                self.map.remove(&key);
+                tracing::info!(repo = %key, "closed least recently used repository");
+            }
+        }
+    }
 }
 
 /// Activity figures for listings, cached briefly: they walk history.
@@ -310,7 +530,8 @@ pub struct Hosting {
     templates: Templates,
     pub registry: Arc<Registry>,
     build: BuildRoutes,
-    open: Mutex<HashMap<RepoKey, Arc<OnceCell<Hosted>>>>,
+    open: Mutex<OpenRepos>,
+    limits: OpenLimits,
     stats: Mutex<HashMap<RepoKey, (Instant, RepoStats)>>,
     /// Who may do what.
     pub access: Arc<crate::permissions::Access>,
@@ -330,11 +551,23 @@ impl Hosting {
             templates,
             registry,
             build,
-            open: Mutex::new(HashMap::new()),
+            open: Mutex::new(OpenRepos { map: HashMap::new(), swept: Instant::now() }),
+            limits: OpenLimits::default(),
             stats: Mutex::new(HashMap::new()),
             access,
             login: std::sync::OnceLock::new(),
         })
+    }
+
+    /// Sets how many repositories stay open and for how long.
+    pub fn with_open_limits(mut self, limits: OpenLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Repositories open now.
+    pub fn open_count(&self) -> usize {
+        self.open.lock().unwrap_or_else(std::sync::PoisonError::into_inner).map.len()
     }
 
     /// The repository's record, if `who` (limited by `scope`) has at least `need` on it.
@@ -348,29 +581,37 @@ impl Hosting {
         let rec = self
             .registry
             .get(key)
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(crate::status::internal)?
             .ok_or_else(|| Status::not_found(format!("no repository `{key}` on this server")))?;
         self.access.check(&self.registry, who, scope, &rec, need)?;
         Ok(rec)
     }
 
-    async fn hosted(&self, key: &RepoKey) -> Result<Arc<OnceCell<Hosted>>, Status> {
-        let exists = self.registry.get(key).map_err(|e| Status::internal(e.to_string()))?.is_some();
+    async fn hosted(&self, key: &RepoKey) -> Result<Cell, Status> {
+        let exists = self.registry.get(key).map_err(crate::status::internal)?.is_some();
         if !exists {
             return Err(Status::not_found(format!("no repository `{key}` on this server")));
         }
-        let cell = self.open.lock().unwrap().entry(key.clone()).or_default().clone();
+        let cell = {
+            let mut open = self.open.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let entry = open.map.entry(key.clone()).or_insert_with(|| (Default::default(), Instant::now()));
+            entry.1 = Instant::now();
+            let cell = entry.0.clone();
+            open.sweep(self.limits);
+            cell
+        };
         cell.get_or_try_init(|| async {
             let (metadata, objects) = self.templates.render(key);
             if let Some(path) = metadata.strip_prefix("sqlite://")
                 && let Some(dir) = Path::new(path).parent()
             {
                 std::fs::create_dir_all(dir)
-                    .map_err(|e| Status::internal(format!("creating storage for `{key}`: {e}")))?;
+                    .map_err(|e| crate::status::internal(format!("creating storage for `{key}`: {e}")))?;
             }
-            let repo = crate::config::open_repo(&metadata, &objects)
-                .await
-                .map_err(|e| Status::unavailable(format!("opening storage for `{key}`: {e:#}")))?;
+            let repo = crate::config::open_repo(&metadata, &objects).await.map_err(|e| {
+                tracing::error!(repo = %key, error = %format!("{e:#}"), "opening storage");
+                Status::unavailable(format!("storage for `{key}` is unavailable; try again shortly"))
+            })?;
             // Every branch move becomes a `push` webhook event.
             let refs = Arc::new(crate::webhooks::NotifyingRefs {
                 inner: repo.refs.clone(),
@@ -380,16 +621,18 @@ impl Hosting {
             });
             let repo = Repo { refs, ..repo };
             tracing::info!(repo = %key, "opened repository");
-            Ok::<_, Status>(Hosted { services: (self.build)(key, repo.clone()), repo })
+            let services = (self.build)(key, repo.clone());
+            Ok::<_, Status>(Hosted { baseline: Arc::strong_count(&repo.refs), services, repo })
         })
         .await?;
         Ok(cell)
     }
 
-    /// The services for `key`, opening its storage the first time.
-    pub async fn routes(&self, key: &RepoKey) -> Result<Routes, Status> {
+    /// The services for `key`, opening its storage the first time, and a handle that keeps the
+    /// repository open while held.
+    async fn routes(&self, key: &RepoKey) -> Result<(Routes, Cell), Status> {
         let cell = self.hosted(key).await?;
-        Ok(cell.get().expect("initialised above").services.routes.clone())
+        Ok((cell.get().expect("initialised above").services.routes.clone(), cell))
     }
 
     /// The repository's storage and its change-request landing, opening it the first time.
@@ -402,7 +645,7 @@ impl Hosting {
     /// Creates the repository's storage and records it. Idempotent for an existing repository
     /// with the same name: returns false.
     pub async fn create(&self, rec: RepoRecord) -> Result<bool, Status> {
-        let created = self.registry.create(&rec).map_err(|e| Status::internal(e.to_string()))?;
+        let created = self.registry.create(&rec).map_err(crate::status::internal)?;
         // Open now so a storage problem surfaces at creation, not on first use.
         self.hosted(&rec.key).await?;
         Ok(created)
@@ -410,9 +653,20 @@ impl Hosting {
 
     /// Tip, its time, and changes landed on the default branch in the last day. Cached per tip
     /// for up to 30 s: a landing always shows at once, and the day-long walk runs at most twice a
-    /// minute per repository.
+    /// minute per repository. A repository that is not open is not opened for this (a listing
+    /// would open every repository): its figures come from the registry, as last computed.
     pub async fn stats(&self, rec: &RepoRecord) -> RepoStats {
-        let Ok(cell) = self.hosted(&rec.key).await else { return RepoStats::default() };
+        let open = self
+            .open
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .map
+            .get(&rec.key)
+            .filter(|(c, _)| c.initialized())
+            .map(|(c, _)| c.clone());
+        let Some(cell) = open else {
+            return self.registry.activity(&rec.key).ok().flatten().unwrap_or_default();
+        };
         let repo = &cell.get().expect("initialised").repo;
         let tip = repo.refs.get(&rec.default_branch).await.ok().flatten();
         if let Some((at, s)) = self.stats.lock().unwrap().get(&rec.key)
@@ -423,6 +677,9 @@ impl Hosting {
         }
         let s = compute_stats(repo, &rec.default_branch).await.unwrap_or_default();
         self.stats.lock().unwrap().insert(rec.key.clone(), (Instant::now(), s));
+        if let Err(e) = self.registry.record_activity(&rec.key, &s) {
+            tracing::warn!(repo = %rec.key, error = %e, "recording listing figures");
+        }
         s
     }
 }
@@ -531,8 +788,16 @@ where
                 Err(e) => Err(e),
             };
             match routes {
-                Ok(routes) => match routes.oneshot(req).await {
-                    Ok(resp) => Ok(resp),
+                // The response body (a streamed checkout, say) keeps the repository open until it
+                // is sent.
+                Ok((routes, open)) => match routes.oneshot(req).await {
+                    Ok(resp) => Ok(resp.map(|body| {
+                        use http_body_util::BodyExt;
+                        tonic::body::Body::new(body.map_frame(move |f| {
+                            let _ = &open;
+                            f
+                        }))
+                    })),
                     Err(never) => match never {},
                 },
                 Err(status) => Ok(status.into_http()),
@@ -593,5 +858,100 @@ mod tests {
         assert_eq!(r.list(Some("lumen")).unwrap().len(), 2);
         assert_eq!(r.list(None).unwrap().len(), 3);
         assert_eq!(r.get(&RepoKey::parse("lumen/fleet").unwrap()).unwrap().unwrap().topics, vec!["rust".to_string()]);
+    }
+
+    fn record(key: &str) -> RepoRecord {
+        RepoRecord {
+            key: RepoKey::parse(key).unwrap(),
+            description: String::new(),
+            visibility: 1,
+            default_branch: "main".into(),
+            created_at_ms: 1,
+            archived: false,
+            topics: vec![],
+        }
+    }
+
+    #[test]
+    fn schema_versions_durability_and_poison_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}/platform.db", dir.path().display());
+        let version = |r: &Registry| -> i64 {
+            r.db.lock().unwrap().query_row("SELECT MAX(version) FROM schema_version", [], |x| x.get(0)).unwrap()
+        };
+        let r = Registry::open(&url).unwrap();
+        assert_eq!(version(&r), MIGRATIONS.len() as i64);
+        let sync: i64 = r.db.lock().unwrap().query_row("PRAGMA synchronous", [], |x| x.get(0)).unwrap();
+        assert_eq!(sync, 2, "FULL");
+        drop(r);
+        let r = Arc::new(Registry::open(&url).unwrap());
+        assert_eq!(version(&r), MIGRATIONS.len() as i64, "each migration runs once");
+
+        // A panic while holding the registry, mid-transaction, doesn't take the platform down.
+        let r2 = r.clone();
+        let _ = std::thread::spawn(move || {
+            let db = r2.db.lock().unwrap();
+            db.execute_batch("BEGIN; INSERT INTO repositories (owner, name, created_at_ms) VALUES ('a', 'b', 1);")
+                .unwrap();
+            panic!("boom");
+        })
+        .join();
+        assert!(r.create(&record("lumen/fleet")).unwrap());
+        assert!(r.get(&RepoKey::parse("a/b").unwrap()).unwrap().is_none(), "the unfinished write was rolled back");
+    }
+
+    #[test]
+    fn deleting_a_repository_removes_its_rows() {
+        let r = Registry::open("memory").unwrap();
+        let rec = record("lumen/fleet");
+        r.create(&rec).unwrap();
+        r.set_grant(&rec.key, "kabir", pando_proto::Role::Write).unwrap();
+        r.create_webhook(&rec.key, "https://ci.example/", &[], "", "kabir").unwrap();
+        r.set_disabled(&rec.key, Some("x"), "ops").unwrap();
+        assert!(r.delete_repository(&rec.key).unwrap());
+        assert!(r.get(&rec.key).unwrap().is_none());
+        assert!(r.webhooks(&rec.key).unwrap().is_empty());
+        assert_eq!(r.held_role("kabir", &rec.key).unwrap(), pando_proto::Role::Unspecified);
+        assert!(r.disabled(&rec.key).unwrap().is_none());
+        assert!(!r.delete_repository(&rec.key).unwrap());
+    }
+
+    #[tokio::test]
+    async fn idle_repositories_close_but_not_while_in_use_and_listings_open_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = Arc::new(Registry::open("memory").unwrap());
+        let build: BuildRoutes = Arc::new(|_, repo| RepoServices {
+            routes: crate::authority_routes(
+                repo,
+                Arc::new(pando_adapters::flags::SpecFlags::all_on()),
+                Arc::new(pando_core::acl::AllowAllPolicy),
+                Arc::new(pando_core::ports::NoChecks),
+            ),
+            review_land: None,
+        });
+        let templates = Templates {
+            metadata: format!("sqlite://{}/{{repo}}.db", dir.path().display()),
+            objects: "metadata".into(),
+        };
+        let h = Hosting::new(templates, registry.clone(), build, Default::default())
+            .unwrap()
+            .with_open_limits(OpenLimits { max_open: 1, idle: Duration::from_secs(600) });
+        for k in ["lumen/a", "lumen/b"] {
+            registry.create(&record(k)).unwrap();
+        }
+        let (a, b) = (RepoKey::parse("lumen/a").unwrap(), RepoKey::parse("lumen/b").unwrap());
+        // `a` in use (a call holds its storage): opening `b` can't close it.
+        let (held, _) = h.open_repo(&a).await.unwrap();
+        h.open_repo(&b).await.unwrap();
+        assert_eq!(h.open_count(), 2);
+        drop(held);
+        // Over the limit and `a` is idle now: the least recently used goes.
+        h.open_repo(&b).await.unwrap();
+        assert_eq!(h.open_count(), 1);
+
+        // Listing figures never open a closed repository; they come from the registry.
+        let s = h.stats(&record("lumen/a")).await;
+        assert!(s.tip.is_none());
+        assert_eq!(h.open_count(), 1);
     }
 }

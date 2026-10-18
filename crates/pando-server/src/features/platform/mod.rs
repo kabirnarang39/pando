@@ -39,9 +39,7 @@ pub struct Platform {
     hosting: Arc<Hosting>,
 }
 
-fn internal(e: impl std::fmt::Display) -> Status {
-    Status::internal(e.to_string())
-}
+use crate::status::internal;
 
 fn caller<T>(req: &Request<T>) -> (Principal, Option<TokenScope>) {
     (principal(req), req.extensions().get::<TokenScope>().cloned())
@@ -458,7 +456,17 @@ impl platform_server::Platform for Platform {
         let q = r.query.to_lowercase();
         let limit = if r.limit == 0 { 200 } else { r.limit.min(1000) } as usize;
         let mut out = Vec::new();
+        let mut next = String::new();
+        // Pages by name: `page_token` is the last OWNER/NAME of the previous page.
+        let after = RepoKey::parse(&r.page_token).ok();
         for (rec, role) in self.readable(&who, scope.as_ref(), (!r.owner.is_empty()).then_some(r.owner.as_str()))? {
+            if after.as_ref().is_some_and(|a| rec.key <= *a) {
+                continue;
+            }
+            if out.len() == limit {
+                next = out.last().map(|x: &Repository| format!("{}/{}", x.owner, x.name)).unwrap_or_default();
+                break;
+            }
             if !q.is_empty()
                 && !rec.key.name.to_lowercase().contains(&q)
                 && !rec.description.to_lowercase().contains(&q)
@@ -466,11 +474,8 @@ impl platform_server::Platform for Platform {
                 continue;
             }
             out.push(self.repository(&rec, role).await);
-            if out.len() == limit {
-                break;
-            }
         }
-        Ok(Response::new(ListRepositoriesResponse { repositories: out, next_page_token: String::new() }))
+        Ok(Response::new(ListRepositoriesResponse { repositories: out, next_page_token: next }))
     }
 
     async fn get_repository(&self, req: Request<RepositoryRef>) -> RpcResult<Repository> {

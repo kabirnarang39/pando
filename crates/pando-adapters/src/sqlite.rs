@@ -46,16 +46,27 @@ pub struct SqliteStore {
     next: AtomicUsize,
 }
 
+/// `synchronous=FULL` (the default): a write is on disk before its caller sees Ok, so an
+/// acknowledged land survives power loss. NORMAL (`--sqlite-synchronous normal`) is durable
+/// across application crashes only: an OS crash or power loss can drop the last transactions,
+/// never corrupt the database.
+static SYNC_FULL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Chooses FULL (true) or NORMAL for stores opened from now on.
+pub fn set_synchronous_full(full: bool) {
+    SYNC_FULL.store(full, Ordering::Relaxed);
+}
+
 fn tune(c: &Connection) -> rusqlite::Result<()> {
-    // NORMAL is durable across application crashes in WAL mode; only an OS crash or
-    // power loss can drop the last transactions, never corrupt the database.
+    let sync = if SYNC_FULL.load(Ordering::Relaxed) { "FULL" } else { "NORMAL" };
+    c.pragma_update(None, "synchronous", sync)?;
     // No mmap: SQLite remaps the file on every read transaction after the file grows, which
     // dominated reads under concurrent writes (measured: compaction 1.4-2x faster without
     // it, clones unchanged). ponytail: 64 MB page cache per connection, so at most ~1.1 GB
     // across 16 readers and the writer on a busy, large store; make it configurable if
     // small hosts need less.
     c.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
          PRAGMA cache_size=-65536; PRAGMA mmap_size=0; PRAGMA temp_store=MEMORY;",
     )
 }

@@ -203,4 +203,16 @@ async fn one_server_hosts_isolated_repositories() {
     assert_eq!(by_name["fleet"].lands_24h, 2);
     assert_eq!(by_name["web"].lands_24h, 1);
     assert_eq!(by_name["fleet"].tip, fleet_tip.0.to_vec());
+
+    // Listings page: one at a time, each page naming where the next starts.
+    let page = |token: String| ListRepositoriesRequest {
+        owner: "lumen".into(),
+        limit: 1,
+        page_token: token,
+        ..Default::default()
+    };
+    let first = dev.platform().list_repositories(page(String::new())).await.unwrap().into_inner();
+    assert_eq!((first.repositories.len(), first.next_page_token.as_str()), (1, "lumen/fleet"));
+    let second = dev.platform().list_repositories(page(first.next_page_token)).await.unwrap().into_inner();
+    assert_eq!(second.repositories[0].name, "web");
 }

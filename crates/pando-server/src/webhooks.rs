@@ -53,6 +53,17 @@ const MAX_ATTEMPTS: i64 = 8;
 /// Deliveries kept per webhook, for the log.
 const KEEP: i64 = 200;
 
+/// Deliveries posted at once, and at once to any one webhook, so a slow or dead endpoint holds
+/// up only its own deliveries (M10).
+const IN_FLIGHT: usize = 32;
+const PER_HOOK: usize = 2;
+
+/// Longest one delivery may take, DNS included.
+const DELIVERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Finished deliveries (delivered, or given up) are deleted after this long.
+const RETAIN_MS: i64 = 30 * 86_400_000;
+
 fn random_hex(n: usize) -> anyhow::Result<String> {
     let mut raw = vec![0u8; n];
     getrandom::fill(&mut raw).context("reading random bytes")?;
@@ -257,7 +268,8 @@ impl Registry {
             let mut body = payload.clone();
             body["delivery"] = json!(id);
             // A delivery to one named hook (a ping) is sent by the caller right away; the worker
-            // only picks it up if that never happened, so it is never sent twice.
+            // picks it up only if that did not finish within a minute. Delivery is at least
+            // once: receivers dedupe by the `x-pando-delivery` id.
             let now = now_ms();
             let first = if only.is_some() { now + 60_000 } else { now };
             db.execute(
@@ -275,9 +287,9 @@ impl Registry {
         Ok(ids)
     }
 
-    /// Claims deliveries due now. Claiming moves
-    /// their next attempt a minute ahead in the same statement, so workers on several replicas
-    /// never post the same delivery twice; a worker that dies leaves it to be retried.
+    /// Claims deliveries due now. Claiming moves their next attempt a minute ahead in the same
+    /// statement, so two workers don't claim the same delivery at once; a worker that dies
+    /// after posting but before recording leaves it to be posted again (at least once).
     fn claim_due(&self, limit: usize) -> anyhow::Result<Vec<Due>> {
         let now = now_ms();
         let db = self.db.lock().unwrap();
@@ -295,10 +307,26 @@ impl Registry {
         let mut out = Vec::new();
         for (id, h, event, payload, attempts) in claimed {
             if let Ok((url, secret)) = hook.query_row([&h], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
-                out.push(Due { id, url, secret, event, payload, attempts });
+                out.push(Due { id, hook: h, url, secret, event, payload, attempts });
             }
         }
         Ok(out)
+    }
+
+    /// Puts a claimed delivery back to be tried again shortly, without counting an attempt.
+    fn defer(&self, id: &str) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute("UPDATE deliveries SET next_at_ms = ?2 WHERE id = ?1", rusqlite::params![id, now_ms() + 1_000])?;
+        Ok(())
+    }
+
+    /// Deletes deliveries finished (delivered or given up) before `before_ms`.
+    fn prune_deliveries(&self, before_ms: i64) -> anyhow::Result<usize> {
+        let db = self.db.lock().unwrap();
+        Ok(db.execute(
+            "DELETE FROM deliveries WHERE (delivered = 1 OR attempts >= ?1) AND created_at_ms < ?2",
+            rusqlite::params![MAX_ATTEMPTS, before_ms],
+        )?)
     }
 
     fn record_attempt(&self, id: &str, attempts: i64, status: i32, error: &str, delivered: bool) -> anyhow::Result<()> {
@@ -330,6 +358,7 @@ impl Registry {
 /// A delivery claimed for sending.
 struct Due {
     id: String,
+    hook: String,
     url: String,
     secret: String,
     event: String,
@@ -415,24 +444,45 @@ pub async fn deliver_now(reg: &Registry, id: &str, allow_private: bool) -> anyho
     reg.delivery(id)
 }
 
-/// Posts due deliveries until the server stops.
-pub async fn run(reg: Arc<Registry>, allow_private: bool) {
-    loop {
-        let due = match reg.claim_due(32) {
-            Ok(d) => d,
-            Err(e) => {
+/// Posts due deliveries until `stop` turns true, then waits for those in flight. Deliveries
+/// run concurrently, at most [`PER_HOOK`] per webhook, each within [`DELIVERY_TIMEOUT`].
+pub async fn run(reg: Arc<Registry>, allow_private: bool, mut stop: tokio::sync::watch::Receiver<bool>) {
+    let mut running = tokio::task::JoinSet::new();
+    let mut busy: std::collections::HashMap<String, usize> = Default::default();
+    let mut pruned = std::time::Instant::now() - Duration::from_secs(3600);
+    while !*stop.borrow() {
+        if pruned.elapsed() >= Duration::from_secs(3600) {
+            pruned = std::time::Instant::now();
+            match reg.prune_deliveries(now_ms() - RETAIN_MS) {
+                Ok(n) if n > 0 => tracing::info!(deleted = n, "pruned old webhook deliveries"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "pruning webhook deliveries"),
+            }
+        }
+        let free = IN_FLIGHT - running.len();
+        let due = if free == 0 {
+            vec![]
+        } else {
+            reg.claim_due(free).unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "reading webhook deliveries");
                 vec![]
-            }
+            })
         };
-        if due.is_empty() {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            continue;
-        }
-        let posts = due.into_iter().map(|Due { id, url, secret, event, payload, attempts }| {
+        for Due { id, hook, url, secret, event, payload, attempts } in due {
+            let n = busy.entry(hook.clone()).or_default();
+            if *n >= PER_HOOK {
+                if let Err(e) = reg.defer(&id) {
+                    tracing::warn!(error = %e, "deferring a webhook delivery");
+                }
+                continue;
+            }
+            *n += 1;
             let reg = reg.clone();
-            async move {
-                let (status, error) = post(&url, &secret, &event, &id, payload, allow_private).await;
+            running.spawn(async move {
+                let sent =
+                    tokio::time::timeout(DELIVERY_TIMEOUT, post(&url, &secret, &event, &id, payload, allow_private))
+                        .await;
+                let (status, error) = sent.unwrap_or_else(|_| (-1, "timed out".into()));
                 let ok = (200..300).contains(&status);
                 if !ok {
                     tracing::info!(delivery = %id, status, error, attempt = attempts + 1, "webhook delivery failed");
@@ -440,10 +490,30 @@ pub async fn run(reg: Arc<Registry>, allow_private: bool) {
                 if let Err(e) = reg.record_attempt(&id, attempts + 1, status, &error, ok) {
                     tracing::warn!(error = %e, "recording a webhook delivery");
                 }
+                hook
+            });
+        }
+        // Wait for a slot to free up, a second to pass, or the stop signal.
+        tokio::select! {
+            Some(done) = running.join_next(), if !running.is_empty() => {
+                if let Ok(hook) = done && let Some(n) = busy.get_mut(&hook) {
+                    *n -= 1;
+                    if *n == 0 {
+                        busy.remove(&hook);
+                    }
+                }
             }
-        });
-        futures::future::join_all(posts).await;
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+            changed = stop.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+            }
+        }
     }
+    // Finish what is being posted; anything unrecorded is posted again after a restart.
+    let _ = tokio::time::timeout(DELIVERY_TIMEOUT, async { while running.join_next().await.is_some() {} }).await;
+    tracing::info!("webhook worker stopped");
 }
 
 /// A repository's branches, reporting every move as a `push` event.
@@ -589,5 +659,49 @@ mod tests {
         assert_eq!(payload["delivery"], json!(d[1].id));
         assert!(reg.delete_webhook(&all.id).unwrap());
         assert!(reg.deliveries(&all.id, 10).unwrap().is_empty());
+    }
+
+    /// A webhook that never answers holds up only its own deliveries; the worker stops when
+    /// told to; finished deliveries are pruned after 30 days.
+    #[tokio::test]
+    async fn a_slow_endpoint_does_not_stall_others() {
+        let reg = Arc::new(Registry::open("memory").unwrap());
+        let key = RepoKey::parse("lumen/fleet").unwrap();
+        // Accepts connections and never answers.
+        let slow = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let slow_url = format!("http://{}/", slow.local_addr().unwrap());
+        tokio::spawn(async move {
+            let mut held = vec![];
+            while let Ok((c, _)) = slow.accept().await {
+                held.push(c);
+            }
+        });
+        let fast = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let fast_url = format!("http://{}/", fast.local_addr().unwrap());
+        tokio::spawn(
+            axum::serve(fast, axum::Router::new().route("/", axum::routing::post(|| async { "ok" }))).into_future(),
+        );
+        let (slow_hook, _) = reg.create_webhook(&key, &slow_url, &["review".into()], "", "kabir").unwrap();
+        for _ in 0..5 {
+            reg.enqueue(&key, "review", &json!({}), None).unwrap();
+        }
+        let (fast_hook, _) = reg.create_webhook(&key, &fast_url, &["push".into()], "", "kabir").unwrap();
+        reg.enqueue(&key, "push", &json!({}), None).unwrap();
+
+        let (stop, rx) = tokio::sync::watch::channel(false);
+        let worker = tokio::spawn(run(reg.clone(), true, rx));
+        let delivered = async {
+            while !reg.deliveries(&fast_hook.id, 10).unwrap().iter().all(|d| d.delivered) {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), delivered).await.expect("the fast hook is not held up");
+        stop.send(true).unwrap();
+        // In-flight posts to the slow hook end within the delivery timeout.
+        tokio::time::timeout(DELIVERY_TIMEOUT + Duration::from_secs(5), worker).await.unwrap().unwrap();
+        assert!(reg.deliveries(&slow_hook.id, 10).unwrap().iter().all(|d| !d.delivered));
+
+        assert_eq!(reg.prune_deliveries(now_ms() - RETAIN_MS).unwrap(), 0, "recent ones stay");
+        assert_eq!(reg.prune_deliveries(now_ms() + 1).unwrap(), 1, "the delivered one goes once old");
     }
 }

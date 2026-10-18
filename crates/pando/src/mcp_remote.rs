@@ -360,7 +360,14 @@ impl RemoteMcp {
     }
 
     /// Serves MCP over streamable HTTP at `/mcp` until the process stops.
-    pub async fn serve_http(self, listen: std::net::SocketAddr, allowed_hosts: Vec<String>) -> anyhow::Result<()> {
+    /// Browsers are refused unless their `Origin` is in `allowed_origins` (agents send none), so
+    /// a web page can't drive the gateway with a visitor's network access.
+    pub async fn serve_http(
+        self,
+        listen: std::net::SocketAddr,
+        allowed_hosts: Vec<String>,
+        allowed_origins: Vec<String>,
+    ) -> anyhow::Result<()> {
         use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
         use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
         let mut config = StreamableHttpServerConfig::default();
@@ -368,6 +375,11 @@ impl RemoteMcp {
         if !allowed_hosts.is_empty() {
             config.allowed_hosts = allowed_hosts;
         }
+        config = if allowed_origins.is_empty() {
+            config.enforce_origin_validation()
+        } else {
+            config.with_allowed_origins(allowed_origins)
+        };
         let me = self.clone();
         let service =
             StreamableHttpService::new(move || Ok(me.clone()), Arc::new(NeverSessionManager::default()), config);
@@ -375,11 +387,7 @@ impl RemoteMcp {
             axum::Router::new().nest_service("/mcp", service).route("/healthz", axum::routing::get(|| async { "ok" }));
         let listener = tokio::net::TcpListener::bind(listen).await?;
         eprintln!("pando MCP on http://{listen}/mcp, for {}", self.server);
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = tokio::signal::ctrl_c().await;
-            })
-            .await?;
+        axum::serve(listener, app).with_graceful_shutdown(crate::shutdown_signal()).await?;
         Ok(())
     }
 }

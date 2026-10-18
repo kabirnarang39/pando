@@ -85,7 +85,8 @@ pub fn daemon_store(
 ) -> anyhow::Result<Arc<dyn ObjectStore>> {
     let up = Arc::new(GrpcObjects::connect(upstream, token)?);
     std::fs::create_dir_all(dir)?;
-    let disk = Arc::new(CloudObjects::from_url(&pando_adapters::cloud::file_url(std::path::Path::new(dir))?)?);
+    // A cache: no fsync, anything lost is fetched again.
+    let disk = Arc::new(CloudObjects::local(std::path::Path::new(dir), false)?);
     let disk_tier = Arc::new(Tiered::new(disk, up));
     Ok(Arc::new(Tiered::new(Arc::new(BoundedCache::new(memory_bytes)), disk_tier)))
 }
