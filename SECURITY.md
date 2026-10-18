@@ -24,7 +24,8 @@ publish a GitHub security advisory, and list the fix, with its CVE or advisory i
 
 * **Authentication**: bearer tokens (`PANDO_TOKENS`, `principal:token` pairs), compared in
   constant time. Run with TLS (`--tls-cert/--tls-key`) whenever traffic leaves the host.
-  Without `PANDO_TOKENS` the server allows anonymous access and logs a warning.
+  Without `PANDO_TOKENS`, OIDC or platform tokens the server allows anonymous access, logs a
+  warning, and refuses to listen beyond loopback unless `--allow-anonymous` is set.
 * **SSO**: OpenID Connect bearer tokens (`--oidc-issuer/--oidc-audience`). Keys come from the
   issuer's JWKS and rotate automatically; only asymmetric algorithms matching the key are
   accepted (no `alg: none`, no HMAC key confusion); `iss`, `aud` and `exp` are required. The

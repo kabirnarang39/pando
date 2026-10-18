@@ -114,7 +114,8 @@ pandod repo --platform sqlite:///var/lib/pando/platform.db enable acme/leaky
 `disable` refuses every read and write of the repository, for everyone including
 administrators, with "disabled by the operator: REASON", and hides it from listings. Nothing is
 deleted. It works while the server runs, which notices within 5 seconds. Both are recorded in
-the audit log (`disable_repository`, `enable_repository`) when `--audit-log` is set.
+the audit log (`disable_repository`, `enable_repository`) when the command is given
+`--audit-log` (`pandod --audit-log FILE repo …`).
 
 ### Deleting a repository
 

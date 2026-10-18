@@ -46,7 +46,8 @@ pando cr land 7
 
 - A protected branch is updated only by those its protection lets bypass review (a login, a team
   `org/team`, or `admins`), and by agents when it lets agents land directly. Everyone else lands
-  through a change request; a direct land is refused with a message saying so.
+  through a change request: a direct land opens one for them (from a `review/…` branch) and
+  says so.
 - A change request lands when nothing blocks it: enough approvals from people other than its
   author, every required check passed, no requested changes, no conflicts, not a draft. Each
   blocker is shown in words. With "a new version needs new approvals" (the default), pushing to

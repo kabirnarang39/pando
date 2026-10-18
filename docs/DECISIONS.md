@@ -116,6 +116,8 @@ Read access is repository-wide.
 reads require object-level authorization (tracked on the roadmap). Shipping write
 protection now covers the OWNERS-style use case without a leaky read model.
 
+**Update (2026-10-18, v3.5.0).** Superseded for reads by ADR-015: read access can be scoped to paths.
+
 ## ADR-014: Delta storage via an offline, single-writer compaction job
 
 **Decision.** Blob versions are delta-encoded in storage by `pandod compact`: zstd
@@ -305,6 +307,9 @@ no authentication at all stay open, for local development, as before. Repositori
 phase 1 become private to their organisation's members: administrators add members after
 upgrading.
 
+**Update (2026-10-18, v3.5.0).** The cache arrived with ADR-029: access answers are cached for up to five
+seconds and dropped by every write.
+
 ## ADR-024: Change requests land as one rebased changeset; protection is an access policy
 
 **Decision.** A change request proposes a branch (the source) for a target. It records the
@@ -329,6 +334,9 @@ one by one. Conflicts are computed from two tree diffs on each read of an open c
 proportional to what changed; a cache comes if listings of hundreds of open requests get slow.
 An agent's land on a protected branch is refused rather than turned into a change request
 automatically; `pando cr create` is one command away.
+
+**Update (2026-10-18, v3.5.0).** `pando land` still refuses; writes through the remote MCP tool `pando_write`
+open a change request on a `review/` branch instead (ADR-026).
 
 ## ADR-025: Webhooks are a signed, leased delivery queue in the registry
 
@@ -499,6 +507,9 @@ added. The organisation cap is counted before the insert, so two creations at th
 exceed it by one. A webhook host that doesn't resolve is refused when saved. Servers that relied on
 the header-less default repository, or on webhooks to private networks, must move the repository
 into the registry or start with `--webhook-allow-private`.
+
+**Update (2026-10-18, v3.5.0).** Invitations shipped (ADR-033), so a person can be invited before they first
+sign in.
 
 ## ADR-033: CLI sign-in, invitations and the terms confirmation
 

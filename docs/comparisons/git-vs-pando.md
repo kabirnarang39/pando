@@ -1,7 +1,8 @@
 # git vs Pando
 
 Both tools are excellent at different things. This page says where each one wins, with
-measurements you can reproduce (`bench/run.sh`).
+measurements you can reproduce (`bench/run.sh`). The table below was recorded with pando 1.0.0
+and git 2.50.1 (`bench/results/RESULTS.md`).
 
 ## Measured results
 
@@ -57,15 +58,15 @@ fetch-rebase-push loop (git). Lands that finish after the 30 s window are not co
 
 "One directory" puts every agent's directory side by side in one parent, which every land
 rewrites (5,000 entries at the largest; the Linux kernel's largest directory,
-`include/linux`, has 1,521). "64 directories" spreads them over 64 parents, closer to agents
+`include/linux`, has about 1,600). "64 directories" spreads them over 64 parents, closer to agents
 working across a monorepo.
 
 * Setup: Apple M4 (10 cores), macOS 26.6, release build, one `pandod` on SQLite, a fresh
   store per run. git pushes to a local bare repository over `file://`, its best case: no
   network and no server-side hooks. Agents and server share the machine. Measured with the
   machine otherwise idle (an earlier run with a busy background VM gave about 30% less).
-* Pando: `cargo run --release --example land_load -- --agents N --fanout F --secs 30` against
-  `pandod server`. git: `python3 bench/git_push_load.py --agents N --secs 30 --work DIR`.
+* Pando: `cargo run --release --example land_load -- --server http://127.0.0.1:7420 --agents N --fanout F --secs 30`
+  against `pandod server`. git: `python3 bench/git_push_load.py --agents N --secs 30 --work DIR`.
 * Before batching (ADR-017), the same Pando build managed 105 lands/s at 16 agents and
   10 lands/s with 237 "too contended" errors at 200.
 * Limits: past 1,000 agents throughput falls because the same process also serves every
@@ -145,7 +146,7 @@ and `po` (28 to 2,554 files). Every system checked out identical file counts.
   on the client machine, so the gap narrows to about 2x. Pando's checkout of `t/` (2,554
   files, fetched, decoded and verified) takes as long as a plain loop that only writes the
   same files (0.20 s), so the client is at the filesystem's limit; going further means not
-  writing files at all, which `pando mount` does on Linux.
+  writing files at all, which `pando mount` does.
 * Server cost: 1.57 CPU-seconds for 175 checkouts, about 9 ms each.
 * The node daemon adds little here because server and jobs share one machine; it exists to
   take load off the server and the network between them.
@@ -153,5 +154,7 @@ and `po` (28 to 2,554 files). Every system checked out identical file counts.
   connections time out), so those runs measure the machine rather than the tools.
 * This benchmark found a bug: about 3% of Pando checkouts failed with `File exists` when
   two writers created the same directory at once. Fixed in 2.1.1.
-* Reproduce: `bench/ci_checkout_load.py --system {git,git-mirror,pando,pando-node} --jobs 16`.
+* Reproduce: `bench/ci_checkout_load.py --system {git,git-mirror,pando,pando-node} --jobs 16
+  --paths Documentation,builtin,t,contrib,compat,po --work DIR` plus `--server`, `--node`,
+  `--git-url` or `--mirror` for the system under test.
 

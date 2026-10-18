@@ -18,8 +18,9 @@ Or in the console: repository **Settings → Webhooks** (repository administrato
 | `push` | a branch is created or moved (a land, a push, a rebase) | `created`, `updated` |
 | `change_request` | a change request is opened, closed or landed | `opened`, `closed`, `landed` |
 | `review` | someone reviews | `approved`, `requested changes`, `commented` |
-| `comment` | someone comments | `created` |
+| `comment` | someone comments on a change request or an issue | `created` |
 | `check` | CI reports a check | `reported` |
+| `issue` | an issue is opened, closed, reopened or assigned | `opened`, `closed`, `reopened`, `assigned` |
 | `ping` | you ping the webhook | `ping` |
 
 A webhook with no events listed receives every event.
@@ -38,7 +39,8 @@ Every body has `event`, `action`, `delivery`, `repository` (`owner`, `name`, `fu
 `sender` and `at_ms`. A `push` adds `ref`, `before`, `after` and `head` (`id`, `author`,
 `message`); change request events add `change_request` (`number`, `title`, `author`,
 `state`, `source`, `target`, `source_tip`, `base`, `draft`), and a landing adds `landed_as`;
-`check` adds `check` (`name`, `state`, `summary`, `details_url`).
+`check` adds `check` (`name`, `state`, `summary`, `details_url`) and the change request; `issue`
+adds `issue` (`number`, `title`, `author`, `state`, `labels`, `assignees`).
 
 ## Verifying the signature
 
@@ -73,7 +75,7 @@ func ok(secret, body []byte, header string) bool {
 
 ## Delivery
 
-- Answer with any 2xx within 10 seconds. Anything else is retried with growing gaps (10 s up
+- Answer with any 2xx within 10 seconds. Anything else is retried with growing gaps (20 s up
   to about 20 minutes), eight attempts in all; redirects are not followed.
 - Delivery is **at least once**. Deliveries are queued in the registry and claimed with a
   lease, so a restart loses none; but a server that stops after posting and before recording

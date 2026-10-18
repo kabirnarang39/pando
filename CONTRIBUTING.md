@@ -28,7 +28,7 @@ PANDO_TEST_POSTGRES_URL=postgres://postgres:pando@localhost:55432/pando \
   owning its use case, gRPC handler and feature flag (`pando_core::flags::Flag`).
 * **A client feature** → `crates/pando/src/features/<name>.rs`, returning data; printing
   belongs in `main.rs`.
-* **Protocol changes** → `crates/pando-proto/proto/pando.proto`. v1 is stable: add fields and RPCs, never
+* **Protocol changes** → `crates/pando-proto/proto/` (`pando.proto`, `pando_platform.proto`). v1 is stable: add fields and RPCs, never
   renumber or change the meaning of existing ones.
 
 ## Before opening a PR

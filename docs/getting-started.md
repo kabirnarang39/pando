@@ -78,8 +78,8 @@ pando log services/api
 pando ls main services
 ```
 
-Inside a workspace these commands use the workspace's server, so `PANDO_SERVER` is only
-needed elsewhere.
+Inside a workspace these commands use the workspace's server when `PANDO_SERVER` is unset, so
+it is only needed elsewhere.
 
 ## Sign in to a shared server
 
@@ -121,7 +121,7 @@ pando unlock art/hero.psd        # or --force to release someone else's lock
 ```
 
 A land that changes a file someone else has locked is refused with
-`rejected: art/hero.psd is locked by alice`. Locks need write access to the path, and
+``rejected: `art/hero.psd` is locked by alice``. Locks need write access to the path, and
 every lock and unlock is recorded in the audit log.
 
 ## Next

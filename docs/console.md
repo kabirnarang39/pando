@@ -18,7 +18,7 @@ seconds, change requests with reviews, checks and conflicts. Nothing leaves your
    ```
 
    `--web-origins` (or `PANDO_WEB_ORIGINS`) takes a comma-separated list. Browser access is
-   the `web` feature flag, on by default; turn it off with `PANDO_FLAGS=-web`.
+   the `web` feature flag, on by default; turn it off with `PANDO_FLAGS=web=off`.
 2. Open the console, choose **Connection**, and enter the server's address and, if the server
    requires one, a token. The token stays in the tab unless you choose to remember it.
 
@@ -107,12 +107,12 @@ the plan is in [Platform](platform.md).
 
 ## Performance and privacy
 
-- The first screen needs about 166 KB of gzipped JavaScript; each screen after that loads its own
+- The first screen needs about 167 KB of gzipped JavaScript; each screen after that loads its own
   code on first visit (and is preloaded on hover). The build fails if the first screen grows
   past its budget.
 - Syntax highlighting runs in a worker. Parts of a file far from the screen are plain text until
   they come near it, yet every line stays in the page, so the browser's find works: a
-  50,000-line (1.5 MB) file opens in under a second in the end-to-end tests. Files over 1 MB
+  50,000-line (1.7 MB) file opens within 1.5 seconds in the end-to-end tests. Files over 1 MB
   show without colours, and say so.
 - Fonts and icons are bundled: the console makes no request to any third party.
 - Untrusted content (READMEs, descriptions, comments) is rendered without HTML: markdown is

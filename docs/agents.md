@@ -19,8 +19,9 @@ claude mcp add --transport http pando https://mcp.example.com/mcp \
   --header "Authorization: Bearer $PANDO_TOKEN"                  # Claude Code
 ```
 
-Claude Desktop, Cursor, ChatGPT, Gemini CLI and other clients that speak MCP over HTTP take
-the same URL and header.
+Claude Desktop, Cursor, ChatGPT, Gemini CLI and other clients that speak MCP 2026-07-28 over
+HTTP take the same URL and header. Clients on older MCP versions, which open a session first,
+are refused.
 
 - **The token decides everything.** The gateway passes each request's token to the server and
   holds no credentials of its own, so an agent can do exactly what its token allows: limited to

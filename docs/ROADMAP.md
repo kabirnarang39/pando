@@ -9,7 +9,8 @@ Hosting many repositories; organisations, teams, roles and scoped tokens; change
 reviews, protected branches and required checks; issues assignable to people and agents;
 webhooks; remote MCP for agents; `pando migrate` and `pando mirror`; the web console for all of
 it. In 3.4: browser sign-in (Google, any OpenID Connect provider, email links), multi-tenant
-servers with self-serve organisations, and `pandod backup`.
+servers with self-serve organisations, and `pandod backup`. In 3.5: `pando login` from the
+browser, invitations by email, and usage and limits per organisation.
 
 ## Next
 
@@ -17,12 +18,10 @@ servers with self-serve organisations, and `pandod backup`.
 |---|---|
 | Platform registry on Postgres | several `pandod` replicas sharing accounts, reviews and webhooks, for high availability |
 | Email notifications | review requested, assigned, mentioned, with per-person settings |
-| Invitations by email and `pando login` from the browser | teams start without an administrator handing out tokens |
-| Usage and limits per organisation | shared servers stay fair, and a hosted service can offer plans |
 | Per-person and per-token rate limits | fairness on shared servers |
 | Review comments carried across `pando migrate` | pull requests arrive with their discussion |
 | Path-history index | `log -- path` walks first-parent history today |
-| Writable virtual checkouts on macOS and Windows | Linux has a FUSE mount; macOS and Windows mount read-only |
+| Writable virtual checkouts | `pando mount` is read-only on every platform today |
 
 ## Later
 
