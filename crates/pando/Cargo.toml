@@ -59,4 +59,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 [dev-dependencies]
 jsonwebtoken = { workspace = true, features = ["use_pem"] }
 pando-server.workspace = true
+prost-types = "0.14"
 serde_json.workspace = true

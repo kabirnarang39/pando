@@ -610,7 +610,9 @@ impl platform_server::Platform for Platform {
         let repo = r.repository.ok_or_else(|| Status::invalid_argument("name the repository"))?;
         let rec = self.require_repo(&who, scope.as_ref(), &repo, Role::Admin)?;
         let role = role_in(r.role)?;
-        if !self.reg().is_team(&r.principal).map_err(internal)? {
+        // Teams of the repository's own organisation only: another's team names stay unknown.
+        let own_team = r.principal.starts_with(&format!("{}/", rec.key.owner));
+        if !(own_team && self.reg().is_team(&r.principal).map_err(internal)?) {
             directory::check_login(&r.principal)?;
             self.existing_account(&r.principal)?;
         }
@@ -656,10 +658,13 @@ impl platform_server::Platform for Platform {
         if max_role == Role::Unspecified {
             max_role = Role::Admin;
         }
-        let mut repositories: Vec<String> = directory::require_repositories(self.reg(), &r.repositories)?
-            .into_iter()
-            .map(|rec| rec.key.to_string())
-            .collect();
+        // Only repositories the caller can see: any other name is missing, as everywhere else, so
+        // a token request can't probe another tenant's private names.
+        let mut repositories: Vec<String> = r
+            .repositories
+            .iter()
+            .map(|n| Ok(self.hosting.authorize(&RepoKey::parse(n)?, &who, None, Role::Read)?.key.to_string()))
+            .collect::<Result<_, Status>>()?;
         // A token made with a token can't reach further than the one used to make it.
         if let Some(s) = &scope {
             max_role = max_role.min(s.max_role);

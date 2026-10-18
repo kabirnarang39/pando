@@ -67,6 +67,12 @@ pando token create perf-fleet --as agent/perf-05 --repo lumen/fleet --role write
   `--webhook-allow-private` lets them call loopback and private networks (self-hosted CI on an
   internal network); it can't be combined with `--multi-tenant`.
 
+## The web console
+
+Each release ships the console as `pando-console-vVERSION.tar.gz`. Unpack it and pass
+`--console-dir` to `pandod server` to serve it from the server's own address, or serve it from
+your proxy; see [Host it yourself](console.md#host-it-yourself).
+
 ## Signing in from a browser
 
 On a platform server, `--login-listen ADDR` serves sign-in pages (Google or any OpenID Connect

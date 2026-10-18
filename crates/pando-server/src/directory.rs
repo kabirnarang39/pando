@@ -8,7 +8,7 @@ use anyhow::Context as _;
 use pando_proto::{AccountKind, Role};
 use tonic::Status;
 
-use crate::hosting::{Registry, RepoKey, RepoRecord, now_ms};
+use crate::hosting::{Registry, RepoKey, now_ms};
 
 /// What the directory adds to the registry schema. Organisations that already own repositories
 /// (created before accounts existed) are recorded as organisations.
@@ -523,19 +523,6 @@ pub fn add_member(reg: &Registry, org: &str, login: &str, role: Role) -> Result<
     reg.set_member(org, login, role).map_err(internal)
 }
 
-/// Repositories as a token names them must exist.
-pub fn require_repositories(reg: &Registry, names: &[String]) -> Result<Vec<RepoRecord>, Status> {
-    names
-        .iter()
-        .map(|n| {
-            let key = RepoKey::parse(n)?;
-            reg.get(&key)
-                .map_err(internal)?
-                .ok_or_else(|| Status::not_found(format!("no repository `{key}` on this server")))
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,7 +619,7 @@ mod tests {
     #[test]
     fn existing_repository_owners_become_organisations() {
         let r = registry();
-        r.create(&RepoRecord {
+        r.create(&crate::hosting::RepoRecord {
             key: RepoKey::parse("acme/app").unwrap(),
             description: String::new(),
             visibility: 1,

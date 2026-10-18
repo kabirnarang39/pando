@@ -614,3 +614,22 @@ off would punish customers for a missed renewal.
 agents landing at the same moment can pass it by a few; storage is measured hourly, so it can be
 passed by an hour of pushes. Postgres repository metadata is not measured. The seen-set is per process: another
 replica at most records an agent once more, which the primary key absorbs.
+
+## ADR-036: pandod serves the console's files on its own address
+
+**Decision.** Releases attach the console's build as `pando-console-vVERSION.tar.gz`.
+`pandod server --console-dir DIR` serves it on the gRPC address through an outermost layer that
+takes every GET and HEAD (gRPC and gRPC-Web calls are always POSTs) to `tower_http`'s `ServeDir`,
+with `index.html` for paths that aren't files. The layer sits outside authentication, metering
+and the audit log: the files hold no data. `assets/` (Vite's content-hashed names) is cached
+immutably for a year, everything else (`index.html` above all) is `no-cache`; every file gets a
+CSP header adding `frame-ancestors 'none'` and `connect-src 'self'` to the build's `<meta>`
+policy, plus `nosniff`, `X-Frame-Options`, `Referrer-Policy` and `Cross-Origin-Opener-Policy`.
+
+**Why.** The console only talks to pandod, and pandod already speaks HTTP/1.1 for gRPC-Web, so
+one process and one origin serve both: no CORS, no second web server, and `connect-src 'self'`
+keeps a token in the page from being sent elsewhere.
+
+**Trade-offs.** No compression and no HSTS: a proxy in front (Caddy in the hosted service) adds
+them, and serving the same tarball from a proxy instead stays documented.
+

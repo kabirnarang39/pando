@@ -88,6 +88,13 @@ server behaves as before. With it:
   `--webhook-allow-private` can't be combined with it.
 - The server refuses to start without authentication.
 
+The cross-tenant suite (`every_method_keeps_tenants_apart` in `crates/pando/tests/isolation.rs`)
+gates every release: it calls every method in the protocol with one organisation's tokens (a
+person, an agent, tokens limited to a repository, and someone in no organisation) at another
+organisation's repositories, change requests, issues, webhooks, protections, locks, teams and
+tokens, and each must be refused as missing or forbidden or show nothing of theirs. A method
+added to the protocol without an entry in its table fails it.
+
 ## Plans and limits
 
 Every platform server records what each organisation uses (ADR-035); a multi-tenant server
