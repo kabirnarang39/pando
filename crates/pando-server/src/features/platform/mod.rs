@@ -9,9 +9,9 @@ use pando_core::acl::Principal;
 use pando_proto::platform_server::{self, PlatformServer};
 use pando_proto::{
     Account, AccountKind, ActiveAgent, Capabilities, CreateInvitationRequest, CreateInvitationResponse,
-    CreateOrganizationRequest, InvitationRef, ListInvitationsResponse, CreateRepositoryRequest,
-    CreateTokenRequest, CreateTokenResponse, CreateWebhookRequest, CreateWebhookResponse, Empty, GetUsageRequest,
-    Grant, License, LinkIdentityRequest, ListGrantsResponse, ListMembersResponse, ListOrganizationsResponse,
+    CreateOrganizationRequest, CreateRepositoryRequest, CreateTokenRequest, CreateTokenResponse, CreateWebhookRequest,
+    CreateWebhookResponse, Empty, GetUsageRequest, Grant, InvitationRef, License, LinkIdentityRequest,
+    ListGrantsResponse, ListInvitationsResponse, ListMembersResponse, ListOrganizationsResponse,
     ListRepositoriesRequest, ListRepositoriesResponse, ListSignupAllowResponse, ListTeamsResponse, ListTokensResponse,
     ListWebhookDeliveriesResponse, ListWebhooksResponse, Member, OrgLimits, OrgName, Organization, Repository,
     RepositoryRef, RevokeTokenRequest, Role, SetGrantRequest, SetLimitsRequest, SetMemberRequest,

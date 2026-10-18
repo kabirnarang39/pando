@@ -71,7 +71,8 @@ All notable changes to this project are documented here. The format follows
   repositories are checked when added. Defaults come from `--default-org-limits`. New RPCs
   `GetUsage`, `SetLimits`, `SetSuspended`, `GetCapabilities` and `GetLicense`; commands
   `pando org usage` and `pando admin limits show|set|suspend|restore`; a **Usage & plan** tab in
-  the console with an Upgrade button linking to `--billing-url`.
+  the console with a Change plan button linking to `--billing-url`, and a banner on every page of
+  a suspended organisation linking to `--support-url`.
 - Support licences: `pandod server --license FILE` and `pandod license verify FILE` check an
   Ed25519-signed licence offline and report it; nothing is turned off without one.
 

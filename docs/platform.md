@@ -122,8 +122,10 @@ Storage is measured hourly, so an organisation can pass its limit by up to an ho
 new agents landing at the same moment can pass the active-agent limit by a few.
 
 **Managing plans.** Organisation administrators see their plan and use with
-`pando org usage ORG` or on the console's **Usage & plan** tab, which shows an **Upgrade** button
-when the server has `--billing-url`. Site administrators change limits with
+`pando org usage ORG` or on the console's **Usage & plan** tab (each limit with a bar and what
+happens when it is reached), which shows a **Change plan** button when the server has
+`--billing-url`. Every page of a suspended organisation shows a banner saying so, with a
+**Contact support** link when the server has `--support-url` (a `mailto:` or web address). Site administrators change limits with
 `pando admin limits set ORG --seats N --agents N --storage 10GiB --private-repos unlimited --plan NAME`
 (flags not given stay as they are), and suspend or restore an organisation with
 `pando admin limits suspend|restore ORG`. A billing service does the same through the

@@ -388,7 +388,6 @@ pub fn is_land(path: &str) -> bool {
     path == "/pando.v1.Land/Land" || path == "/pando.v1.Refs/CompareAndSwap"
 }
 
-
 /// "upgrade at URL", or who to ask when the server has no billing page.
 fn upgrade(hosting: &Hosting) -> String {
     upgrade_to(&hosting.access.billing_url)
