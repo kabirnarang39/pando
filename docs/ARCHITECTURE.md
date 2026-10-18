@@ -85,8 +85,8 @@ pando               client slices + Remote port + CLI + MCP
 | `Authenticator` | identity | `StaticTokens`, `OidcAuthenticator` (JWT/JWKS), `FirstMatch`, `AllowAll` |
 | `Remote` (client) | server access | `GrpcRemote` |
 
-Every adapter of a port passes the same contract test suite
-(`crates/pando-adapters/tests/contract.rs`), including a 16-writer CAS linearizability
+Every storage adapter passes the same contract test suite
+(`crates/pando-adapters/tests/contract.rs`; GCS and Azure are not run in CI), including a 16-writer CAS linearizability
 test, which is what makes adapters substitutable rather than merely type-compatible.
 
 ## Landing without a global lock
@@ -199,8 +199,8 @@ Nothing holds a whole large file in memory: `pando status` hashes files as strea
 chunks on a worker thread and uploads through a bounded channel, and checkout reassembles
 into a temporary file (verifying every chunk and the whole-file id) before an atomic rename.
 The server verifies an uploaded manifest by streaming its chunks against the id; caches can
-only check structure, and clients verify end to end. Measured on a 1 GiB file: `pando commit`
-peaks at 195 MB, `pando clone` at 125 MB.
+only check structure, and clients verify end to end. Measured on a 1 GiB file (v3.5.0, macOS
+arm64, maximum resident set size): `pando commit` peaks at 163 MB, `pando clone` at 139 MB.
 
 ## Performance notes
 

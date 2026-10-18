@@ -1,7 +1,7 @@
-# pando-client (TypeScript / Node.js)
+# pando-vcs (TypeScript / Node.js)
 
 ```ts
-import { Client } from "pando-client";
+import { Client } from "pando-vcs";
 
 const repo = new Client("http://127.0.0.1:7420");
 console.log((await repo.readFile("src/lib.rs")).toString());

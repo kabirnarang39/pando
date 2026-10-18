@@ -26,7 +26,8 @@ across new commits; history is imported incrementally.
 
 ## Keep the old host current while you move
 
-`migrate` ends by printing the `pando mirror` command for the repository you came from:
+From GitHub, `migrate` ends by printing the `pando mirror` command for the repository you came
+from (from other hosts, write it the same way):
 
 ```sh
 pando mirror --to https://github.com/acme/fleet --server https://pando.example.com/acme/fleet --every 10

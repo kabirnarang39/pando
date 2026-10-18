@@ -19,19 +19,19 @@ proved, and sets the bar Pando measures itself against.
 * **Plain git keeps working** through a two-way remote helper; import and export round-trip
   with identical trees, so there is no lock-in.
 * **Pluggable everything**: every infrastructure piece is a port with a shared contract suite,
-  and every feature has a runtime flag.
-* **Measured in public**: every number in this repository is reproducible from public data
-  with scripts in `bench/`.
+  and every source-control feature has a runtime flag.
+* **Measured in public**: the benchmarks are reproducible from public data with the scripts in
+  `bench/` and the examples in `crates/pando/examples/`.
 
 ## Where these systems are ahead
 
 They run in production at a scale Pando has not yet been tested at, with years of
 operating experience and integrated code review, search and build tooling. Pando is new.
-The benchmarks in [docs/comparisons/git-vs-pando.md](comparisons/git-vs-pando.md) and the
-large-scale runs on the roadmap are how it earns comparison, one public dataset at a time.
+The benchmarks in [docs/comparisons/git-vs-pando.md](comparisons/git-vs-pando.md) and
+larger-scale runs still to come are how it earns comparison, one public dataset at a time.
 
 [^piper]: Potvin and Levenberg, [*Why Google Stores Billions of Lines of Code in a Single Repository*](https://cacm.acm.org/research/why-google-stores-billions-of-lines-of-code-in-a-single-repository/), Communications of the ACM, July 2016. Figures from January 2015; the file count includes release branches and deleted files.
 [^sapling]: Meta Engineering, [*Sapling: Source control that's user-friendly and scalable*](https://engineering.fb.com/2022/11/15/open-source/sapling-source-control/), November 2022.
 [^sapling-readme]: [facebook/sapling README](https://github.com/facebook/sapling).
 [^gvfs]: Brian Harry, [*The largest Git repo on the planet*](https://devblogs.microsoft.com/bharry/the-largest-git-repo-on-the-planet/), May 2017.
-[^anthropic]: Anthropic Engineering, [*Redesigning source control*](https://www.anthropic.com/engineering/redesigning-source-control).
+[^anthropic]: Anthropic Engineering, [*Redesigning source control at Anthropic*](https://www.anthropic.com/engineering/redesigning-source-control).

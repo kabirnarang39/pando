@@ -5,7 +5,7 @@ branches of the same server.
 
 ## Keep using git
 
-With `git-remote-pando` on your `PATH` (the installer puts it there), git talks to a Pando
+With `git-remote-pando` on your `PATH` (every install method puts it next to `pando`), git talks to a Pando
 server directly:
 
 ```sh

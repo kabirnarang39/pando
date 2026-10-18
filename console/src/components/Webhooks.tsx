@@ -10,6 +10,7 @@ const EVENTS = [
   ["review", "Reviews"],
   ["comment", "Comments"],
   ["check", "Checks reported"],
+  ["issue", "Issues opened, closed, reopened, assigned"],
 ] as const;
 
 const status = (s: number) => (s === 0 ? "Not sent yet" : s === -1 ? "No answer" : `HTTP ${s}`);

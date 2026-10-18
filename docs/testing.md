@@ -5,7 +5,8 @@ from the smallest to the most realistic. All of them run in CI.
 
 ## Contract tests for every storage adapter
 
-Memory, SQLite, Postgres and CockroachDB, and every object store, pass the same suite
+Memory, SQLite, Postgres and CockroachDB, and the local-disk, in-memory and S3 object stores
+(GCS and Azure use the same `object_store` code but are not run in CI), pass the same suite
 (`crates/pando-adapters/tests/contract.rs`), including a 16-writer compare-and-swap test.
 That is what makes adapters interchangeable rather than merely type-compatible.
 

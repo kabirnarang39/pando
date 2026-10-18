@@ -44,8 +44,8 @@ reused; only the list of jobs people do.
 
 ## Flows, in build order
 
-Each phase ships behind a feature flag, with server and web app together, tests, docs and a
-demo that runs in the browser.
+Each phase ships with server and web app together, tests, docs and a demo that runs in the
+browser.
 
 1. **Repositories and organisations** (done in 3.1). One server hosts many repositories, each with its own
    storage (a `{repo}` template in the storage URLs). Requests name their repository; a
@@ -62,10 +62,10 @@ demo that runs in the browser.
    lines, suggestions, approvals and requests for changes; merge by landing. Protected branches
    with required approvals and checks; an agent's land on a protected branch becomes a change
    request automatically.
-5. **Inbox, checks and integrations.** Review inbox and notifications, check runs reported by CI,
+5. **Inbox, checks and integrations** (done in 3.3, ADR-025). Review inbox and notifications, check runs reported by CI,
    webhooks, and an audit view.
 6. **Issues and releases** *(documented flows)*. Issues with the same live lists, labels and
-   linking to change requests; releases with notes and assets.
+   linking to change requests (done in 3.3, ADR-027); releases with notes and assets (not yet).
 
 ## Multi-tenant servers
 
@@ -136,7 +136,8 @@ read it.
 **Support licences.** `pandod server --license FILE` checks a support licence at startup
 (Ed25519-signed, checked offline) and logs whether it is valid, in its grace period or expired;
 `pandod license verify FILE` checks one by hand, and `GetLicense` reports it to site
-administrators. A licence never turns anything off.
+administrators. A licence never turns anything off. Releases up to 3.5.0 don't carry the signing
+key yet, so they report every licence as invalid.
 
 ## UX audit of the web app (2026-10-17)
 
@@ -159,6 +160,9 @@ Still open, in priority order:
 7. **Edit settings** (protection, access) once the server implements them; the demo shows them
    read-only.
 8. **Notifications** beyond the inbox: email or webhook delivery.
+
+*Update (3.5.0):* 1, 3 and 7 have shipped: the console opens change requests, creates
+repositories and organisations, and edits protection and access.
 
 ## Sign-in
 

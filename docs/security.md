@@ -1,8 +1,8 @@
 # Security and audit
 
 How a server decides who is calling, what they may do, and what it records. Report
-vulnerabilities as described in the [security policy](security-policy.md); the threat model and
-the access-rule format are there too.
+vulnerabilities as described in the [security policy](security-policy.md); the security model
+is there too.
 
 > [!WARNING]
 > A server without tokens, single sign-on or platform tokens accepts every caller. It refuses to
@@ -36,8 +36,21 @@ refresh the key set at most once a minute.
 
 Access rules grant read and write per directory and per branch. Principals who can read
 only part of the repository get path-scoped checkouts, search and history, with changes
-outside their scope removed. The rule format and the security model are in
-[SECURITY.md](https://github.com/kabirnarang39/pando/blob/main/SECURITY.md).
+outside their scope removed. `--acl FILE` (or `PANDO_ACL`) names a JSON file of rules:
+
+```json
+{
+  "default":    { "write": ["*"], "refs": ["user/*"] },
+  "principals": {
+    "release-bot": { "refs": ["main", "release/*"] },
+    "api-team":    { "write": ["services/api", "libs/api-client"], "refs": ["main"] }
+  }
+}
+```
+
+A principal's grants are the union of `default` and its own entry. `read` and `write` list path
+prefixes (`*` is everything); `refs` lists branch names or `prefix/*`. When no entry mentions
+`read`, everyone may read everything.
 
 ## Audit log
 
@@ -73,6 +86,8 @@ NTP servers; elsewhere use your cloud's time service or `pool.ntp.org`.
 | `set_ref` | branch moves through the refs API |
 | `read_file`, `list_dir`, `checkout`, `find` | content reads, with revision and paths |
 | `log`, `blame` | history queries, with revision and path |
+| `lock`, `unlock` | file locks taken and released |
+| `account_created`, `sign_in`, `sign_up`, `accept_invitation`, `create_token`, ... | changes to accounts, tokens, organisations, access, reviews and webhooks (platform servers), with a `target` |
 
 Audit events never appear in the normal log, and the normal log never appears in the
 audit file.
