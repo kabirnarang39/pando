@@ -102,7 +102,7 @@ function explainRaw(err: unknown, server?: string): string {
   const where = server ? ` ${server}` : " the server";
   switch (e.code) {
     case Code.Unauthenticated:
-      return "The server refused your token. Open Connection and enter a valid one.";
+      return "The server refused your sign-in: it may have expired or been revoked. Sign in again to keep working.";
     case Code.PermissionDenied:
       return e.rawMessage || "Your token may not read this.";
     case Code.NotFound:
@@ -121,5 +121,6 @@ function explainRaw(err: unknown, server?: string): string {
   }
 }
 
+export const isSignedOut = (err: unknown) => ConnectError.from(err).code === Code.Unauthenticated;
 export const isNotFound = (err: unknown) => ConnectError.from(err).code === Code.NotFound;
 export const isUnimplemented = (err: unknown) => ConnectError.from(err).code === Code.Unimplemented;

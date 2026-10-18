@@ -71,3 +71,16 @@ test("phone: the navigation drawer closes with Escape, and the organisation fits
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });
+
+test("an expired or revoked sign-in leads back to sign-in", async ({ page }) => {
+  // A server that refuses the token, as one does after it expires or is revoked.
+  const refused = "http://127.0.0.1:7699";
+  await page.route(`${refused}/**`, (r) =>
+    r.fulfill({ status: 200, headers: { "content-type": "application/grpc-web+proto", "grpc-status": "16", "grpc-message": "token expired", "access-control-allow-origin": "*", "access-control-expose-headers": "grpc-status,grpc-message" }, body: "" }),
+  );
+  await page.addInitScript((url) => localStorage.setItem("pando.console.connection", JSON.stringify({ kind: "server", url, token: "pando_0000", remember: true })), refused);
+  await page.goto("/#/");
+  await expect(page.getByRole("alert")).toContainText("Sign in again to keep working");
+  await page.getByRole("link", { name: "Sign in again" }).click();
+  await expect(page).toHaveURL(/#\/connect$/);
+});

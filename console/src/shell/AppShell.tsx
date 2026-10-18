@@ -155,6 +155,8 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
   const reviews = useCapabilities().data?.reviews ?? false;
   const { label, target } = useConnection();
   const org = viewer.data?.organizations[0];
+  // Repositories from several organisations are named in full, so two "web"s stay apart.
+  const manyOwners = new Set(repos.data?.map((r) => r.owner)).size > 1;
   const waiting = inbox.data?.length ?? 0;
   const unread = inbox.data?.filter((i) => i.unread).length ?? 0;
   const now = Date.now();
@@ -234,7 +236,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
           return (
             <Link key={r.name} to="/$owner/$repo" params={{ owner: r.owner, repo: r.name }} className="side-link" activeOptions={{ exact: false }}>
               <span className="pulse" data-live={live || undefined} aria-label={live ? "landing now" : undefined} />
-              <span className="label">{isSingle(`${r.owner}/${r.name}`) ? label : r.name}</span>
+              <span className="label">{isSingle(`${r.owner}/${r.name}`) ? label : manyOwners ? `${r.owner}/${r.name}` : r.name}</span>
               {r.openChangeRequests > 0 && <span className="count" title={`${r.openChangeRequests} open change requests`}>{r.openChangeRequests}</span>}
             </Link>
           );

@@ -4,7 +4,7 @@ import {
   Keyboard, Lock, MessageSquare, Moon, PanelLeft, Plug, Plus, Search, Settings, ShieldCheck, Sun, TriangleAlert, Users, X,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { explain, isNotFound } from "./api/client";
+import { explain, isNotFound, isSignedOut } from "./api/client";
 import { Link } from "@tanstack/react-router";
 import { useConnection } from "./connection";
 
@@ -151,10 +151,16 @@ export function ErrorState({ error, retry, title = "This didn't load" }: { error
     <div className="state" role="alert">
       <h2>{title}</h2>
       <p>{explain(error, target.kind === "server" ? target.url : undefined)}</p>
-      {retry && (
-        <button type="button" className="button" onClick={retry}>
-          Try again
-        </button>
+      {isSignedOut(error) ? (
+        <Link to="/connect" className="button" data-primary="">
+          Sign in again
+        </Link>
+      ) : (
+        retry && (
+          <button type="button" className="button" onClick={retry}>
+            Try again
+          </button>
+        )
       )}
     </div>
   );
