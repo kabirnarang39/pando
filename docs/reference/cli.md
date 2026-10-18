@@ -17,7 +17,7 @@ Arguments:
 
 Options:
       --ref <REF_NAME>     [default: main]
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --path <PATHS>       Only materialise these paths (repeatable)
       --objects <OBJECTS>  Fetch objects through a node daemon or regional cache [env: PANDO_OBJECTS=]
   -h, --help               Print help
@@ -35,7 +35,7 @@ Arguments:
   [PATHS]...
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -52,7 +52,7 @@ Arguments:
 
 Options:
   -m, --message <MESSAGE>
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help               Print help
   -V, --version            Print version
 ```
@@ -65,7 +65,7 @@ Land the committed work on the ref (server-side rebase + atomic ref update)
 Usage: pando land [OPTIONS]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -81,7 +81,7 @@ Arguments:
   [REV]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -98,7 +98,7 @@ Arguments:
 
 Options:
   -b
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -115,7 +115,7 @@ Arguments:
 
 Options:
       --rev <REV>
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -n, --limit <LIMIT>  [default: 20]
       --oneline
   -h, --help           Print help
@@ -134,7 +134,7 @@ Arguments:
 
 Options:
       --name-only
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -150,7 +150,7 @@ Arguments:
   [REV]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -167,7 +167,7 @@ Arguments:
   <PATH>
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -183,7 +183,7 @@ Arguments:
   <PATHS>...
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -200,7 +200,7 @@ Arguments:
 
 Options:
       --force
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -216,7 +216,7 @@ Arguments:
   [PREFIX]  [default: ""]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -233,7 +233,7 @@ Arguments:
   [PATH]  [default: ""]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -250,7 +250,7 @@ Arguments:
 
 Options:
       --rev <REV>      [default: main]
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -267,7 +267,7 @@ Arguments:
 
 Options:
       --rev <REV>      [default: main]
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -280,7 +280,7 @@ List refs
 Usage: pando refs [OPTIONS]
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -297,7 +297,7 @@ Arguments:
   <B>
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -314,7 +314,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --git-ref <GIT_REF>  [default: HEAD]
       --ref <REF_NAME>     [default: main]
       --force
@@ -334,7 +334,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --objects <OBJECTS>    Daemon or cache serving objects
       --rev <REV>            [default: main]
       --cache-mb <CACHE_MB>  In-memory cache for file contents [default: 256]
@@ -352,11 +352,59 @@ Usage: pando mcp [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>                 Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>                 Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --http <ADDR>                   Serve the whole server to remote agents over HTTP at this address (e.g. 0.0.0.0:7430), instead of one workspace over stdio. Each request's bearer token is passed through to the server
       --allowed-host <ALLOWED_HOSTS>  Host names clients use to reach the HTTP endpoint (repeatable); default: loopback only, against DNS rebinding
   -h, --help                          Print help
   -V, --version                       Print version
+```
+
+## `pando login`
+
+```text
+Sign in to a server from the browser; the token is saved in ~/.config/pando/credentials.json
+
+Usage: pando login [OPTIONS] [SERVER]
+
+Arguments:
+  [SERVER]  The server, e.g. https://pando.example.com; default $PANDO_SERVER or the workspace's
+
+Options:
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+## `pando logout`
+
+```text
+Revoke the token `pando login` saved for a server, and forget it
+
+Usage: pando logout [OPTIONS] [SERVER]
+
+Arguments:
+  [SERVER]
+
+Options:
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+## `pando whoami`
+
+```text
+Show who you are signed in as
+
+Usage: pando whoami [OPTIONS] [SERVER]
+
+Arguments:
+  [SERVER]
+
+Options:
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
+  -h, --help           Print help
+  -V, --version        Print version
 ```
 
 ## `pando repo`
@@ -373,7 +421,7 @@ Commands:
   help    Print this message or the help of the given subcommand(s)
 
 Options:
-      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>  Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -390,7 +438,7 @@ Arguments:
 
 Options:
       --description <DESCRIPTION>  [default: ""]
-      --token <TOKEN>              Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>              Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --server <SERVER>
   -h, --help                       Print help
   -V, --version                    Print version
@@ -405,7 +453,7 @@ Usage: pando repo list [OPTIONS]
 
 Options:
       --owner <OWNER>    [default: ""]
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --server <SERVER>
   -h, --help             Print help
   -V, --version          Print version
@@ -439,7 +487,7 @@ Options:
 
 
       --token <TOKEN>
-          Bearer token for the server ($PANDO_TOKEN)
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved
 
           [env: PANDO_TOKEN]
 
@@ -466,7 +514,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -480,7 +528,7 @@ Usage: pando org list [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -498,7 +546,7 @@ Arguments:
 Options:
       --description <DESCRIPTION>  [default: ""]
       --server <SERVER>
-      --token <TOKEN>              Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>              Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -515,7 +563,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -548,7 +596,7 @@ Options:
 
 
       --token <TOKEN>
-          Bearer token for the server ($PANDO_TOKEN)
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved
 
           [env: PANDO_TOKEN]
 
@@ -574,7 +622,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -591,7 +639,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -609,7 +657,7 @@ Arguments:
 Options:
       --member <MEMBERS>  A member of the organisation (repeatable)
       --server <SERVER>
-      --token <TOKEN>     Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>     Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --name <NAME>       [default: ""]
   -h, --help              Print help
   -V, --version           Print version
@@ -627,7 +675,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -655,7 +703,7 @@ Commands:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -670,7 +718,7 @@ Usage: pando cr create [OPTIONS] --title <TITLE>
 Options:
       --server <SERVER>       The repository, SERVER/OWNER/NAME; defaults to the workspace's
       --title <TITLE>
-      --token <TOKEN>         Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>         Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --body <BODY>           [default: ""]
       --source <SOURCE>       The branch to land; defaults to the workspace's branch
       --target <TARGET>       Where to land it; defaults to the repository's default branch [default: ""]
@@ -690,7 +738,7 @@ Usage: pando cr list [OPTIONS]
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
       --state <STATE>    [default: open] [possible values: open, draft, landed, closed, all]
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --author <AUTHOR>  Only this author; `agent/*` for every agent [default: ""]
   -h, --help             Print help
   -V, --version          Print version
@@ -708,7 +756,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -726,7 +774,7 @@ Arguments:
 Options:
   -m, --message <MESSAGE>
       --server <SERVER>    The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --path <PATH>
       --line <LINE>
   -h, --help               Print help
@@ -758,7 +806,7 @@ Options:
           The repository, SERVER/OWNER/NAME; defaults to the workspace's
 
       --token <TOKEN>
-          Bearer token for the server ($PANDO_TOKEN)
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved
 
           [env: PANDO_TOKEN]
 
@@ -783,7 +831,7 @@ Arguments:
 
 Options:
       --server <SERVER>    The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --url <URL>          [default: ""]
       --summary <SUMMARY>  [default: ""]
   -h, --help               Print help
@@ -802,7 +850,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -819,7 +867,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -836,7 +884,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -851,7 +899,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -866,7 +914,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -890,7 +938,7 @@ Commands:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -905,7 +953,7 @@ Usage: pando issue create [OPTIONS] --title <TITLE>
 Options:
       --server <SERVER>       The repository, SERVER/OWNER/NAME; defaults to the workspace's
       --title <TITLE>
-      --token <TOKEN>         Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>         Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --body <BODY>           [default: ""]
       --assignee <ASSIGNEES>  Who should work on it, a person or an agent (repeatable)
       --label <LABELS>
@@ -921,7 +969,7 @@ Usage: pando issue list [OPTIONS]
 Options:
       --server <SERVER>      The repository, SERVER/OWNER/NAME; defaults to the workspace's
       --state <STATE>        [default: open] [possible values: open, closed, all]
-      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --assignee <ASSIGNEE>  [default: ""]
       --label <LABEL>        [default: ""]
   -h, --help                 Print help
@@ -938,7 +986,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -954,7 +1002,7 @@ Arguments:
 Options:
   -m, --message <MESSAGE>
       --server <SERVER>    The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help               Print help
   -V, --version            Print version
 ```
@@ -972,7 +1020,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -990,7 +1038,7 @@ Arguments:
 Options:
       --not-planned
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1005,7 +1053,7 @@ Arguments:
 
 Options:
       --server <SERVER>  The repository, SERVER/OWNER/NAME; defaults to the workspace's
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1025,7 +1073,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1039,7 +1087,7 @@ Usage: pando protect list [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1057,7 +1105,7 @@ Arguments:
 Options:
       --approvals <APPROVALS>  Approvals needed before a change request lands [default: 1]
       --server <SERVER>
-      --token <TOKEN>          Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --check <CHECKS>         A check that must pass (repeatable)
       --keep-stale             Keep approvals when the branch changes after them
       --agents-direct          Let agents land on it directly, without review
@@ -1078,7 +1126,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1100,7 +1148,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1117,7 +1165,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1136,7 +1184,7 @@ Arguments:
 Options:
       --event <EVENTS>   Only these events (repeatable): push, change_request, review, comment, check
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1153,7 +1201,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1170,7 +1218,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1185,7 +1233,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1205,7 +1253,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1219,7 +1267,7 @@ Usage: pando token list [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1243,7 +1291,7 @@ Options:
 
 
       --token <TOKEN>
-          Bearer token for the server ($PANDO_TOKEN)
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved
 
           [env: PANDO_TOKEN]
 
@@ -1287,7 +1335,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1306,7 +1354,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1326,7 +1374,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1343,7 +1391,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1360,7 +1408,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1372,7 +1420,7 @@ Usage: pando admin signup list [OPTIONS]
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1390,7 +1438,7 @@ Commands:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -1408,7 +1456,7 @@ Arguments:
 Options:
       --provider <PROVIDER>  `email`, or a sign-in provider's id such as `google`
       --server <SERVER>
-      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>        Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --subject <SUBJECT>    The email address, or the provider's `sub` for the person
   -h, --help                 Print help
   -V, --version              Print version
@@ -1428,7 +1476,7 @@ Options:
       --to <TO>
           Where it goes: SERVER/OWNER/NAME
       --token <TOKEN>
-          Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+          Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --github-token <GITHUB_TOKEN>
           For private GitHub repositories, and to avoid GitHub's rate limit. Prefer the PANDO_GITHUB_TOKEN (or GITHUB_TOKEN) environment variable or --github-token-file: a value given here is visible to other users of the machine (`ps`) [env: PANDO_GITHUB_TOKEN]
       --github-token-file <GITHUB_TOKEN_FILE>
@@ -1454,7 +1502,7 @@ Usage: pando mirror [OPTIONS] --to <TO>
 
 Options:
       --to <TO>            Where to push: any URL git accepts. Credentials come from git (SSH keys or a credential helper)
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --server <SERVER>
       --rev <REV>          [default: main]
       --git-ref <GIT_REF>  [default: main]
@@ -1476,7 +1524,7 @@ Arguments:
 
 Options:
       --server <SERVER>
-      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN) [env: PANDO_TOKEN]
+      --token <TOKEN>      Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
       --rev <REV>          [default: main]
       --git-ref <GIT_REF>  [default: main]
   -h, --help               Print help

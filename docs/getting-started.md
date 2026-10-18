@@ -81,6 +81,19 @@ pando ls main services
 Inside a workspace these commands use the workspace's server, so `PANDO_SERVER` is only
 needed elsewhere.
 
+## Sign in to a shared server
+
+A team server with browser sign-in gives the CLI a token without anyone handing one out:
+
+```sh
+pando login https://pando.example.com     # opens the browser; the token is saved for this server
+pando whoami
+pando logout                              # revokes it
+```
+
+Commands use `--token`, then `PANDO_TOKEN`, then the token `pando login` saved. How sign-in is
+set up on the server is in [Sign-in, organisations, invitations](platform.md#sign-in).
+
 ## Mount instead of checking out
 
 A mount shows a whole revision at once and downloads a file only when something reads it,

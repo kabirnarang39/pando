@@ -122,6 +122,9 @@ API-first file access: CI and tools read source without any checkout.
 | `ListSignupAllow` | `Empty` | `ListSignupAllowResponse` | Who may create an account by signing in when `--signup waitlist`: email addresses and `@domain` entries. Site administrators only. |
 | `SetSignupAllow` | `SetSignupAllowRequest` | `Empty` |  |
 | `LinkIdentity` | `LinkIdentityRequest` | `Empty` | Lets an identity sign in as an existing account, e.g. the first administrator's email address. Site administrators only. |
+| `CreateInvitation` | `CreateInvitationRequest` | `CreateInvitationResponse` | Invitations to an organisation: a single-use link, valid 7 days, emailed when the server sends mail. Whoever opens it and signs in joins with the role. Organisation administrators. |
+| `ListInvitations` | `OrgName` | `ListInvitationsResponse` | Invitations not yet accepted, including expired ones. |
+| `RevokeInvitation` | `InvitationRef` | `Empty` |  |
 
 ### Issues
 

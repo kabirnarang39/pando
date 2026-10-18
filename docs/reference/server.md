@@ -250,8 +250,18 @@ Options:
 
           [env: PANDO_TLS_CERT=]
 
+      --terms-url <TERMS_URL>
+          Your terms of service, linked from the box people tick (18 or older, accept the terms) before an account is made
+
+          [env: PANDO_TERMS_URL=]
+
       --tls-key <TLS_KEY>
           [env: PANDO_TLS_KEY=]
+
+      --privacy-url <PRIVACY_URL>
+          Your privacy policy, linked next to the terms
+
+          [env: PANDO_PRIVACY_URL=]
 
   -h, --help
           Print help (see a summary with '-h')
