@@ -2575,8 +2575,8 @@ del {
 .cmd code {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .palette-early {
