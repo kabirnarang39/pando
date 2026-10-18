@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { HOSTING, TOKENS } from "./setup";
+import { TOKENS } from "./setup";
 
 // Who may use what: tokens, organisation members and repository access.
 

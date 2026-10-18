@@ -112,6 +112,8 @@ async fn health_takedown_delete_and_sigterm() {
 
     // Deletion: the registry row and the storage files go. Windows refuses to delete a file the
     // running server holds open, so there the server must be stopped first (docs/deploy.md).
+    #[cfg(windows)]
+    let _ = s.dir.path();
     #[cfg(not(windows))]
     {
         let db = s.dir.path().join("repos/lumen/fleet.db");
