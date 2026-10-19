@@ -10,7 +10,7 @@ keywords = ["source-control", "version-control", "monorepo", "grpc", "pando"]
 classifiers = ["Programming Language :: Python :: 3", "Topic :: Software Development :: Version Control"]
 
 [project.urls]
-Homepage = "https://kabirnarang39.github.io/pando/"
+Homepage = "https://grovedock.com/"
 Repository = "https://github.com/kabirnarang39/pando"
 
 [dependency-groups]

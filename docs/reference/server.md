@@ -7,7 +7,7 @@ Every `pandod` command and option, as printed by `--help`. Options listed under 
 ## `pandod`
 
 ```text
-Pando: source control server, regional cache and node daemon
+Grovedock: source control server, regional cache and node daemon
 
 Usage: pandod [OPTIONS] <COMMAND>
 
@@ -222,7 +222,7 @@ Options:
           [env: PANDO_ALLOW_ANONYMOUS=]
 
       --mail-from <MAIL_FROM>
-          Sender of sign-in links, e.g. "Pando <login@example.com>"
+          Sender of sign-in links, e.g. "Grovedock <login@example.com>"
 
           [env: PANDO_MAIL_FROM=]
 

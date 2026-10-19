@@ -1,7 +1,7 @@
 # How landing works
 
 Landing is how a change reaches a branch. In git you push, and if someone pushed first you
-fetch, rebase and try again. In Pando the server does that part: you send a changeset, and the
+fetch, rebase and try again. In Grovedock the server does that part: you send a changeset, and the
 server either lands it or tells you exactly why not.
 
 ## What happens when you land
@@ -29,7 +29,7 @@ Because the conflict check walks only the changeset's own paths, its cost doesn'
 the number of changes that landed since your base. Measured on one laptop with every agent
 landing on `main` ([method and limits](comparisons/git-vs-pando.md#landing-at-scale-16-to-5000-concurrent-agents)):
 
-| Agents | git lands/s | Pando lands/s | Pando p99 | Pando errors |
+| Agents | git lands/s | Grovedock lands/s | Grovedock p99 | Grovedock errors |
 |---:|---:|---:|---:|---:|
 | 16 | 2.0 | 758 | 55 ms | 0 |
 | 200 | 0.5 | 1,012 | 302 ms | 0 |

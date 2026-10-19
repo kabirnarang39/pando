@@ -2,7 +2,7 @@
 
 ## Remote MCP: any agent, no checkout
 
-`pando mcp --http` serves a whole Pando server to agents anywhere over the
+`pando mcp --http` serves a whole Grovedock server to agents anywhere over the
 [Model Context Protocol](https://modelcontextprotocol.io) (2026-07-28, and the earlier versions from 2024-11-05, all served statelessly). An
 agent needs a URL and a token, nothing else: it reads, searches, writes and lands files, opens
 and reviews change requests, reports CI checks and reads its inbox, without cloning anything.
@@ -56,7 +56,7 @@ HTTP take the same URL and header. Clients on versions before 2026-07-28 start w
 
 ## Local MCP, in a workspace
 
-`pando mcp` serves Pando as [Model Context Protocol](https://modelcontextprotocol.io)
+`pando mcp` serves Grovedock as [Model Context Protocol](https://modelcontextprotocol.io)
 tools over stdio, so coding agents read, commit and land without shelling out:
 
 ```sh

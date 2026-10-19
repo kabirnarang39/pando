@@ -186,7 +186,7 @@ function Sidebar({ onSearch, theme, setTheme, showShortcuts }: { onSearch(): voi
   return (
     <nav className="sidebar" aria-label="Main">
       <div className="workspace">
-        <Link to="/" className="lockup" aria-label="Pando home">
+        <Link to="/" className="lockup" aria-label="Grovedock home">
           <Mark size={22} />
           <Wordmark height={15} />
         </Link>

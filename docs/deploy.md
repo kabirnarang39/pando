@@ -1,4 +1,4 @@
-# Deploying Pando
+# Deploying Grovedock
 
 A single `pandod server` with SQLite is enough for a team on one machine. For more, run
 stateless servers on Postgres or CockroachDB with objects in S3, GCS or Azure, and put a

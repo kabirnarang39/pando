@@ -38,7 +38,7 @@ export function Webhooks({ repo }: { repo: string }) {
         )}
       </div>
       <p className="panel-note muted">
-        Pando posts JSON to these URLs when something happens, signed with <span className="mono">X-Pando-Signature-256</span> the way GitHub signs, so CI, chat and trackers can react.
+        Grovedock posts JSON to these URLs when something happens, signed with <span className="mono">X-Pando-Signature-256</span> the way GitHub signs, so CI, chat and trackers can react.
       </p>
       {adding && (
         <form

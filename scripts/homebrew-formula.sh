@@ -25,7 +25,7 @@ asset() {
 cat <<RUBY
 class Pando < Formula
   desc "Source control for monorepos at agent scale"
-  homepage "https://kabirnarang39.github.io/pando/"
+  homepage "https://grovedock.com/"
   license "Apache-2.0"
 
   on_macos do

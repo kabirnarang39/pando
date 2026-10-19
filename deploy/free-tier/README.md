@@ -33,7 +33,7 @@ local SQLite comfortably serve a team and its agent fleet. Measure your own with
    Write), and put their values in `/etc/pando/backup.env`. Run one now with
    `sudo systemctl start pando-backup` and check `journalctl -u pando-backup`.
 5. **Use it:** `pando clone https://pando.example.com work`, or open the
-   [console](https://kabirnarang39.github.io/pando/console/), choose *Connection*, and enter
+   [console](https://grovedock.com/console/), choose *Connection*, and enter
    the address and a token.
 
 ## Keep it free and safe

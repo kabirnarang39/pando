@@ -91,7 +91,7 @@ deploy; new features can ship dark.
 ## ADR-012: MCP server via the official Rust SDK
 
 **Decision.** `pando mcp` exposes read/commit/land tools over stdio using `rmcp`.
-**Why.** Agent-agnostic integration: any MCP client can drive Pando without bespoke
+**Why.** Agent-agnostic integration: any MCP client can drive Grovedock without bespoke
 glue. The official SDK tracks the protocol specification.
 
 ## ADR-015: Path-scoped reads without object-level ACLs
@@ -155,7 +155,7 @@ converts 312k object versions (159k of them trees) in 15 minutes: storage 4.6 GB
 **Decision.** Landing calls a `LandCheck` port once, after authorization and before the
 rebase/compare-and-swap loop. The shipped adapter POSTs the proposal to a URL; only a 2xx
 answer lands, and timeouts or errors refuse the land.
-**Why.** A webhook lets any CI system or review tool gate landing without Pando owning a
+**Why.** A webhook lets any CI system or review tool gate landing without Grovedock owning a
 review database. Checking before rebase keeps the hook off the contended retry path, and is
 sound because a server-side rebase only happens when no changed path conflicts, so the
 approved file changes are exactly what lands. Failing closed means an outage of the gate
@@ -367,7 +367,7 @@ branch; on a protected branch the change goes to a `review/` branch and a change
 An agent's change request asks the person the agent answers to for review.
 
 **Why.** Agents shouldn't need a clone, a workspace or a git client to change code: a URL and
-a token is the whole setup, which is what makes Pando usable from hosted agents. Passing the
+a token is the whole setup, which is what makes Grovedock usable from hosted agents. Passing the
 token through avoids a confused deputy and reuses every permission check, token limit and
 audit record the server already has. Statelessness matches the server: gateways scale
 horizontally behind any load balancer and need nothing to coordinate.
@@ -411,7 +411,7 @@ fetch everything, the importer is already deterministic and incremental, and the
 moves, so they come too.
 
 **Trade-offs.** Commit ids change. Imported issues and change requests are posted by the person
-running the migration, with the original author named and linked, because Pando accounts don't
+running the migration, with the original author named and linked, because Grovedock accounts don't
 map to GitHub logins. Only open pull requests move; review comments on them don't yet. Each
 branch is imported separately, so a repository with very many branches takes longer.
 
@@ -476,7 +476,7 @@ and the signup policy's consent (`--signup waitlist` by default, `signup_allow` 
 session mechanism: revoking the token signs the browser out, and the token list shows browser
 sessions next to the rest. Generic OIDC covers Google, Okta, Entra and Keycloak with one
 reviewed path (ID tokens are checked by the same code as SSO bearer tokens); not depending on
-GitHub matters because Pando competes with it. A fragment never reaches servers or logs.
+GitHub matters because Grovedock competes with it. A fragment never reaches servers or logs.
 
 **Trade-offs.** The console holds a bearer token in browser storage rather than an HttpOnly
 cookie, so cross-site scripting in the console could read it; a strict CSP on the console,

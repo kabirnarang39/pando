@@ -24,7 +24,7 @@ cargo install --git https://github.com/kabirnarang39/pando pando-vcs pando-serve
 Windows: download the `.zip` from the [releases page](https://github.com/kabirnarang39/pando/releases).
 
 You get three programs: `pando` (the client), `pandod` (server, cache and node daemon) and
-`git-remote-pando` (lets plain git talk to a Pando server).
+`git-remote-pando` (lets plain git talk to a Grovedock server).
 
 ## Run a server
 

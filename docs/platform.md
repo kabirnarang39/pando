@@ -1,8 +1,8 @@
-# Pando platform: hosting, review and the web app
+# Grovedock platform: hosting, review and the web app
 
-Pando's web app grows from a read-only console into a full hosting platform: organisations,
+Grovedock's web app grows from a read-only console into a full hosting platform: organisations,
 repositories, people and agents, change requests with review, protected branches and the
-activity of an agent fleet, on top of the Pando server. This page records which flows it covers,
+activity of an agent fleet, on top of the Grovedock server. This page records which flows it covers,
 how they compare with GitHub's, and the order they are built in.
 
 ## How the flows were mapped
@@ -29,15 +29,15 @@ reused; only the list of jobs people do.
 | Issues and issue | the same query-and-filters list; timeline with sidebar metadata |
 | Compare, releases, actions, branches, organisation | base/head pickers; release notes with assets; workflow runs; branch list with ahead/behind; organisation repositories and people |
 
-## Where GitHub is weak, and what Pando does instead
+## Where GitHub is weak, and what Grovedock does instead
 
-| GitHub today | Pando |
+| GitHub today | Grovedock |
 |---|---|
 | A pull request is four tabs; reviewing means switching between the conversation, the diff and checks | One review page: the file tree, the diff, comments and checks side by side, with keyboard navigation through files and threads |
 | Large diffs are cut off ("Load diff", files hidden) and big pull requests get slow | Diffs render only what is on screen and highlight off the main thread; nothing is hidden behind a button except deliberately huge generated files |
 | Lists go stale until you reload | Everything live: lists, review state and branch tips update as they change, without moving what you are reading |
 | Agents are ordinary users; a fleet opening hundreds of pull requests floods the list | Agents are first-class: marked as agents, grouped by fleet, with a timeline per agent and filters for people versus agents |
-| Merge conflicts surface late; the merge queue is a separate feature | Pando lands with path-scoped conflict checks (1,012 lands/s at 200 agents against git's 0.5, [measured](comparisons/git-vs-pando.md#landing-at-scale-16-to-5000-concurrent-agents)); a change request merges by landing, and conflicts are known per path before anyone reviews |
+| Merge conflicts surface late; the merge queue is a separate feature | Grovedock lands with path-scoped conflict checks (1,012 lands/s at 200 agents against git's 0.5, [measured](comparisons/git-vs-pando.md#landing-at-scale-16-to-5000-concurrent-agents)); a change request merges by landing, and conflicts are known per path before anyone reviews |
 | Branch protection and rulesets live in settings pages far from the code | Protection is shown where it applies: on the branch, on the change request and in the land result, with the reason a land was refused |
 | Monorepo work: slow clones, history of a directory is slow | Clone in 0.46 s instead of 19.1 s (git/git), mount any revision, and path history is a server query |
 | Notifications are one stream for everything | A review inbox: what waits on you, what you wait on, and what agents need approved, in that order |
@@ -53,7 +53,7 @@ browser.
    repository creation, a home page with your repositories and their activity.
 2. **Coexistence with GitHub, GitLab and Bitbucket** (done in 3.1: `pando mirror`). A continuous mirror of every landed change
    to an existing host, so CI, integrations and audit archives keep working while agents land in
-   Pando. This is how an enterprise adopts Pando without replacing anything.
+   Grovedock. This is how an enterprise adopts Grovedock without replacing anything.
 3. **People, agents and access** (done in 3.2, ADR-023). Accounts from the identity provider (OIDC is already
    supported), personal and agent tokens, organisation members, teams, and per-repository roles
    (read, write, maintain, admin). Agents are accounts marked as agents and owned by a person or
@@ -199,7 +199,7 @@ a new account to be created; some Microsoft Entra ID setups don't send that clai
 users can't sign up (link them to an account instead, below).
 
 **Email links.** `--smtp-url smtps://smtp.example.com:465` (or `smtp://HOST:587?tls=required`),
-`--mail-from "Pando <login@example.com>"`, with `PANDO_SMTP_USERNAME` and `PANDO_SMTP_PASSWORD`
+`--mail-from "Grovedock <login@example.com>"`, with `PANDO_SMTP_USERNAME` and `PANDO_SMTP_PASSWORD`
 (or `_FILE`). A link works once, within 15 minutes; opening it shows a "Sign in" button, so mail
 scanners that fetch links don't use it up. The form answers the same whether or not the
 address may sign in. Add `--turnstile-site-key` and `PANDO_TURNSTILE_SECRET` to put a

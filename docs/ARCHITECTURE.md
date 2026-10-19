@@ -1,9 +1,9 @@
 # Architecture
 
-Pando is a client/server source control system designed around one observation: when
+Grovedock is a client/server source control system designed around one observation: when
 humans and AI agents merge tens of thousands of changes a day into one monorepo, the
 expensive operations of git (full clones, client-side history, pushing whole packfiles,
-merge queues behind a global lock) become the bottleneck. Pando moves history, commits,
+merge queues behind a global lock) become the bottleneck. Grovedock moves history, commits,
 merges and rebases to the server, keeps clients thin, and makes every read an API call.
 
 ## Topology

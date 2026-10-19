@@ -3,11 +3,15 @@
 
 <h1 class="pando-hero-title">One root. Thousands of agents.</h1>
 
-<p class="pando-lede">Pando is an open protocol and reference server for source control at agent
+<p class="pando-lede">Grovedock is an open protocol and reference server for source control at agent
 scale. Commits, rebases and history run on the server, so hundreds of agents land on one branch
 at once with no merge queue, a clone fetches only the files you ask for, and CI reads files
 without checking anything out. It runs beside GitHub, or instead of it.</p>
 </div>
+
+Grovedock was called Pando until October 2026; commands and packages keep the `pando` name
+until 3.6. The name is inspired by Pando, the aspen grove in Utah: some 47,000 trunks on one
+root. A grove is many agents on one history, and a dock is where their changes land.
 
 ## Start here
 
@@ -17,16 +21,16 @@ without checking anything out. It runs beside GitHub, or instead of it.</p>
 <li><a href="mirror.html"><span class="pando-path-title">Beside GitHub</span><span class="pando-path-text">Mirror every landed change to GitHub, GitLab or Bitbucket, or move history, pull requests and issues across in one command.</span></a></li>
 <li><a href="deploy.html"><span class="pando-path-title">Self-host</span><span class="pando-path-text">One binary: SQLite on one machine, or Postgres and S3 behind caches. Sign-in, backups, monitoring.</span></a></li>
 <li><a href="reference/protocol.html"><span class="pando-path-title">Protocol reference</span><span class="pando-path-text">Every gRPC call in <code>pando.v1</code>, for clients in any language.</span></a></li>
-<li><a href="limits.html"><span class="pando-path-title">Pando Cloud</span><span class="pando-path-text">A hosted Pando is coming. Until then, the same server runs on your own machines, with no feature gates.</span></a></li>
+<li><a href="limits.html"><span class="pando-path-title">Grovedock Cloud</span><span class="pando-path-text">A hosted Grovedock is coming. Until then, the same server runs on your own machines, with no feature gates.</span></a></li>
 </ul>
 
 Also: [migrate from GitHub](migrate.md), the [CLI reference](reference/cli.md), the
-[server reference](reference/server.md), and the [live console demo](https://kabirnarang39.github.io/pando/console/),
+[server reference](reference/server.md), and the [live console demo](https://grovedock.com/console/),
 which simulates an organisation of agents in your browser.
 
 ## How it differs from git
 
-| | git | Pando |
+| | git | Grovedock |
 |---|---|---|
 | Clone | downloads all history | downloads one tree, lazily, only the paths you ask for |
 | Commit | built locally, pushed as packs | the server builds it from the list of changed files |
@@ -35,9 +39,9 @@ which simulates an organisation of agents in your browser.
 | `log`, `blame`, `diff` | need local history | server APIs; ancestry in O(log n) |
 | Integrity | SHA-1 | BLAKE3, verified at every cache tier |
 
-Where git wins: working offline with full history. Pando needs the server for history,
+Where git wins: working offline with full history. Grovedock needs the server for history,
 commits and landing. The [benchmarks](comparisons/git-vs-pando.md) give the measured numbers,
 the method and the limits.
 
-Plain git keeps working against a Pando server through `git-remote-pando`; see
+Plain git keeps working against a Grovedock server through `git-remote-pando`; see
 [Coming from git](git-users.md).

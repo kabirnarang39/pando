@@ -205,7 +205,7 @@ impl Login {
                 }
                 Some(Mailer {
                     transport: b.timeout(Some(Duration::from_secs(20))).build(),
-                    from: from.parse().context("--mail-from must be an address like Pando <login@example.com>")?,
+                    from: from.parse().context("--mail-from must be an address like Grovedock <login@example.com>")?,
                 })
             }
             (None, None) => None,
@@ -378,7 +378,7 @@ impl Login {
             None => text.to_owned(),
         };
         let body = format!(
-            "<p>This creates a Pando account for <strong>{}</strong>.</p>{}\
+            "<p>This creates a Grovedock account for <strong>{}</strong>.</p>{}\
              <label class=check><input type=checkbox name=accept value=yes required> \
              <span>I am 18 or older and accept the {} and {}</span></label><button>Create my account</button>",
             esc(email),
@@ -493,7 +493,7 @@ fn fail(status: StatusCode, message: &str) -> Response {
     page(
         status,
         "We couldn't sign you in",
-        &format!("<p role=alert>{}</p><p><a href=\"/\">Back to Pando</a></p>", esc(message)),
+        &format!("<p role=alert>{}</p><p><a href=\"/\">Back to Grovedock</a></p>", esc(message)),
     )
 }
 
@@ -713,7 +713,7 @@ async fn email_form(State(l): State<Arc<Login>>, Query(q): Query<NextQuery>) -> 
     if l.mailer.is_none() {
         return fail(StatusCode::NOT_FOUND, "Email sign-in is not set up on this server.");
     }
-    l.sign_in_page("Sign in to Pando", "", &safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()))
+    l.sign_in_page("Sign in to Grovedock", "", &safe_next(q.next.as_deref()).unwrap_or_else(|| "/".into()))
 }
 
 #[derive(Deserialize)]
@@ -829,7 +829,7 @@ async fn email_confirm(Query(q): Query<TokenForm>) -> Response {
         StatusCode::OK,
         "Finish signing in",
         &format!(
-            "<p>You opened your sign-in link. Continue to sign in to Pando in this browser.</p>\
+            "<p>You opened your sign-in link. Continue to sign in to Grovedock in this browser.</p>\
              <form method=post action=\"/login/email/verify\"><input type=hidden name=token value=\"{}\"><button>Sign in</button></form>",
             esc(&token)
         ),

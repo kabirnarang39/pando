@@ -33,7 +33,7 @@ The monorepo behind Fleet: billing, search, the web app and the infrastructure t
 | web/app | storefront | the customer web app (TypeScript) |
 | infra | platform | Terraform for every environment |
 
-Every change lands on \`main\` through Pando. Agents land small changes continuously;
+Every change lands on \`main\` through Grovedock. Agents land small changes continuously;
 people review them in the console.
 `,
   "services/billing/Cargo.toml": `[package]

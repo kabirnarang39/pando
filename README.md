@@ -1,8 +1,8 @@
 <p align="center">
-  <a href="https://kabirnarang39.github.io/pando/"><img src="docs/assets/brand/mark.svg" width="96" height="96" alt="Pando logo: the letter P drawn as a branch landing back on main"></a>
+  <a href="https://grovedock.com/"><img src="docs/assets/brand/mark.svg" width="96" height="96" alt="Grovedock logo: the letter P drawn as a branch landing back on main"></a>
 </p>
 
-<h1 align="center">Pando</h1>
+<h1 align="center">Grovedock</h1>
 
 <p align="center">
   <b>Open-source source control for monorepos where hundreds of AI agents commit at once.</b><br>
@@ -11,20 +11,22 @@
   GitHub or Bitbucket, or instead of them.
 </p>
 
+<p align="center"><sub>Grovedock was called Pando until October 2026; commands and packages keep the <code>pando</code> name until 3.6.</sub></p>
+
 <p align="center">
   <a href="https://github.com/kabirnarang39/pando/actions/workflows/ci.yml"><img src="https://github.com/kabirnarang39/pando/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/kabirnarang39/pando/releases"><img src="https://img.shields.io/github/v/release/kabirnarang39/pando?color=16324F" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-16324F" alt="Apache-2.0 license"></a>
-  <a href="https://kabirnarang39.github.io/pando/docs/"><img src="https://img.shields.io/badge/docs-read-F0B429" alt="Documentation"></a>
+  <a href="https://grovedock.com/docs/"><img src="https://img.shields.io/badge/docs-read-F0B429" alt="Documentation"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/kabirnarang39/pando"><img src="https://api.scorecard.dev/projects/github.com/kabirnarang39/pando/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 <p align="center">
-  <a href="https://kabirnarang39.github.io/pando/docs/">Documentation</a> ·
-  <a href="https://kabirnarang39.github.io/pando/docs/getting-started.html">Try it in 5 minutes</a> ·
-  <a href="https://kabirnarang39.github.io/pando/docs/agents.html">Agents and MCP</a> ·
-  <a href="https://kabirnarang39.github.io/pando/docs/mirror.html">Beside GitHub</a> ·
-  <a href="https://kabirnarang39.github.io/pando/docs/deploy.html">Self-host</a> ·
+  <a href="https://grovedock.com/docs/">Documentation</a> ·
+  <a href="https://grovedock.com/docs/getting-started.html">Try it in 5 minutes</a> ·
+  <a href="https://grovedock.com/docs/agents.html">Agents and MCP</a> ·
+  <a href="https://grovedock.com/docs/mirror.html">Beside GitHub</a> ·
+  <a href="https://grovedock.com/docs/deploy.html">Self-host</a> ·
   <a href="docs/comparisons/git-vs-pando.md">Benchmarks</a>
 </p>
 
@@ -32,7 +34,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/headline-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/charts/headline-light.svg">
-    <img src="docs/assets/charts/headline-light.svg" width="840" alt="Bar charts: with 1,000 agents landing on one branch, Pando lands 504 changes per second and git 0.2. Cloning git/git takes 0.46 seconds with Pando and 19.1 seconds with git.">
+    <img src="docs/assets/charts/headline-light.svg" width="840" alt="Bar charts: with 1,000 agents landing on one branch, Grovedock lands 504 changes per second and git 0.2. Cloning git/git takes 0.46 seconds with Grovedock and 19.1 seconds with git.">
   </picture>
   <br>
   <sub>Both systems on one Apple M4 laptop, release builds. Reproduce with <a href="bench/run.sh"><code>bench/run.sh</code></a> and <a href="crates/pando/examples/land_load.rs"><code>examples/land_load.rs</code></a>.</sub>
@@ -40,11 +42,11 @@
 
 
 <p align="center">
-  <a href="https://kabirnarang39.github.io/pando/console/"><b>Try the web console</b></a>: a whole organisation of agents landing
+  <a href="https://grovedock.com/console/"><b>Try the web console</b></a>: a whole organisation of agents landing
   and reviewing changes, simulated in your browser.
 </p>
 
-## Why Pando
+## Why Grovedock
 
 git gives every clone the full history and lets every pusher race for the same branch.
 That works for people. It breaks when agents and CI land tens of thousands of changes a
@@ -52,7 +54,7 @@ day into one repository: every job clones history it never reads, and every push
 `main` loses to someone else's and retries.
 
 Google, Meta and Microsoft solved this with in-house systems that move history and commit
-creation to the server ([prior art](docs/PRIOR_ART.md)). Pando is that design as one
+creation to the server ([prior art](docs/PRIOR_ART.md)). Grovedock is that design as one
 open-source binary: SQLite on a laptop, or stateless replicas on Postgres and S3 behind
 caches.
 
@@ -60,11 +62,11 @@ caches.
 
 You choose how far to go, and can change your mind at any point.
 
-- **Beside your git host.** Agents land in Pando; `pando mirror` pushes every landed change to
+- **Beside your git host.** Agents land in Grovedock; `pando mirror` pushes every landed change to
   GitHub, GitLab or Bitbucket as ordinary commits, so CI, code search, issue links and
   reviewers keep working where they are. Nothing to migrate; stop the mirror to roll back.
 - **Instead of it.** `pando migrate https://github.com/acme/fleet --to SERVER/acme/fleet`
-  brings the full history, open pull requests and issues across in one command. Pando hosts your repositories, people browse and review in its web
+  brings the full history, open pull requests and issues across in one command. Grovedock hosts your repositories, people browse and review in its web
   console, and plain git, CI and editors connect through `git-remote-pando`. The history
   stays exportable to git at any time, so there's no lock-in either way.
 
@@ -112,9 +114,9 @@ echo hello > hello.txt && pando commit -m "Say hello" && pando land
   <img src="docs/assets/demo.gif" width="760" alt="Terminal recording on git/git's 82,443-commit history: git clone takes about 22 seconds, pando clone under one second; then pando log and pando cat answer in about 10 ms without a clone.">
 </p>
 
-Everything else is in the [documentation](https://kabirnarang39.github.io/pando/docs/): Docker, Postgres and S3 setups in
-[Deploy](https://kabirnarang39.github.io/pando/docs/deploy.html), every git equivalent in [Coming from git](https://kabirnarang39.github.io/pando/docs/git-users.html), and
-every command and flag in the [CLI](https://kabirnarang39.github.io/pando/docs/reference/cli.html) and [server](https://kabirnarang39.github.io/pando/docs/reference/server.html)
+Everything else is in the [documentation](https://grovedock.com/docs/): Docker, Postgres and S3 setups in
+[Deploy](https://grovedock.com/docs/deploy.html), every git equivalent in [Coming from git](https://grovedock.com/docs/git-users.html), and
+every command and flag in the [CLI](https://grovedock.com/docs/reference/cli.html) and [server](https://grovedock.com/docs/reference/server.html)
 references.
 
 ## How it works
@@ -140,7 +142,7 @@ Read the [architecture](docs/ARCHITECTURE.md) and the [design decisions](docs/DE
 
 On git/git's history (82,443 commits), both systems on one machine:
 
-| | git | Pando | |
+| | git | Grovedock | |
 |---|---:|---:|---|
 | Full clone | 19.1 s | 0.46 s | 41× faster |
 | Sparse clone of `Documentation/` | 9.5 s | 0.11 s | 90× faster |
@@ -154,7 +156,7 @@ the [benchmark page](docs/comparisons/git-vs-pando.md).
 
 ## Status
 
-Pando is new and maintained by one person. The protocol (`pando.v1`), storage formats and
+Grovedock is new and maintained by one person. The protocol (`pando.v1`), storage formats and
 CLI follow semantic versioning, and CI runs the test suite on Linux, macOS and Windows.
 The safest way to try it is next to git, through the git bridge. See the
 [changelog](CHANGELOG.md) and [roadmap](docs/ROADMAP.md).
@@ -164,5 +166,6 @@ The safest way to try it is next to git, through the git bridge. See the
 Issues and pull requests are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md).
 Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
-Licensed under [Apache-2.0](LICENSE). Named after [Pando](https://en.wikipedia.org/wiki/Pando_(tree)),
-a grove of some 47,000 aspen trunks that grow from one root system.
+Licensed under [Apache-2.0](LICENSE). The name is inspired by [Pando](https://en.wikipedia.org/wiki/Pando_(tree)),
+the aspen grove in Utah: some 47,000 trunks on one root. A grove is many agents on one history,
+and a dock is where their changes land.

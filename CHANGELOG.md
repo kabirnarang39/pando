@@ -24,6 +24,14 @@ All notable changes to this project are documented here. The format follows
   organisation's repositories, change requests, issues, webhooks, protections, locks, teams and
   tokens, and must be refused or show nothing of theirs; a method missing from its table fails it.
 
+### Changed
+- The product is now called Grovedock: the website, documentation, web console and sign-in pages
+  use the new name and wordmark. Commands, packages, environment variables (`PANDO_*`), webhook
+  headers and the protocol keep the `pando` name until 3.6.
+- The website moves to https://grovedock.com/ (landing at `/`, `/pricing.html`, `/docs/`,
+  `/console/`); old `kabirnarang39.github.io/pando/` links redirect. A server that lists the
+  hosted console in `--web-origins` should list `https://grovedock.com`.
+
 ### Fixed
 - `docs/platform.md` said git manages 2 lands/s at 200 agents; the benchmark measured 0.5.
 - `docker compose up` failed: every service listens on the network without a token, which

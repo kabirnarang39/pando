@@ -1,7 +1,7 @@
 # Mirror to a git host
 
-Run Pando beside GitHub, GitLab or Bitbucket instead of replacing them. `pando mirror` keeps a git repository current with a branch, so CI, code search, issue links
-and anything else attached to your git host keep working while agents land in Pando:
+Run Grovedock beside GitHub, GitLab or Bitbucket instead of replacing them. `pando mirror` keeps a git repository current with a branch, so CI, code search, issue links
+and anything else attached to your git host keep working while agents land in Grovedock:
 
 ```sh
 pando mirror --to git@github.com:acme/fleet.git --every 5        # runs until stopped
@@ -22,14 +22,14 @@ pando mirror --to https://bitbucket.org/acme/fleet.git           # once, for cro
 | Option | Default | Meaning |
 |---|---|---|
 | `--to URL` | (required) | where to push: any URL git accepts |
-| `--server URL` | `$PANDO_SERVER`, or the workspace's server | the Pando server, with `/OWNER/NAME` on a server that hosts many repositories |
-| `--rev REV` | `main` | the Pando branch to mirror |
+| `--server URL` | `$PANDO_SERVER`, or the workspace's server | the Grovedock server, with `/OWNER/NAME` on a server that hosts many repositories |
+| `--rev REV` | `main` | the Grovedock branch to mirror |
 | `--git-ref REF` | `main` | the branch to update on the git host |
 | `--every SECONDS` | once | mirror again every SECONDS until interrupted |
 | `--dir DIR` | your cache directory | the mirror's local bare git repository |
 
 ## Rolling back
 
-Stopping the mirror is the whole rollback: the git host has every change that landed in Pando,
+Stopping the mirror is the whole rollback: the git host has every change that landed in Grovedock,
 as ordinary commits, and people can go back to pushing there. To move a repository the other way,
-from a git host into Pando with its pull requests and issues, see [Migrate from GitHub](migrate.md).
+from a git host into Grovedock with its pull requests and issues, see [Migrate from GitHub](migrate.md).

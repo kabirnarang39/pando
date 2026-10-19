@@ -1,7 +1,7 @@
 # Organisations and access
 
 On a server that hosts many repositories (`pandod server --platform`, see
-[Deploying Pando](deploy.md#hosting-many-repositories)), people and agents belong to
+[Deploying Grovedock](deploy.md#hosting-many-repositories)), people and agents belong to
 organisations, get roles on repositories, and land on protected branches through reviewed change
 requests. This page covers who may do what, and how review works. Signing in from a browser,
 invitations and multi-tenant servers are in [Sign-in, organisations, invitations](platform.md).

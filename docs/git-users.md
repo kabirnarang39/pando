@@ -1,11 +1,11 @@
 # Coming from git
 
-You can move to Pando one person at a time. git users and `pando` users work on the same
+You can move to Grovedock one person at a time. git users and `pando` users work on the same
 branches of the same server.
 
 ## Keep using git
 
-With `git-remote-pando` on your `PATH` (every install method puts it next to `pando`), git talks to a Pando
+With `git-remote-pando` on your `PATH` (every install method puts it next to `pando`), git talks to a Grovedock
 server directly:
 
 ```sh

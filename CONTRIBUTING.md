@@ -50,7 +50,7 @@ cargo test --workspace
 Every new feature and every behaviour change lands with automated tests in the same pull
 request: unit tests next to the code, and an end-to-end test in `crates/*/tests/` for anything
 a user can run. A bug fix includes a test that fails without the fix. Changes are not merged
-without them. See [How Pando is tested](https://kabirnarang39.github.io/pando/docs/testing.html).
+without them. See [How Pando is tested](https://grovedock.com/docs/testing.html).
 
 ## Questions and discussion
 
