@@ -825,12 +825,13 @@ mod tests {
 
     #[test]
     fn readiness_checks_a_template_s_fixed_directory() {
-        let dir = |u| data_dir(u).map(|d| d.to_string_lossy().into_owned());
-        assert_eq!(dir("file:///var/lib/pando/objects/{repo_id}").as_deref(), Some("/var/lib/pando/objects"));
-        assert_eq!(dir("sqlite:///var/lib/pando/repos/{repo}.db").as_deref(), Some("/var/lib/pando/repos"));
-        assert_eq!(dir("file:///srv/objects").as_deref(), Some("/srv/objects"));
-        assert_eq!(dir("sqlite://./pando-data/meta.db").as_deref(), Some("./pando-data"));
-        assert_eq!(dir("sqlite://meta.db").as_deref(), Some("."));
-        assert_eq!(dir("s3://bucket/{repo_id}"), None);
+        // Compared as paths, so Windows separators don't matter.
+        let is = |u, want: &str| assert_eq!(data_dir(u).as_deref(), Some(std::path::Path::new(want)), "{u}");
+        is("file:///var/lib/pando/objects/{repo_id}", "/var/lib/pando/objects");
+        is("sqlite:///var/lib/pando/repos/{repo}.db", "/var/lib/pando/repos");
+        is("file:///srv/objects", "/srv/objects");
+        is("sqlite://./pando-data/meta.db", "./pando-data");
+        is("sqlite://meta.db", ".");
+        assert_eq!(data_dir("s3://bucket/{repo_id}"), None);
     }
 }
