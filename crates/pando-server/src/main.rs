@@ -811,7 +811,7 @@ fn data_dir(url: &str) -> Option<std::path::PathBuf> {
     };
     let template = path.find('{');
     let fixed = &path[..template.unwrap_or(path.len())];
-    let dir = match fixed.strip_suffix('/') {
+    let dir = match fixed.strip_suffix(['/', '\\']) {
         Some(dir) => std::path::PathBuf::from(dir),
         None if is_dir && template.is_none() => std::path::PathBuf::from(fixed),
         None => std::path::Path::new(fixed).parent()?.to_path_buf(),
@@ -827,8 +827,12 @@ mod tests {
     fn readiness_checks_a_template_s_fixed_directory() {
         // Compared as paths, so Windows separators don't matter.
         let is = |u, want: &str| assert_eq!(data_dir(u).as_deref(), Some(std::path::Path::new(want)), "{u}");
+        #[cfg(unix)]
         is("file:///var/lib/pando/objects/{repo_id}", "/var/lib/pando/objects");
+        #[cfg(windows)]
+        is("file:///C:/pando/objects/{repo_id}", "C:/pando/objects");
         is("sqlite:///var/lib/pando/repos/{repo}.db", "/var/lib/pando/repos");
+        #[cfg(unix)]
         is("file:///srv/objects", "/srv/objects");
         is("sqlite://./pando-data/meta.db", "./pando-data");
         is("sqlite://meta.db", ".");
