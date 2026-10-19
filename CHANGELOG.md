@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-10-19
+
 ### Added
 - Website: a new landing page and a pricing page with a Team cost calculator. The product name,
   links and list prices live in `site/site.conf`, which `scripts/build-site.sh` fills in; the
