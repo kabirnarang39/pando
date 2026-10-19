@@ -31,6 +31,8 @@ All notable changes to this project are documented here. The format follows
 - The website moves to https://grovedock.com/ (landing at `/`, `/pricing.html`, `/docs/`,
   `/console/`); old `kabirnarang39.github.io/pando/` links redirect. A server that lists the
   hosted console in `--web-origins` should list `https://grovedock.com`.
+- Website and docs home redesigned: a night-grove hero (aspen trunks on one root, animated once and
+  still under reduced motion), a benchmark panel, a reworked pricing page and footer.
 
 ### Fixed
 - `docs/platform.md` said git manages 2 lands/s at 200 agents; the benchmark measured 0.5.

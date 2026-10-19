@@ -307,6 +307,7 @@ pre > .buttons button { background: var(--bg); border-color: var(--line-strong);
 .pando-docs { font-weight: 500; color: var(--muted); letter-spacing: 0; }
 .icon-button { color: var(--icons); }
 .icon-button:hover, .right-buttons a:hover { color: var(--icons-hover); }
+.right-buttons a { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; }
 
 /* ---- Sidebar ---- */
 
@@ -381,19 +382,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, label:focus-visible,
 
 /* ---- Home page ---- */
 
-.content main .pando-hero { margin: 1.2em 0 2.6em; }
-.content main .pando-hero h1 {
-  font-size: clamp(2.4em, 6vw, 3.4em);
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-  margin: 0.2em 0 0.35em;
-  max-width: 14ch;
+/* The hero is the website's night band: the aspen grove on one root, still (the landing page animates it). */
+.content main .pando-hero {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: end; gap: 8px 32px;
+  margin: 1.2em 0 2.6em; padding: 36px 36px 0; border-radius: 18px; overflow: hidden;
+  background: #0F2338; color: #EEF1EC; color-scheme: dark;
 }
-.content main .pando-hero .pando-lede { font-size: 1.15em; line-height: 1.55; color: var(--fg); max-width: 58ch; margin: 0; }
-.pando-grove { display: block; width: 100%; max-width: 560px; height: auto; margin: 0 0 8px; color: var(--heading); }
-.pando-grove .root { stroke: var(--heading); }
-.pando-grove .trunk { stroke: color-mix(in srgb, var(--heading) 55%, var(--bg)); }
-.pando-grove .tip { fill: var(--bg); stroke: color-mix(in srgb, var(--heading) 55%, var(--bg)); stroke-width: 1.6; }
+.content main .pando-hero-copy { padding-bottom: 36px; }
+.content main .pando-hero h1 {
+  font-size: clamp(2.2em, 5vw, 3.2em);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  margin: 0 0 0.45em;
+  max-width: 11ch;
+  color: #EEF1EC;
+}
+.content main .pando-hero .pando-lede { font-size: 1.08em; line-height: 1.55; color: #B4C3D2; max-width: 46ch; margin: 0; }
+.pando-grove { display: block; width: 100%; height: auto; margin-bottom: -2px; }
+.pando-grove .trunks path { fill: #E3EAE4; }
+.pando-grove .eyes path { fill: #1B2A38; }
+.pando-grove .agents { display: none; }
+.pando-grove .root { stroke: #EEF1EC; stroke-width: 3; fill: none; stroke-linecap: round; }
+.pando-grove .tip { fill: #F0B429; stroke: #0F2338; stroke-width: 4; }
 
 .content main .pando-paths {
   list-style: none;
@@ -401,18 +412,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, label:focus-visible,
   margin: 1.4em 0 2.4em;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 28px;
+  gap: 12px;
 }
 .content main .pando-paths li { margin: 0; }
 .content main .pando-paths a {
   display: block;
   height: 100%;
-  padding: 12px 0 14px 16px;
-  border-inline-start: 2px solid var(--line-strong);
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
   text-decoration: none;
   color: var(--fg);
 }
-.content main .pando-paths a:hover { border-inline-start-color: var(--heading); text-decoration: none; }
+.content main .pando-paths a:hover { border-color: var(--heading); text-decoration: none; }
 .content main .pando-paths a:hover .pando-path-title { text-decoration: underline; text-underline-offset: 0.18em; }
 .pando-path-title { display: block; font-weight: 700; font-size: 1.08em; letter-spacing: -0.01em; color: var(--heading); margin-bottom: 2px; }
 .pando-path-text { display: block; color: var(--muted); font-size: 0.94em; line-height: 1.5; }
@@ -422,7 +434,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, label:focus-visible,
   :root { --page-padding: 16px; }
   .content main { font-size: 1.65rem; }
   .content main h1 { font-size: 2em; }
-  .content main .pando-paths { grid-template-columns: 1fr; }
+  .content main .pando-paths, .content main .pando-hero { grid-template-columns: 1fr; }
+  .content main .pando-hero { padding: 24px 20px 0; }
+  .content main .pando-hero-copy { padding-bottom: 8px; }
   .menu-title { font-size: 1.8rem; }
   .pando-docs { display: none; }
 }
