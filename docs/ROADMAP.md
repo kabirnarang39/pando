@@ -25,6 +25,6 @@ browser, invitations by email, and usage and limits per organisation.
 
 ## Later
 
-Pando Cloud, a managed service with a free tier, and enterprise features (SAML, SCIM,
+Grovedock Cloud, a managed service with a free tier, and enterprise features (SAML, SCIM,
 audit-log streaming, high-availability deployment templates) are planned. The open-source
 server stays complete: everything shipped here stays open.

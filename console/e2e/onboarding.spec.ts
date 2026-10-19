@@ -50,7 +50,7 @@ test("server: a person with no organisation is guided from naming one to connect
   await page.goto(`/?server=${encodeURIComponent(FRESH)}#/`);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   // No organisations yet: straight into step 1.
-  await expect(page.getByRole("heading", { name: "Welcome to Pando" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to Grovedock" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Name your organisation" })).toBeVisible();
 
   const name = page.getByLabel("Short name, used in addresses");

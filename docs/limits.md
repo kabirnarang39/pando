@@ -1,6 +1,6 @@
 # Plans and limits
 
-Pando is open source and has no feature gates: everything on this page is a limit you can
+Grovedock is open source and has no feature gates: everything on this page is a limit you can
 see and, where it says so, change.
 
 ## Built-in limits
@@ -27,5 +27,5 @@ private repositories) and, on a multi-tenant server, enforce a limit on each. Ho
 counted and what happens at a limit is in
 [Sign-in, organisations, invitations](platform.md#plans-and-limits).
 
-**Pando Cloud**, a hosted Pando, is coming. Until then, everything runs on your own machines
-with the same binary; see [Deploying Pando](deploy.md).
+**Grovedock Cloud**, a hosted Grovedock, is coming. Until then, everything runs on your own machines
+with the same binary; see [Deploying Grovedock](deploy.md).

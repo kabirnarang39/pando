@@ -176,7 +176,7 @@ pub(super) async fn enter(
     let ask = |problem: &str| {
         page(
             if problem.is_empty() { StatusCode::OK } else { StatusCode::BAD_REQUEST },
-            "Sign in the Pando CLI",
+            "Sign in the Grovedock CLI",
             &format!(
                 "<p>Enter the code that <code>pando login</code> shows in your terminal.</p>{problem}\
                  <form method=get action=\"/login/device\"><label>Code\
@@ -194,8 +194,8 @@ pub(super) async fn enter(
     let Some(uc) = normal_code(&typed) else { return ask(unknown) };
     match l.registry.device_login(&uc) {
         Ok(Some(_)) => l.sign_in_page(
-            "Sign in the Pando CLI",
-            &format!("<p>Sign in to approve the code <strong class=code>{uc}</strong> for the Pando CLI.</p>"),
+            "Sign in the Grovedock CLI",
+            &format!("<p>Sign in to approve the code <strong class=code>{uc}</strong> for the Grovedock CLI.</p>"),
             &format!("{NEXT}{uc}"),
         ),
         Ok(None) => ask(unknown),

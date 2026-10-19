@@ -1,4 +1,4 @@
-# How Pando is tested
+# How Grovedock is tested
 
 Source control is trusted for not losing work. These are the checks that back that up,
 from the smallest to the most realistic. All of them run in CI.
@@ -44,7 +44,7 @@ kills replicas about 30 times and lands about 9,000 changes.
 
 ## Fuzzing the decoders
 
-Everything Pando reads from the network or disk goes through a handful of decoders:
+Everything Grovedock reads from the network or disk goes through a handful of decoders:
 objects (zstd frames, chunk manifests, deltas), trees, changesets, and path validation.
 Each has a [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) target in `fuzz/`,
 seeded with valid inputs from `fuzz/examples/seed_corpus.rs` so the fuzzer starts past

@@ -1,7 +1,7 @@
 # Webhooks
 
 A repository on a platform server (`pandod server --platform`) can call URLs when something
-happens in it, so CI, chat and issue trackers react to Pando the way they react to GitHub.
+happens in it, so CI, chat and issue trackers react to Grovedock the way they react to GitHub.
 
 ```sh
 pando webhook add lumen/fleet https://ci.example.com/hooks/pando --event push --event change_request

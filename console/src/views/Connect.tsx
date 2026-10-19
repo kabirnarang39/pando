@@ -138,11 +138,11 @@ export function ConnectView() {
   return (
     <div className="page page-narrow">
       <div>
-        <h1>{providers && !useToken ? "Sign in to Pando" : "Connect to a server"}</h1>
+        <h1>{providers && !useToken ? "Sign in to Grovedock" : "Connect to a server"}</h1>
         <p className="lede">
           {providers && !useToken
             ? "Sign in to see your organisations, repositories and agents."
-            : "The console reads one Pando server. It runs in your browser and talks to the server directly; nothing passes through anyone else."}
+            : "The console reads one Grovedock server. It runs in your browser and talks to the server directly; nothing passes through anyone else."}
         </p>
         {suggested && (
           <p className="status" data-kind="ok" role="status">

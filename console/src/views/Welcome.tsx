@@ -49,7 +49,7 @@ export function WelcomeView() {
   return (
     <div className="page page-narrow">
       <div>
-        <h1>{first ? "Welcome to Pando" : "New organisation"}</h1>
+        <h1>{first ? "Welcome to Grovedock" : "New organisation"}</h1>
         <p className="lede">
           {first
             ? "Three short steps and your team and agents can start landing code. You can skip the last two and come back later."
@@ -159,7 +159,7 @@ function AgentStep({ org }: { org: string }) {
     <div className="stack">
       <h2 id="step-title">Connect an agent</h2>
       <p style={{ margin: 0 }}>
-        Agents reach Pando over MCP with a URL and a token. Give the agent a name of its own, so its work is easy to tell apart from yours; it answers to you.
+        Agents reach Grovedock over MCP with a URL and a token. Give the agent a name of its own, so its work is easy to tell apart from yours; it answers to you.
       </p>
       {!token ? (
         <form

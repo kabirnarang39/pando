@@ -68,7 +68,7 @@ async fn send(l: &Login, inv: &Invitation, link: &str) -> anyhow::Result<bool> {
     let msg = lettre::Message::builder()
         .from(m.from.clone())
         .to(inv.email.parse()?)
-        .subject(format!("{} invited you to {} on Pando", inv.invited_by, inv.org))
+        .subject(format!("{} invited you to {} on Grovedock", inv.invited_by, inv.org))
         .header(lettre::message::header::ContentType::TEXT_PLAIN)
         .body(format!(
             "{} invited you to join the organisation {} on {} as {}.\n\nAccept the invitation:\n\n{link}\n\n\

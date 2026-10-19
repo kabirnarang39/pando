@@ -19,7 +19,7 @@ pando migrate https://github.example.com/acme/fleet --to https://pando.example.c
 | **Issues** (GitHub) | open and closed, oldest first, with every comment, labels, and closed as done or not planned |
 | **The repository** | created if it doesn't exist, with its GitHub description |
 
-Commit ids change (Pando addresses content its own way); each change keeps its git message
+Commit ids change (Grovedock addresses content its own way); each change keeps its git message
 and author. Issues, pull requests and comments are posted by whoever runs the migration, each
 naming its original GitHub author with a link to the original. Run it again later to bring
 across new commits; history is imported incrementally.
@@ -34,7 +34,7 @@ pando mirror --to https://github.com/acme/fleet --server https://pando.example.c
 ```
 
 With the mirror running, CI, code search and issue links on the old host keep working while
-people and agents move to Pando at their own pace. Stopping the mirror is the whole rollback.
+people and agents move to Grovedock at their own pace. Stopping the mirror is the whole rollback.
 
 ## Tokens
 
@@ -44,6 +44,6 @@ people and agents move to Pando at their own pace. Stopping the mirror is the wh
   can see command lines. The token is sent only to the repository's own host and passed to git
   through its environment; source URLs are printed without credentials.
 - `--no-issues` and `--no-pull-requests` skip those.
-- The destination uses your Pando token (`PANDO_TOKEN`), which needs to be allowed to create
+- The destination uses your Grovedock token (`PANDO_TOKEN`), which needs to be allowed to create
   repositories in the organisation (an organisation administrator, or a site administrator for a
   new organisation).

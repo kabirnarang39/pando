@@ -1,11 +1,11 @@
 # The web console
 
-The console is a web app for watching and reviewing work on a Pando server: browse code with
+The console is a web app for watching and reviewing work on a Grovedock server: browse code with
 blame and history, follow every change as it lands, see who (person or agent) landed what,
 review change requests, and see which files are locked. It runs entirely in the browser and
 talks to `pandod` directly over gRPC-Web; there is no backend of its own.
 
-**Try it:** the [live demo](https://kabirnarang39.github.io/pando/console/) runs a simulated
+**Try it:** the [live demo](https://grovedock.com/console/) runs a simulated
 organisation in your browser: four repositories, a dozen agents landing changes every few
 seconds, change requests with reviews, checks and conflicts. Nothing leaves your machine.
 

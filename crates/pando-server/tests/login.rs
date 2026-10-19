@@ -539,10 +539,11 @@ async fn sign_in_pages_are_branded_self_contained_and_labelled() {
     let html = r.text().await.unwrap();
     // The brand, light and dark, with nothing fetched from anywhere.
     assert!(
-        html.contains("<title>Sign in to Pando – Pando</title>") || html.contains("<h1>Sign in to Pando</h1>"),
+        html.contains("<title>Sign in to Grovedock – Grovedock</title>")
+            || html.contains("<h1>Sign in to Grovedock</h1>"),
         "{html}"
     );
-    assert!(html.contains("class=brand role=img aria-label=Pando"), "{html}");
+    assert!(html.contains("class=brand role=img aria-label=Grovedock"), "{html}");
     assert!(
         html.contains("prefers-color-scheme:dark") && html.contains("<meta name=color-scheme content=\"light dark\">")
     );

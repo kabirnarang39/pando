@@ -47,7 +47,7 @@ publish a GitHub security advisory, and list the fix, with its CVE or advisory i
 
 Run the server with `--audit-log FILE` to record who read or changed what, from where,
 with what result, including rejected requests. The format is described in the
-[security guide](https://kabirnarang39.github.io/pando/docs/security.html#audit-log).
+[security guide](https://grovedock.com/docs/security.html#audit-log).
 
 ## Verifying a release
 

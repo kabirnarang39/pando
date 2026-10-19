@@ -1,6 +1,6 @@
 # Summary
 
-[Pando](introduction.md)
+[Grovedock](introduction.md)
 
 # Get started
 
@@ -44,6 +44,6 @@
 
 - [Roadmap](ROADMAP.md)
 - [Changelog](changelog.md)
-- [How Pando is tested](testing.md)
+- [How Grovedock is tested](testing.md)
 - [Security policy](security-policy.md)
 - [Contributing](contributing.md)

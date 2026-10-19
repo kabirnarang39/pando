@@ -27,7 +27,7 @@ Sign-off requires every box checked with evidence (test name, CI job or benchmar
 - [x] `cargo audit` clean
 - [x] Docker image builds; `docker compose up` topology serves a clone end to end
 - [x] Benchmarks run and published (`bench/results/RESULTS.md`)
-- [x] Dogfood: Pando's own history imported, a change landed through `pando`, exported back to git with identical tree (commit `docs: dogfood marker landed through pando` in this repo's history)
+- [x] Dogfood: Grovedock's own history imported, a change landed through `pando`, exported back to git with identical tree (commit `docs: dogfood marker landed through pando` in this repo's history)
 
 ## Repository
 - [x] README, ARCHITECTURE, DECISIONS (ADRs), ROADMAP, comparisons

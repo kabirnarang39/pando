@@ -346,7 +346,7 @@ Options:
 ## `pando mcp`
 
 ```text
-Serve Pando as MCP tools over stdio for AI agents (Claude Code, Codex, Cursor...)
+Serve Grovedock as MCP tools over stdio for AI agents (Claude Code, Codex, Cursor...)
 
 Usage: pando mcp [OPTIONS]
 
@@ -1587,7 +1587,7 @@ Options:
 ## `pando migrate`
 
 ```text
-Move a repository from any git host to Pando: full history, and from GitHub, open pull requests (as change requests) and issues with their comments
+Move a repository from any git host to Grovedock: full history, and from GitHub, open pull requests (as change requests) and issues with their comments
 
 Usage: pando migrate [OPTIONS] --to <TO> <FROM>
 
