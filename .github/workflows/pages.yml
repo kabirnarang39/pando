@@ -37,7 +37,7 @@ jobs:
         with: { node-version: 24, cache: pnpm, cache-dependency-path: console/pnpm-lock.yaml }
       - name: Build the console (its demo runs at /console/)
         working-directory: console
-        run: pnpm install --frozen-lockfile && pnpm build
+        run: pnpm install --frozen-lockfile && VITE_DEMO_ONLY=1 pnpm build
       - name: Build site and docs
         run: scripts/build-site.sh _site
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5

@@ -3,7 +3,7 @@
 ## Remote MCP: any agent, no checkout
 
 `pando mcp --http` serves a whole Pando server to agents anywhere over the
-[Model Context Protocol](https://modelcontextprotocol.io) (the stateless 2026-07-28 version). An
+[Model Context Protocol](https://modelcontextprotocol.io) (2026-07-28, and the earlier versions from 2024-11-05, all served statelessly). An
 agent needs a URL and a token, nothing else: it reads, searches, writes and lands files, opens
 and reviews change requests, reports CI checks and reads its inbox, without cloning anything.
 
@@ -19,9 +19,9 @@ claude mcp add --transport http pando https://mcp.example.com/mcp \
   --header "Authorization: Bearer $PANDO_TOKEN"                  # Claude Code
 ```
 
-Claude Desktop, Cursor, ChatGPT, Gemini CLI and other clients that speak MCP 2026-07-28 over
-HTTP take the same URL and header. Clients on older MCP versions, which open a session first,
-are refused.
+Claude Desktop, Cursor, ChatGPT, Gemini CLI and other clients that speak MCP over streamable
+HTTP take the same URL and header. Clients on versions before 2026-07-28 start with
+`initialize` as usual; the gateway answers it without keeping a session.
 
 - **The token decides everything.** The gateway passes each request's token to the server and
   holds no credentials of its own, so an agent can do exactly what its token allows: limited to

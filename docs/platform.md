@@ -39,7 +39,7 @@ reused; only the list of jobs people do.
 | Agents are ordinary users; a fleet opening hundreds of pull requests floods the list | Agents are first-class: marked as agents, grouped by fleet, with a timeline per agent and filters for people versus agents |
 | Merge conflicts surface late; the merge queue is a separate feature | Pando lands with path-scoped conflict checks (1,012 lands/s at 200 agents against git's 0.5, [measured](comparisons/git-vs-pando.md#landing-at-scale-16-to-5000-concurrent-agents)); a change request merges by landing, and conflicts are known per path before anyone reviews |
 | Branch protection and rulesets live in settings pages far from the code | Protection is shown where it applies: on the branch, on the change request and in the land result, with the reason a land was refused |
-| Monorepo work: slow clones, history of a directory is slow, CODEOWNERS is a text file | Clone in 0.46 s instead of 19.1 s (git/git), mount any revision, path history is a server query, owners per path are part of the repository's settings |
+| Monorepo work: slow clones, history of a directory is slow | Clone in 0.46 s instead of 19.1 s (git/git), mount any revision, and path history is a server query |
 | Notifications are one stream for everything | A review inbox: what waits on you, what you wait on, and what agents need approved, in that order |
 
 ## Flows, in build order

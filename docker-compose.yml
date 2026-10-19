@@ -2,8 +2,17 @@
 #   Postgres (metadata) + SeaweedFS (S3-compatible object storage)
 #   -> pandod server -> regional cache -> node daemon
 #
+# Every service listens on the network, so it needs a token. Pick a secret once:
+#
+#   echo "PANDO_TOKEN=$(openssl rand -hex 24)" > .env
 #   docker compose up -d
+#   export $(cat .env)
 #   pando clone http://localhost:7420 work --objects http://localhost:7422
+
+x-token: &token
+  # Accepted by every service, and used by the cache and daemon to call their upstream.
+  PANDO_TOKENS: "admin:${PANDO_TOKEN:?set PANDO_TOKEN in .env first; see the top of docker-compose.yml}"
+  PANDO_UPSTREAM_TOKEN: ${PANDO_TOKEN}
 
 services:
   postgres:
@@ -44,6 +53,7 @@ services:
       - --objects=s3://pando/objects
       - --metrics=0.0.0.0:9420
     environment:
+      <<: *token
       AWS_ACCESS_KEY_ID: pando
       AWS_SECRET_ACCESS_KEY: pando-secret
       AWS_REGION: us-east-1
@@ -56,6 +66,7 @@ services:
     image: ghcr.io/kabirnarang39/pando:latest
     depends_on: [server]
     command: [cache, --listen=0.0.0.0:7421, --upstream=http://server:7420, --capacity-mb=1024]
+    environment: *token
     ports: ["7421:7421"]
 
   daemon:
@@ -63,6 +74,7 @@ services:
     depends_on: [cache]
     command: [daemon, --listen=0.0.0.0:7422, --upstream=http://cache:7421, --dir=/data/daemon,
               --server=http://server:7420, --prefetch=main, --prefetch-interval=300]
+    environment: *token
     ports: ["7422:7422"]
 
 volumes:

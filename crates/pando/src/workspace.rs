@@ -278,12 +278,18 @@ impl Workspace {
             .git_exclude(true)
             .parents(false)
             .require_git(false)
-            .add_custom_ignore_filename(".sapignore");
+            // `.sapignore` is the old name, still read (deprecated).
+            .add_custom_ignore_filename(".sapignore")
+            .add_custom_ignore_filename(".pandoignore");
         walker.filter_entry(|e| !matches!(e.file_name().to_str(), Some(META_DIR) | Some(".git")));
 
         let mut seen = Vec::new();
         for entry in walker.build() {
             let entry = entry?;
+            if entry.file_name() == ".sapignore" {
+                static WARNED: std::sync::Once = std::sync::Once::new();
+                WARNED.call_once(|| eprintln!("warning: `.sapignore` is deprecated; rename it to `.pandoignore`"));
+            }
             let ft = match entry.file_type() {
                 Some(ft) if ft.is_file() || ft.is_symlink() => ft,
                 _ => continue,
@@ -729,6 +735,21 @@ mod tests {
         }
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0, "nothing was written");
         write_file(root.path(), ".gitignore", Mode::File, b"target\n").unwrap();
+    }
+
+    #[test]
+    fn honours_pandoignore_and_the_old_sapignore() {
+        let root = tempfile::tempdir().unwrap();
+        let config =
+            Config { server: "http://127.0.0.1:1".into(), objects: None, ref_name: "main".into(), sparse: vec![] };
+        let ws = Workspace::init(root.path(), config).unwrap();
+        for (path, body) in
+            [(".pandoignore", "build\n"), (".sapignore", "*.log\n"), ("build/out", ""), ("a.log", ""), ("src.rs", "")]
+        {
+            write_file(root.path(), path, Mode::File, body.as_bytes()).unwrap();
+        }
+        let paths: Vec<String> = ws.status(&[]).unwrap().into_iter().map(|c| c.path).collect();
+        assert_eq!(paths, [".pandoignore", ".sapignore", "src.rs"]);
     }
 
     #[test]

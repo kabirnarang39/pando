@@ -1209,7 +1209,7 @@ Arguments:
   <URL>
 
 Options:
-      --event <EVENTS>   Only these events (repeatable): push, change_request, review, comment, check
+      --event <EVENTS>   Only these events (repeatable): push, change_request, review, comment, check, issue
       --server <SERVER>
       --token <TOKEN>    Bearer token for the server ($PANDO_TOKEN); without one, the token `pando login` saved [env: PANDO_TOKEN]
   -h, --help             Print help

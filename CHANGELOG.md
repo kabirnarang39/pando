@@ -24,6 +24,24 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - `docs/platform.md` said git manages 2 lands/s at 200 agents; the benchmark measured 0.5.
+- `docker compose up` failed: every service listens on the network without a token, which
+  pandod refuses. The compose file now requires `PANDO_TOKEN` in `.env` (with a clear error when
+  it is missing) and passes it to the server, the cache and the daemon.
+- A bare `PANDO_SERVER` (no `/OWNER/NAME`) naming a clone's own server no longer hides the
+  clone's repository, so `pando protect` and `pando cr` work inside a clone with it set.
+- The remote MCP endpoint answers clients on protocol versions before 2026-07-28 (their
+  `initialize`) without a session, instead of "Session management is not supported".
+- `--repos-objects file:///…/{repo_id}` no longer makes a directory literally named `{repo_id}`
+  (readiness checks the template's base directory), and a `--platform` server no longer creates
+  an unused `./pando-data`: its default `--metadata` is now `memory`.
+- `pando admin limits suspend` says when the server doesn't enforce limits (not
+  `--multi-tenant`); `pando org usage` prints dates instead of epoch milliseconds.
+- `pando migrate` prints the `pando mirror` command for any git source, not only GitHub.
+- The working copy reads `.pandoignore`; `.sapignore` still works, with a deprecation warning.
+- `pando webhook add --help` lists the `issue` event; `pandod backup --help` points to
+  `docs/backup.md`.
+- The console demo on the public site no longer asks for `/login/providers` (a 404).
+- `docs/platform.md` no longer claims per-path owners in repository settings.
 
 ### Security
 - Creating a token limited to repositories told whether a private repository you can't see

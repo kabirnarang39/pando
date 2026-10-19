@@ -34,10 +34,11 @@ export function AppShell() {
     setDrawer(false);
   }, [location.pathname]);
   // On a server that has sign-in pages, a first visit starts at sign-in rather than in the demo.
-  // Asked once per tab, so someone who picks the demo stays in it.
+  // Asked once per tab, so someone who picks the demo stays in it. A demo-only build (the
+  // public site, `VITE_DEMO_ONLY=1`) has no server behind it to ask.
   const { target } = useConnection();
   useEffect(() => {
-    if (target.kind !== "demo" || pendingServer() || location.pathname === "/connect") return;
+    if (import.meta.env.VITE_DEMO_ONLY || target.kind !== "demo" || pendingServer() || location.pathname === "/connect") return;
     try {
       if (sessionStorage.getItem("pando.console.offered")) return;
       sessionStorage.setItem("pando.console.offered", "1");

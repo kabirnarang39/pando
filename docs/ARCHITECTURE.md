@@ -208,6 +208,6 @@ arm64, maximum resident set size): `pando commit` peaks at 163 MB, `pando clone`
 * Object fetches are batched (512-1024 ids per round trip) and pipelined (8 batches in
   flight); servers stream responses with bounded buffers (backpressure).
 * `pando status` uses size+mtime against the index and hashes only candidates, in parallel
-  on all cores; the walker is ripgrep's (`ignore`) and honours `.gitignore`/`.sapignore`.
+  on all cores; the walker is ripgrep's (`ignore`) and honours `.gitignore` and `.pandoignore` (and the deprecated `.sapignore`).
 * SQLite runs in WAL mode with one writer and a pool of readers; Postgres batches use
   `UNNEST`/`ANY` for single-round-trip multi-row operations.
