@@ -29,7 +29,7 @@ getrandom = "0.4"
 hex = "0.4"
 hmac = "0.13"
 prost = "0.14"
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
@@ -61,7 +61,7 @@ similar = "3"
 fastcdc = "5"
 fuser = "0.18"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls", "ring", "rustls-native-certs"] }
-jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12", default-features = false, features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
